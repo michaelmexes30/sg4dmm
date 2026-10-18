@@ -81,7 +81,10 @@ class Settings(BaseModel):
 
     # Cloud & Deployment URL Settings
     RENDER_EXTERNAL_URL: str = os.getenv("RENDER_EXTERNAL_URL", "")
-    APK_DOWNLOAD_URL: str = os.getenv("APK_DOWNLOAD_URL", "")
+    APK_DOWNLOAD_URL: str = os.getenv(
+        "APK_DOWNLOAD_URL", 
+        "https://github.com/michaelmexes30/sg4dmm/releases/download/v1.0.1/SG4D_Myanmar_V1.0.1.apk"
+    )
 
 settings = Settings()
 
