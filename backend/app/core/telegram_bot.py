@@ -287,8 +287,8 @@ def handle_telegram_update(update: dict, db: Session):
                     f"မင်္ဂလာပါ <b>{first_name}</b> ခင်ဗျာ!\n"
                     f"ဖုန်းနံပါတ်: <code>{phone}</code>\n\n"
                     f"🔑 သင်၏ လုံခြုံရေး အတည်ပြုကုဒ် (OTP) မှာ:\n"
-                    f"👉 <b><code>{otp_code}</code></b> 👈\n\n"
-                    f"⚠️ <i>(၁၀ မိနစ်အတွင်း အသုံးပြုပါ ခင်ဗျာ။ ဤကုဒ်ကို ဝဘ်ဆိုက်တွင် ရိုက်ထည့်၍ ဆက်လက်လုပ်ဆောင်ပါ ခင်ဗျာ။)</i>"
+                    f"👉 <b><code>{otp_code}</code></b> 👈 <i>(ကုဒ်ကို ဖိ၍ Copy ယူပါ)</i>\n\n"
+                    f"⚠️ <i>(၁၀ မိနစ်အတွင်း အသုံးပြုပါ ခင်ဗျာ။ ဤကုဒ်ကို SG4D App တွင် ပြန်လည်ရိုက်ထည့်၍ အတည်ပြုပေးပါ ခင်ဗျာ။)</i>"
                 )
                 send_telegram_message(chat_id, reply_text)
                 return

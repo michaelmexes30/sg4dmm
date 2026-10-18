@@ -74,14 +74,14 @@ export default function AuthModal({ isOpen, onClose, allowClose = true }) {
 
   if (!isOpen) return null;
 
-  // Request Telegram OTP (Used for Register and Forgot Password)
-  const handleRequestTelegramOtp = async () => {
+  // Request Telegram OTP & Launch Direct Telegram Deep Link
+  const handleOpenTelegramWithOtp = async () => {
     const targetPhone = phone.trim();
     if (!targetPhone || targetPhone.length < 3) {
       setErrorMsg(
         authMode === 'forgot_password'
           ? (lang === 'mm' ? 'ကျေးဇူးပြု၍ မှတ်ပုံတင်ထားသော User ID သို့မဟုတ် ဖုန်းနံပါတ် အရင်ရိုက်ထည့်ပါ ခင်ဗျာ။' : 'Please enter your registered User ID or phone number first.')
-          : (lang === 'mm' ? 'တယ်လီဂရမ် OTP ရယူရန် မှန်ကန်သော ဖုန်းနံပါတ် အရင်ရိုက်ထည့်ပါ ခင်ဗျာ။' : 'Please enter a valid phone number first to request Telegram OTP.')
+          : (lang === 'mm' ? 'တယ်လီဂရမ် OTP ရယူရန် ဖုန်းနံပါတ် အရင်ရိုက်ထည့်ပါ ခင်ဗျာ။' : 'Please enter your phone number first to request Telegram OTP.')
       );
       return;
     }
@@ -94,20 +94,47 @@ export default function AuthModal({ isOpen, onClose, allowClose = true }) {
         authMode === 'forgot_password' ? 'reset_password' : 'register'
       );
       setOtpSent(true);
-      setSuccessMsg(res.message);
+      const cleanPhone = (res.phone || targetPhone).replace(/[^0-9]/g, '');
       if (res.telegram_bot) setTelegramBotUser(res.telegram_bot);
-      if (res.deep_link) setTelegramDeepLink(res.deep_link);
+      const deepLink = res.deep_link || `https://t.me/SG4DMyanmarBot?start=otp_${cleanPhone}`;
+      setTelegramDeepLink(deepLink);
       setSentViaBot(!!res.sent_via_bot);
       if (res.phone && res.phone !== targetPhone) {
         setPhone(res.phone);
       }
-      setOtpCode(''); // Keep strictly blank for user to type code received from Telegram
+      setOtpCode('');
+
+      if (res.sent_via_bot) {
+        setSuccessMsg(
+          lang === 'mm'
+            ? '✓ ဖုန်းနံပါတ် ချိတ်ဆက်ပြီးဖြစ်၍ OTP ကုဒ်ကို သင်၏ Telegram သို့ တိုက်ရိုက် ပို့ပေးထားပါသည်!'
+            : '✓ OTP sent directly to your Telegram inbox!'
+        );
+      } else {
+        setSuccessMsg(
+          lang === 'mm'
+            ? '📲 Telegram Bot ပွင့်သွားပါက "START" ခလုတ်ကို နှိပ်လိုက်သည်နှင့် OTP ကုဒ်ကို Bot မှ ချက်ချင်း ပို့ပေးပါမည်!'
+            : '📲 Tap START in Telegram Bot to instantly receive your OTP code!'
+        );
+        // Direct launch native Telegram app or browser deep link
+        const tgAppUri = `tg://resolve?domain=SG4DMyanmarBot&start=otp_${cleanPhone}`;
+        try {
+          window.location.href = tgAppUri;
+          setTimeout(() => {
+            window.open(deepLink, '_blank', 'noopener,noreferrer');
+          }, 800);
+        } catch (e) {
+          window.open(deepLink, '_blank', 'noopener,noreferrer');
+        }
+      }
     } catch (err) {
       setErrorMsg(err.message || (lang === 'mm' ? 'တယ်လီဂရမ် OTP ပို့ဆောင်ခြင်း မအောင်မြင်ပါ' : 'Failed to send Telegram OTP.'));
     } finally {
       setOtpSending(false);
     }
   };
+
+  const handleRequestTelegramOtp = handleOpenTelegramWithOtp;
 
   // Verify Telegram OTP
   const handleVerifyTelegramOtp = async () => {
@@ -473,16 +500,21 @@ export default function AuthModal({ isOpen, onClose, allowClose = true }) {
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {/* One-click open Telegram Bot button */}
-                    <a
-                      href={telegramDeepLink || `https://t.me/SG4DMyanmarBot?start=otp_${phone.trim()}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="w-full py-2.5 px-3 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold flex items-center justify-center space-x-2 shadow-sm transition-all cursor-pointer"
+                    {/* Direct 1-Click Launch Telegram with OTP Deep Link */}
+                    <button
+                      type="button"
+                      onClick={handleOpenTelegramWithOtp}
+                      disabled={otpSending}
+                      className="w-full py-2.5 px-3 bg-gradient-to-r from-sky-600 via-sky-500 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white rounded-xl text-xs font-black flex items-center justify-center space-x-2 shadow-md transition-all active:scale-[0.98] cursor-pointer disabled:opacity-60"
                     >
-                      <Send className="w-3.5 h-3.5 text-white" />
-                      <span>{lang === 'mm' ? 'Telegram Bot (@SG4DMyanmarBot) ဖွင့်၍ OTP ရယူရန်' : 'Open Telegram Bot (@SG4DMyanmarBot)'}</span>
-                    </a>
+                      <Send className="w-4 h-4 text-white" />
+                      <span>
+                        {otpSending 
+                          ? (lang === 'mm' ? 'Telegram ချိတ်ဆက်နေပါသည်...' : 'Connecting Telegram...') 
+                          : (lang === 'mm' ? '📲 Telegram တွင် OTP ရယူမည် (Direct Start)' : '📲 Get OTP in Telegram (Direct Start)')
+                        }
+                      </span>
+                    </button>
 
                     <div className="flex space-x-2">
                       <input
@@ -496,7 +528,7 @@ export default function AuthModal({ isOpen, onClose, allowClose = true }) {
                       <button
                         type="button"
                         onClick={handleVerifyTelegramOtp}
-                        className="px-3.5 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer"
+                        className="px-4 py-2 bg-gradient-to-r from-gold-600 to-gold-500 hover:from-gold-500 hover:to-gold-400 text-dark-bg rounded-lg text-xs font-extrabold transition-all cursor-pointer shadow-gold-sm"
                       >
                         {t('verifyBtn')}
                       </button>
@@ -504,16 +536,18 @@ export default function AuthModal({ isOpen, onClose, allowClose = true }) {
 
                     <div className="flex items-center justify-between pt-0.5">
                       <p className="text-[10px] text-sky-300/90">
-                        * {lang === 'mm' ? 'Telegram တွင် Start နှိပ်၍ ကုဒ် ရယူပါ' : 'Start Telegram Bot to get code'}
+                        * {lang === 'mm' ? 'Telegram ပွင့်သွားပါက Start ကို နှိပ်၍ ကုဒ်ရယူပါ' : 'Tap Start in Telegram to receive code'}
                       </p>
-                      <button
-                        type="button"
-                        onClick={handleRequestTelegramOtp}
-                        disabled={otpSending}
-                        className="text-[11px] text-sky-400 hover:text-sky-300 underline font-bold cursor-pointer"
-                      >
-                        {otpSending ? t('sendingOtp') : (otpSent ? t('resendOtpBtn') : t('sendOtpBtn'))}
-                      </button>
+                      {otpSent && (
+                        <button
+                          type="button"
+                          onClick={handleOpenTelegramWithOtp}
+                          disabled={otpSending}
+                          className="text-[11px] text-sky-400 hover:text-sky-300 underline font-bold cursor-pointer"
+                        >
+                          {t('resendOtpBtn')}
+                        </button>
+                      )}
                     </div>
 
                     {sentViaBot && (
@@ -590,15 +624,20 @@ export default function AuthModal({ isOpen, onClose, allowClose = true }) {
                 </div>
 
                 <div className="space-y-2">
-                  <a
-                    href={telegramDeepLink || `https://t.me/SG4DMyanmarBot?start=otp_${phone.trim()}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="w-full py-2.5 px-3 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold flex items-center justify-center space-x-2 shadow-sm transition-all cursor-pointer"
+                  <button
+                    type="button"
+                    onClick={handleOpenTelegramWithOtp}
+                    disabled={otpSending}
+                    className="w-full py-2.5 px-3 bg-gradient-to-r from-sky-600 via-sky-500 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white rounded-xl text-xs font-black flex items-center justify-center space-x-2 shadow-md transition-all active:scale-[0.98] cursor-pointer disabled:opacity-60"
                   >
-                    <Send className="w-3.5 h-3.5 text-white" />
-                    <span>{lang === 'mm' ? 'Telegram Bot (@SG4DMyanmarBot) ဖွင့်၍ OTP ရယူရန်' : 'Open Telegram Bot (@SG4DMyanmarBot)'}</span>
-                  </a>
+                    <Send className="w-4 h-4 text-white" />
+                    <span>
+                      {otpSending 
+                        ? (lang === 'mm' ? 'Telegram ချိတ်ဆက်နေပါသည်...' : 'Connecting Telegram...') 
+                        : (lang === 'mm' ? '📲 Telegram တွင် OTP ရယူမည် (Direct Start)' : '📲 Get OTP in Telegram (Direct Start)')
+                      }
+                    </span>
+                  </button>
 
                   <input
                     type="text"
@@ -616,7 +655,7 @@ export default function AuthModal({ isOpen, onClose, allowClose = true }) {
                     </p>
                   ) : (
                     <p className="text-[10px] text-sky-300/90 leading-relaxed">
-                      * {lang === 'mm' ? 'Telegram Bot (@SG4DMyanmarBot) တွင် ကုဒ် ၆ လုံး ရယူပြီး ရိုက်ထည့်ပေးပါ ခင်ဗျာ။' : 'Receive 6-digit code via Telegram Bot and enter it above.'}
+                      * {lang === 'mm' ? 'Telegram ပွင့်သွားပါက Start ကို နှိပ်ပြီး ရရှိလာသော ကုဒ် ၆ လုံးကို ရိုက်ထည့်ပါခင်ဗျာ။' : 'Tap Start in Telegram Bot to receive 6-digit code and enter above.'}
                     </p>
                   )}
                 </div>
