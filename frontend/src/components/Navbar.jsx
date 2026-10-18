@@ -21,6 +21,7 @@ import {
   XCircle
 } from 'lucide-react';
 import { apiClient } from '../api/client';
+import logoImg from '../assets/logo.png';
 
 export default function Navbar({ activeTab, setActiveTab, onOpenDeposit, onNavigateToSlip }) {
   const { user, logout, setIsAuthModalOpen, refreshProfile } = useAuth();
@@ -209,7 +210,7 @@ export default function Navbar({ activeTab, setActiveTab, onOpenDeposit, onNavig
             <div className="relative w-14 h-14 rounded-2xl bg-gradient-to-tr from-gold-600 via-gold-400 to-gold-200 p-[2px] shadow-gold-sm flex items-center justify-center">
               <div className="w-full h-full bg-dark-bg rounded-[14px] flex items-center justify-center overflow-hidden p-1">
                 <img
-                  src="/logo.png"
+                  src={logoImg}
                   alt="SG4DMyanmar Golden Peacock"
                   className="w-full h-full object-contain filter drop-shadow"
                 />

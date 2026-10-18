@@ -3,6 +3,7 @@ import { X, Lock, Phone, User, ShieldCheck, KeyRound, CheckCircle2, Sparkles, Se
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { apiClient } from '../api/client';
+import logoImg from '../assets/logo.png';
 
 export default function AuthModal({ isOpen, onClose, allowClose = true }) {
   const { login, register } = useAuth();
@@ -244,7 +245,7 @@ export default function AuthModal({ isOpen, onClose, allowClose = true }) {
         {/* Modal Header with Golden Peacock */}
         <div className="text-center mb-6">
           <div className="w-16 h-16 mx-auto mb-3 rounded-2xl bg-dark-bg border border-gold-500/80 p-1 flex items-center justify-center shadow-gold-sm">
-            <img src="/logo.png" alt="Logo" className="w-full h-full object-contain filter drop-shadow" />
+            <img src={logoImg} alt="Logo" className="w-full h-full object-contain filter drop-shadow" />
           </div>
           <h3 className="text-xl font-black text-white gold-gradient-text">
             {authMode === 'login' && t('loginTitle')}

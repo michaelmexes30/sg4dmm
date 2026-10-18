@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
+import logoImg from '../assets/logo.png';
 import { apiClient } from '../api/client';
 
 // Views
@@ -176,7 +177,7 @@ export default function AdminPortal({ onBackToApp }) {
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl gold-border bg-black/60 p-1 flex items-center justify-center shadow-lg">
               <img 
-                src="/static/logo.png" 
+                src={logoImg} 
                 alt="Logo" 
                 className="w-full h-full object-contain" 
                 onError={(e) => { e.target.src = 'https://api.iconify.design/solar:crown-line-duotone.svg?color=%23d4af37'; }} 

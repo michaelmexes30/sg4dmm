@@ -19,6 +19,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { apiClient } from '../api/client';
+import logoImg from '../assets/logo.png';
 
 export default function DepositModal({ isOpen, onClose }) {
   const { user, refreshProfile } = useAuth();
@@ -276,7 +277,7 @@ export default function DepositModal({ isOpen, onClose }) {
             </button>
 
             <div className="w-8 h-8 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-dark-bg border border-gold-500/70 p-1 flex items-center justify-center shadow-gold-sm shrink-0">
-              <img src="/logo.png" alt="Logo" className="w-full h-full object-contain" />
+              <img src={logoImg} alt="Logo" className="w-full h-full object-contain" />
             </div>
             <div>
               <h3 className="text-sm sm:text-xl font-extrabold text-white gold-gradient-text leading-tight">

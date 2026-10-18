@@ -149,6 +149,27 @@ frontend_index = os.path.join(frontend_dist, "index.html")
 if os.path.exists(frontend_assets):
     app.mount("/assets", StaticFiles(directory=frontend_assets), name="frontend_assets")
 
+@app.get("/logo.png")
+def serve_logo():
+    for p in [
+        os.path.join(frontend_dist, "logo.png"),
+        os.path.join(static_dir, "logo.png")
+    ]:
+        if os.path.exists(p):
+            return FileResponse(p, media_type="image/png")
+    return {"status": "error", "message": "logo not found"}
+
+@app.get("/favicon.ico")
+def serve_favicon():
+    for p in [
+        os.path.join(frontend_dist, "favicon.ico"),
+        os.path.join(frontend_dist, "logo.png"),
+        os.path.join(static_dir, "logo.png")
+    ]:
+        if os.path.exists(p):
+            return FileResponse(p, media_type="image/png")
+    return {"status": "error", "message": "favicon not found"}
+
 # Legacy view route (Access to original dashboard HTML)
 @app.get("/backend/legacy")
 def serve_legacy_admin():
