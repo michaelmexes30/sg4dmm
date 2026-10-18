@@ -417,6 +417,8 @@ export default function Navbar({ activeTab, setActiveTab, onOpenDeposit, onNavig
                             const isWithdrawPending = (n.category === 'Withdraw' || n.title?.includes('ငွေထုတ်') || n.title?.includes('Withdraw')) &&
                                                       (n.title?.includes('Pending') || n.title?.includes('ဆိုင်းငံ့') || n.title?.includes('Submitted'));
 
+                            const cleanNotifMessage = (msg) => (msg || '').replace(/\s*\(\d+\s+winning tickets[^\)]*\)/gi, '');
+
                             return (
                               <div
                                 key={n.id}
@@ -469,7 +471,7 @@ export default function Navbar({ activeTab, setActiveTab, onOpenDeposit, onNavig
                                         WINNER!
                                       </span>
                                     </div>
-                                    <p className="text-[11px] text-yellow-100/90 leading-snug">{n.message}</p>
+                                    <p className="text-[11px] text-yellow-100/90 leading-snug">{cleanNotifMessage(n.message)}</p>
                                     <div className="mt-2.5 pt-1.5 border-t border-yellow-500/30 flex items-center justify-between text-[10.5px] text-yellow-300 font-bold">
                                       <span>{lang === 'mm' ? '👉 ပြေစာနှင့် ပေါက်ဂဏန်းများ ကြည့်မည်' : '👉 View Winning Numbers'}</span>
                                       <span className="text-xs font-black">→</span>
@@ -530,7 +532,7 @@ export default function Navbar({ activeTab, setActiveTab, onOpenDeposit, onNavig
                                         <span className="w-2 h-2 rounded-full bg-gold-400 shrink-0 mt-1 animate-pulse" />
                                       )}
                                     </div>
-                                    <p className="text-[11px] opacity-90 leading-tight">{n.message}</p>
+                                    <p className="text-[11px] opacity-90 leading-tight">{cleanNotifMessage(n.message)}</p>
                                   </div>
                                 )}
                               </div>

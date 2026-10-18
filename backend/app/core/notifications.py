@@ -54,14 +54,13 @@ def send_cutoff_reminder_job():
         role_filter="USER"
     )
 
-def send_payout_announcement(draw_number: str, total_payout: float, winners_count: int):
+def send_payout_announcement(draw_number: str, total_payout: float = 0.0, winners_count: int = 0):
     """Triggered upon draw settlement at 6:00 PM MMT."""
     broadcast_notification(
         title=f"🏆 Draw #{draw_number} Results & Payouts Announced!",
         message=(
             f"Singapore 4D Draw #{draw_number} has concluded! All winning tickets have been automatically "
-            f"calculated and credited to player wallets ({winners_count} winning tickets, {total_payout:,.0f} MMK paid out). "
-            f"Check your slips now!"
+            f"calculated and credited to player wallets. Check your slips now!"
         ),
         notif_type="PAYOUT_ANNOUNCEMENT"
     )

@@ -157,6 +157,15 @@ def seed_admin_and_system_data():
         )
         db.add(ann)
 
+    # 6. Sanitize existing payout notifications: remove winning ticket counts & payout sums
+    try:
+        import re
+        payout_notifs = db.query(Notification).filter(Notification.message.like("%winning tickets%")).all()
+        for pn in payout_notifs:
+            pn.message = re.sub(r'\s*\(\d+\s+winning tickets[^\)]*\)', '', pn.message)
+    except Exception as e:
+        print(f"Error sanitizing notifications: {e}")
+
     db.commit()
     print("Admin & system seed data populated successfully!")
     db.close()
