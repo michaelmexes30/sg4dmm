@@ -180,31 +180,32 @@ def get_apk_download_url() -> str:
     return "http://192.168.99.224:8000/download/apk"
 
 def send_apk_info_message(chat_id: str, first_name: str = "Member"):
-    """Sends Android APK download link and info to user"""
-    render_apk = "https://sg4dmm.onrender.com/download/apk"
+    """Sends Android APK download link and info to user using short/masked link"""
+    short_apk_url = "https://tinyurl.com/sg4d-myanmar-apk"
     github_apk = "https://github.com/michaelmexes30/sg4dmm/releases/download/v1.0.1/SG4D_Myanmar_V1.0.1.apk"
     web_url = "https://sg4dmm.onrender.com/"
 
     apk_text = (
         f"🇲🇲 <b>SG4D Myanmar (ရွှေဥဒေါင်း) Mobile App</b>\n\n"
         f"မင်္ဂလာပါ <b>{first_name}</b> ခင်ဗျာ!\n"
-        f"SG4D Myanmar တရားဝင် Android Mobile APK ကို အောက်ပါ Link မှ ဒေါင်းလုဒ်ရယူနိုင်ပါပြီ။\n\n"
-        f"📱 Version: <b>v1.0.1 (Android)</b>\n"
+        f"SG4D Myanmar တရားဝင် Android Mobile APK ကို အောက်ပါ Link မှ လုံခြုံစိတ်ချစွာ ဒေါင်းလုဒ်ရယူနိုင်ပါပြီ။\n\n"
+        f"📱 Version: <b>v1.0.1 (Android Official)</b>\n"
         f"⚡️ ပေါ့ပါးသွက်လက်ပြီး လိုင်းဆွဲအားကောင်းခြင်း\n"
         f"🎰 4D ကံစမ်းဂဏန်းများ လွယ်ကူစွာထိုးနိုင်ခြင်း\n"
         f"📊 ထီပေါက်စဉ်များ Live စစ်ဆေးနိုင်ခြင်း\n"
         f"💳 KPay / WavePay QR ဖြင့် အလွယ်တကူ ငွေသွင်းငွေထုတ် ပြုလုပ်နိုင်ခြင်း\n\n"
-        f"👉 တိုက်ရိုက်ဒေါင်းလုဒ်: <a href=\"{render_apk}\"><b>[ 📲 Direct Download APK ]</b></a>\n"
-        f"👉 GitHub Mirror: <a href=\"{github_apk}\"><b>[ ⚡️ GitHub Download APK ]</b></a>"
+        f"👉 <b>ဒေါင်းလုဒ်ရယူရန်:</b> <a href=\"{short_apk_url}\"><b>[ 📲 Download SG4D APK ]</b></a>\n"
+        f"👉 <b>Mirror Link:</b> <a href=\"{github_apk}\"><b>[ ⚡️ Backup Download ]</b></a>"
     )
     inline_keyboard = {
         "inline_keyboard": [
-            [{"text": "📲 Download APK (တိုက်ရိုက်ဒေါင်းရန်)", "url": render_apk}],
-            [{"text": "⚡️ Download APK (GitHub Mirror)", "url": github_apk}],
+            [{"text": "📲 Download APK (တိုက်ရိုက်ဒေါင်းရန်)", "url": short_apk_url}],
+            [{"text": "⚡️ Download APK (Backup Link)", "url": github_apk}],
             [{"text": "🌐 Online Platform သို့ ဝင်ရန်", "url": web_url}]
         ]
     }
     send_telegram_message(chat_id, apk_text, reply_markup=inline_keyboard)
+
 
 
 def handle_telegram_update(update: dict, db: Session):
