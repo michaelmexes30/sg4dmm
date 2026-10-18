@@ -180,8 +180,6 @@ def get_apk_download_url() -> str:
 def send_apk_info_message(chat_id: str, first_name: str = "Member"):
     """Sends Android APK download link and info to user using short/masked link"""
     short_apk_url = "https://tinyurl.com/sg4d-myanmar-apk"
-    github_apk = "https://github.com/michaelmexes30/sg4dmm/releases/download/v1.0.1/SG4D_Myanmar_V1.0.1.apk"
-    web_url = "https://sg4dmm.onrender.com/"
 
     apk_text = (
         f"🇲🇲 <b>SG4D Myanmar (ရွှေဥဒေါင်း) Mobile App</b>\n\n"
@@ -192,14 +190,11 @@ def send_apk_info_message(chat_id: str, first_name: str = "Member"):
         f"🎰 4D ကံစမ်းဂဏန်းများ လွယ်ကူစွာထိုးနိုင်ခြင်း\n"
         f"📊 ထီပေါက်စဉ်များ Live စစ်ဆေးနိုင်ခြင်း\n"
         f"💳 KPay / WavePay QR ဖြင့် အလွယ်တကူ ငွေသွင်းငွေထုတ် ပြုလုပ်နိုင်ခြင်း\n\n"
-        f"👉 <b>ဒေါင်းလုဒ်ရယူရန်:</b> <a href=\"{short_apk_url}\"><b>[ 📲 Download SG4D APK ]</b></a>\n"
-        f"👉 <b>Mirror Link:</b> <a href=\"{github_apk}\"><b>[ ⚡️ Backup Download ]</b></a>"
+        f"👉 <b>ဒေါင်းလုဒ်ရယူရန်:</b> <a href=\"{short_apk_url}\"><b>[ 📲 Download SG4D APK ]</b></a>"
     )
     inline_keyboard = {
         "inline_keyboard": [
-            [{"text": "📲 Download APK (တိုက်ရိုက်ဒေါင်းရန်)", "url": short_apk_url}],
-            [{"text": "⚡️ Download APK (Backup Link)", "url": github_apk}],
-            [{"text": "🌐 Online Platform သို့ ဝင်ရန်", "url": web_url}]
+            [{"text": "📲 Download APK", "url": short_apk_url}]
         ]
     }
     send_telegram_message(chat_id, apk_text, reply_markup=inline_keyboard)
@@ -294,8 +289,6 @@ def handle_telegram_update(update: dict, db: Session):
 
         # General /start (without params)
         short_apk = "https://tinyurl.com/sg4d-myanmar-apk"
-        github_apk = "https://github.com/michaelmexes30/sg4dmm/releases/download/v1.0.1/SG4D_Myanmar_V1.0.1.apk"
-        web_url = "https://sg4dmm.onrender.com/"
         keyboard = {
             "keyboard": [
                 [{"text": "📱 ဖုန်းနံပါတ် ပေးပို့ရန် (Share Contact)", "request_contact": True}],
@@ -309,14 +302,12 @@ def handle_telegram_update(update: dict, db: Session):
             f"၁။ <b>OTP ရယူရန်</b>:\n"
             f"• ဝဘ်ဆိုက်တွင် အကောင့်ဖွင့်ရန် သို့မဟုတ် စကားဝှက် Reset ပြုလုပ်ရန် အောက်ပါ <b>[ 📱 ဖုန်းနံပါတ် ပေးပို့ရန် ]</b> ခလုတ်ကို နှိပ်ပါ (သို့မဟုတ် ဖုန်းနံပါတ် ရိုက်ထည့်ပို့ပါ)။\n\n"
             f"၂။ <b>Android Mobile App (APK) ရယူရန်</b>:\n"
-            f"• အောက်ပါ <b>[ 📲 Download Android APK ]</b> ခလုတ်ကို နှိပ်၍ ဖုန်းထဲသို့ ဒေါင်းလုဒ်ဆွဲယူနိုင်ပါသည် ခင်ဗျာ။\n"
+            f"• အောက်ပါ <b>[ 📲 Download APK ]</b> ခလုတ်ကို နှိပ်၍ ဖုန်းထဲသို့ ဒေါင်းလုဒ်ဆွဲယူနိုင်ပါသည် ခင်ဗျာ။\n"
             f"👉 <a href=\"{short_apk}\"><b>[ 📲 Download SG4D APK ]</b></a>"
         )
         inline_markup = {
             "inline_keyboard": [
-                [{"text": "📲 Download APK (တိုက်ရိုက်ဒေါင်းရန်)", "url": short_apk}],
-                [{"text": "⚡️ Download APK (Backup Link)", "url": github_apk}],
-                [{"text": "🌐 Online Platform သို့ ဝင်ရန်", "url": web_url}]
+                [{"text": "📲 Download APK", "url": short_apk}]
             ]
         }
         send_telegram_message(chat_id, welcome_text, reply_markup=inline_markup)
@@ -396,8 +387,7 @@ def handle_telegram_update(update: dict, db: Session):
     )
     inline_help_markup = {
         "inline_keyboard": [
-            [{"text": "📲 Download Android APK", "url": apk_url}],
-            [{"text": "🌐 Online Platform သို့ ဝင်ရန်", "url": settings.RENDER_EXTERNAL_URL or "http://192.168.99.224:8000"}]
+            [{"text": "📲 Download APK", "url": apk_url}]
         ]
     }
     send_telegram_message(chat_id, help_text, reply_markup=inline_help_markup)

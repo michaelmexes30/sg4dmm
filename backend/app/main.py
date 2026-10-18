@@ -135,9 +135,14 @@ app.mount("/static", StaticFiles(directory=static_dir), name="static")
 @app.get("/download/apk")
 @app.get("/app.apk")
 def download_app_apk():
-    apk_path = os.path.join(releases_dir, "SG4D_Myanmar.apk")
-    if os.path.exists(apk_path):
-        return FileResponse(apk_path, media_type="application/vnd.android.package-archive", filename="SG4D_Myanmar.apk")
+    for apk_path in [
+        os.path.join(static_dir, "SG4DMyanmar.apk"),
+        os.path.join(releases_dir, "SG4D_Myanmar.apk"),
+        os.path.join(releases_dir, "SG4D_Myanmar_V1.0.1.apk"),
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "SG4DMyanmar.apk"))
+    ]:
+        if os.path.exists(apk_path):
+            return FileResponse(apk_path, media_type="application/vnd.android.package-archive", filename="SG4D_Myanmar.apk")
     return {"status": "error", "message": "APK is being compiled or not found"}
 
 
