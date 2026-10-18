@@ -80,10 +80,10 @@ class Settings(BaseModel):
     TELEGRAM_BOT_USERNAME: str = os.getenv("TELEGRAM_BOT_USERNAME", "SG4DMyanmarBot")
 
     # Cloud & Deployment URL Settings
-    RENDER_EXTERNAL_URL: str = os.getenv("RENDER_EXTERNAL_URL", "")
+    RENDER_EXTERNAL_URL: str = os.getenv("RENDER_EXTERNAL_URL", "https://sg4dmm.onrender.com")
     APK_DOWNLOAD_URL: str = os.getenv(
         "APK_DOWNLOAD_URL", 
-        "https://github.com/michaelmexes30/sg4dmm/releases/download/v1.0.1/SG4D_Myanmar_V1.0.1.apk"
+        "https://sg4dmm.onrender.com/download/apk"
     )
 
 settings = Settings()
