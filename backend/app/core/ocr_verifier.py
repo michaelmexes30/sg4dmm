@@ -87,71 +87,102 @@ def extract_slip_datetime(text: str) -> Optional[datetime]:
 
 def extract_text_from_image(image_path: str) -> str:
     """
-    Extracts text from receipt image using Windows Native OCR engine.
-    Fast, offline, and accurate for KBZPay and WavePay receipts.
-    Includes targeted time-band recovery for screenshots with edge bars.
+    Extracts text from receipt image.
+    1. Tries Windows Native OCR engine (if on Windows).
+    2. Falls back to Cloud OCR (OCR.space REST API) for Linux/Render/Cloud environments.
     """
-    if not image_path or not os.path.exists(image_path) or Image is None:
+    if not image_path or not os.path.exists(image_path):
         return ""
-    try:
-        from winrt.windows.media.ocr import OcrEngine
-        from winrt.windows.globalization import Language
-        from winrt.windows.storage.streams import DataWriter
-        from winrt.windows.graphics.imaging import SoftwareBitmap, BitmapPixelFormat
 
-        engine = OcrEngine.try_create_from_language(Language('en-US'))
-        if not engine:
-            engine = OcrEngine.try_create_from_user_profile_languages()
+    full_text = ""
 
-        def _ocr_pil_image(pil_img):
-            rgba = pil_img.convert('RGBA')
-            wtr = DataWriter()
-            wtr.write_bytes(rgba.tobytes())
-            s_bmp = SoftwareBitmap.create_copy_from_buffer(
-                wtr.detach_buffer(), 
-                BitmapPixelFormat.RGBA8, 
-                rgba.width, 
-                rgba.height
-            )
-            return engine.recognize_async(s_bmp).get()
+    # 1. Try Windows native OCR if on Windows
+    if Image is not None:
+        try:
+            from winrt.windows.media.ocr import OcrEngine
+            from winrt.windows.globalization import Language
+            from winrt.windows.storage.streams import DataWriter
+            from winrt.windows.graphics.imaging import SoftwareBitmap, BitmapPixelFormat
 
-        img = Image.open(image_path)
-        res = _ocr_pil_image(img)
-        full_text = res.text or ""
+            engine = OcrEngine.try_create_from_language(Language('en-US'))
+            if not engine:
+                engine = OcrEngine.try_create_from_user_profile_languages()
 
-        # Check if full_text already has a complete datetime
-        if not extract_slip_datetime(full_text):
-            # Targeted recovery: look for lines containing 'Time', 'Date', or a date sequence
-            time_y = None
-            time_h = 25
-            for line in res.lines:
-                t = line.text
-                if 'Time' in t or 'Date' in t or re.search(r'\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}', t):
-                    for w in line.words:
-                        if re.search(r'\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}', w.text) or 'Time' in w.text:
-                            time_y = w.bounding_rect.y
-                            time_h = w.bounding_rect.height
+            if engine:
+                def _ocr_pil_image(pil_img):
+                    rgba = pil_img.convert('RGBA')
+                    wtr = DataWriter()
+                    wtr.write_bytes(rgba.tobytes())
+                    s_bmp = SoftwareBitmap.create_copy_from_buffer(
+                        wtr.detach_buffer(), 
+                        BitmapPixelFormat.RGBA8, 
+                        rgba.width, 
+                        rgba.height
+                    )
+                    return engine.recognize_async(s_bmp).get()
+
+                img = Image.open(image_path)
+                res = _ocr_pil_image(img)
+                full_text = res.text or ""
+
+                if not extract_slip_datetime(full_text):
+                    time_y = None
+                    time_h = 25
+                    for line in res.lines:
+                        t = line.text
+                        if 'Time' in t or 'Date' in t or re.search(r'\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}', t):
+                            for w in line.words:
+                                if re.search(r'\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}', w.text) or 'Time' in w.text:
+                                    time_y = w.bounding_rect.y
+                                    time_h = w.bounding_rect.height
+                                    break
+                        if time_y:
                             break
-                if time_y:
-                    break
 
-            if time_y is not None:
-                # Crop horizontal band across the value area (e.g. right 60%, trimming 2% scrollbar on right)
-                y1 = max(0, int(time_y - 25))
-                y2 = min(img.height, int(time_y + time_h + 35))
-                x1 = int(img.width * 0.35)
-                x2 = int(img.width * 0.98)
-                band = img.crop((x1, y1, x2, y2))
-                # 2x upscale with bicubic/lanczos
-                band_2x = band.resize((band.width * 2, band.height * 2), Image.Resampling.LANCZOS)
-                res_band = _ocr_pil_image(band_2x)
-                if res_band.text:
-                    full_text += " " + res_band.text
+                    if time_y is not None:
+                        y1 = max(0, int(time_y - 25))
+                        y2 = min(img.height, int(time_y + time_h + 35))
+                        x1 = int(img.width * 0.35)
+                        x2 = int(img.width * 0.98)
+                        band = img.crop((x1, y1, x2, y2))
+                        band_2x = band.resize((band.width * 2, band.height * 2), Image.Resampling.LANCZOS)
+                        res_band = _ocr_pil_image(band_2x)
+                        if res_band.text:
+                            full_text += " " + res_band.text
+        except Exception as e:
+            logger.info(f"Windows native OCR unavailable: {e}")
 
+    # If Windows OCR successfully extracted complete datetime, return immediately
+    if full_text and extract_slip_datetime(full_text):
         return full_text
+
+    # 2. Cloud OCR Fallback (Runs on Linux / Render / Docker without local binaries)
+    try:
+        import requests
+        with open(image_path, 'rb') as f:
+            resp = requests.post(
+                'https://api.ocr.space/parse/image',
+                files={'file': f},
+                data={
+                    'isOverlayRequired': False,
+                    'apikey': 'helloworld',
+                    'language': 'eng',
+                    'detectOrientation': True,
+                    'scale': True
+                },
+                timeout=12
+            )
+        if resp.status_code == 200:
+            data = resp.json()
+            parsed_results = data.get('ParsedResults', [])
+            if parsed_results:
+                cloud_text = parsed_results[0].get('ParsedText', '')
+                if cloud_text and len(cloud_text.strip()) > 10:
+                    return cloud_text
     except Exception as e:
-        logger.error(f"Error extracting OCR from {image_path}: {e}")
-        return ""
+        logger.error(f"Cloud OCR failed: {e}")
+
+    return full_text
 
 def parse_and_validate_receipt(
     slip_image_path: str,

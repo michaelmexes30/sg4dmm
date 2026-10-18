@@ -200,15 +200,24 @@ def verify_and_process_deposit(
     elif err_code in ["RECEIVER_NAME_MISMATCH", "RECEIVER_PHONE_MISMATCH", "TXID_MISMATCH", "AMOUNT_MISMATCH"]:
         status = TransactionStatus.REJECTED
         verification_notes.append(f"ACTION: REJECTED: {ocr_msg}")
-    elif delta_minutes > 15.0 or err_code in ["SLIP_TIMESTAMP_EXPIRED", "SLIP_TIMESTAMP_FUTURE"]:
+    elif err_code in ["SLIP_TIMESTAMP_EXPIRED", "SLIP_TIMESTAMP_FUTURE"] or delta_minutes > 15.0:
         status = TransactionStatus.FLAGGED_EXPIRED
-        verification_notes.append(f"ACTION: Auto-flagged as EXPIRED (>15 mins). ({delta_minutes:.1f} mins ago)")
+        verification_notes.append(f"ACTION: Auto-flagged as EXPIRED (>15 mins). {ocr_msg}")
+    elif err_code in ["SLIP_DATE_NOT_FOUND", "SLIP_TIME_UNVERIFIED", "OCR_FAILED"]:
+        status = TransactionStatus.MANUAL_REVIEW
+        verification_notes.append(f"ACTION: Flagged for Manual Review (Slip Time Unverified): {ocr_msg}")
     elif not is_fmt_valid:
         status = TransactionStatus.REJECTED
         verification_notes.append(f"ACTION: REJECTED (Invalid Format): {fmt_msg}")
     elif not receiver_valid:
         status = TransactionStatus.MANUAL_REVIEW
         verification_notes.append("ACTION: Flagged for Manual Review (Receiver ID mismatch).")
+    elif not ocr_valid:
+        status = TransactionStatus.MANUAL_REVIEW
+        verification_notes.append(f"ACTION: Flagged for Manual Review: {ocr_msg}")
+    elif not local_slip_path:
+        status = TransactionStatus.MANUAL_REVIEW
+        verification_notes.append("ACTION: Flagged for Manual Review (No Slip Image attached).")
     else:
         status = TransactionStatus.AUTO_APPROVED
         verification_notes.append(f"ACTION: Auto-Verified & Instant Credit Approved! {ocr_msg}")
