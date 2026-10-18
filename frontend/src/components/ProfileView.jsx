@@ -31,7 +31,7 @@ import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { apiClient } from '../api/client';
 
-export default function ProfileView({ onOpenWallet }) {
+export default function ProfileView({ onOpenWallet, onOpenAdmin }) {
   const { user, logout } = useAuth();
   const { t, lang, num, formatMoney, formatDigits, formatDateTime } = useLanguage();
 
@@ -216,6 +216,37 @@ export default function ProfileView({ onOpenWallet }) {
 
         </div>
       </div>
+
+      {/* Admin Quick Entry Card (Visible only for ADMIN accounts) */}
+      {user?.role === 'ADMIN' && (
+        <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-amber-950/70 via-slate-900 to-amber-950/70 border border-amber-500/60 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center space-x-3.5">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center shrink-0">
+              <ShieldCheck className="w-6 h-6 text-amber-400" />
+            </div>
+            <div>
+              <h3 className="text-sm sm:text-base font-black text-amber-300">
+                {lang === 'mm' ? '👑 စနစ်စီမံခန့်ခွဲမှု Backend Dashboard' : '👑 Admin Backend Portal'}
+              </h3>
+              <p className="text-xs text-gray-300">
+                {lang === 'mm'
+                  ? 'ထီဖွင့်ပွဲများ၊ ငွေသွင်း/ငွေထုတ် ခွင့်ပြုချက်များ၊ အဖွဲ့ဝင်များနှင့် စာရင်းဇယား စီမံခန့်ခွဲရန်'
+                  : 'Manage 4D draws, approvals, user accounts, and financial ledger'}
+              </p>
+            </div>
+          </div>
+          {onOpenAdmin && (
+            <button
+              type="button"
+              onClick={onOpenAdmin}
+              className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-slate-950 font-black text-xs tracking-wider shadow-lg shadow-amber-500/25 active:scale-95 transition-all cursor-pointer flex items-center justify-center space-x-2 shrink-0"
+            >
+              <ShieldCheck className="w-4 h-4 text-slate-950" />
+              <span>{lang === 'mm' ? 'Backend သို့ ဝင်မည်' : 'Open Admin Portal'}</span>
+            </button>
+          )}
+        </div>
+      )}
 
       {/* 2. Sub-Navigation Tabs */}
       <div className="flex items-center space-x-2 border-b border-gold-900/60 pb-2 overflow-x-auto">

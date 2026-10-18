@@ -12,7 +12,7 @@ import AuthModal from './components/AuthModal';
 import { useAuth } from './context/AuthContext';
 import { useLanguage } from './context/LanguageContext';
 import { apiClient } from './api/client';
-import { Award, ReceiptText, LineChart, Sparkles, PlusCircle, User } from 'lucide-react';
+import { Award, ReceiptText, LineChart, Sparkles, PlusCircle, User, ShieldCheck } from 'lucide-react';
 
 export default function App() {
   const { user, loading: authLoading, isAuthModalOpen, setIsAuthModalOpen } = useAuth();
@@ -173,17 +173,20 @@ export default function App() {
 
         {/* TAB 4: Profile View (Cash in/out history, Change password, Contact us, Sign out) */}
         {activeTab === 'profile' && (
-          <ProfileView onOpenWallet={() => setIsDepositOpen(true)} />
+          <ProfileView 
+            onOpenWallet={() => setIsDepositOpen(true)} 
+            onOpenAdmin={() => setActiveTab('admin')} 
+          />
         )}
 
         {/* TAB 5: Admin Financial Ledger */}
         {activeTab === 'admin' && (
-          <AdminLedger />
+          <AdminPortal onBackToApp={() => setActiveTab('betting')} />
         )}
 
       </main>
 
-      {/* Mobile Bottom Navigation Bar: "4D Bet" "Results" "+" "Slips" "Profile" */}
+      {/* Mobile Bottom Navigation Bar: "4D Bet" "Results" "+" "Slips" "Profile" ("Admin") */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-dark-surface/95 backdrop-blur-xl border-t border-gold-700/60 px-3 py-2 flex items-center justify-around shadow-2xl">
         <button
           onClick={() => setActiveTab('betting')}
@@ -233,6 +236,18 @@ export default function App() {
           <User className="w-5 h-5 mb-0.5" />
           <span>{t('tabProfile')}</span>
         </button>
+
+        {user?.role === 'ADMIN' && (
+          <button
+            onClick={() => setActiveTab('admin')}
+            className={`flex flex-col items-center py-1 px-2 rounded-lg text-xs font-bold transition-colors ${
+              activeTab === 'admin' ? 'text-amber-400 font-extrabold' : 'text-amber-400/80 hover:text-amber-300'
+            }`}
+          >
+            <ShieldCheck className="w-5 h-5 mb-0.5 text-amber-400" />
+            <span>Admin</span>
+          </button>
+        )}
       </nav>
 
       {/* Global Modals */}
