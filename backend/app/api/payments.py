@@ -80,6 +80,9 @@ async def upload_payment_slip(file: UploadFile = File(...)):
         "filename": unique_filename
     }
 
+import logging
+logger = logging.getLogger("payments")
+
 @router.post("/deposit", response_model=DepositVerificationResponse)
 def submit_deposit(
     req: DepositSubmissionRequest,
@@ -93,18 +96,26 @@ def submit_deposit(
     - Matches TxID and designated Receiver ID.
     - If valid, AUTO-APPROVES credit instantly.
     """
-    result = verify_and_process_deposit(
-        db=db,
-        user=current_user,
-        gateway=req.gateway,
-        transaction_id=req.transaction_id,
-        receiver_id=req.receiver_id,
-        amount=req.amount,
-        raw_timestamp=req.raw_timestamp,
-        client_timezone=req.client_timezone or "MMT",
-        slip_image_url=req.slip_image_url
-    )
-    return result
+    try:
+        result = verify_and_process_deposit(
+            db=db,
+            user=current_user,
+            gateway=req.gateway,
+            transaction_id=req.transaction_id,
+            receiver_id=req.receiver_id,
+            amount=req.amount,
+            raw_timestamp=req.raw_timestamp,
+            client_timezone=req.client_timezone or "MMT",
+            slip_image_url=req.slip_image_url
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Error processing deposit: {e}", exc_info=True)
+        return {
+            "success": False,
+            "status": TransactionStatus.REJECTED,
+            "message": f"ငွေသွင်း စစ်ဆေးရာတွင် အမှားအယွင်းရှိပါသည်: {str(e)}"
+        }
 
 @router.get("/my-transactions", response_model=List[TransactionResponse])
 def get_my_transactions(

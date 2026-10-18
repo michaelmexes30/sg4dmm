@@ -3,7 +3,10 @@ import re
 import logging
 from datetime import datetime, date, time
 from typing import Dict, Any, Tuple, Optional
-from PIL import Image
+try:
+    from PIL import Image
+except Exception:
+    Image = None
 
 logger = logging.getLogger("ocr_verifier")
 
@@ -88,7 +91,7 @@ def extract_text_from_image(image_path: str) -> str:
     Fast, offline, and accurate for KBZPay and WavePay receipts.
     Includes targeted time-band recovery for screenshots with edge bars.
     """
-    if not image_path or not os.path.exists(image_path):
+    if not image_path or not os.path.exists(image_path) or Image is None:
         return ""
     try:
         from winrt.windows.media.ocr import OcrEngine
