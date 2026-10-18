@@ -66,22 +66,41 @@ def fetch_singapore_pools_4d_results() -> List[Dict[str, Any]]:
     url = PRIMARY_SG_POOLS_URL + cache_buster
     
     html_content = None
+    session = requests.Session()
     try:
-        resp = requests.get(url, headers=headers, timeout=12)
+        resp = session.get(url, headers=headers, timeout=12)
         if resp.status_code == 200 and len(resp.text) > 500:
             html_content = resp.text
     except Exception as e:
-        logger.warning(f"Primary Singapore Pools endpoint failed ({url}): {e}")
+        logger.warning(f"Primary Singapore Pools endpoint with default env failed ({url}): {e}")
+        # Retry with trust_env=False in case of proxy issues
+        try:
+            direct_session = requests.Session()
+            direct_session.trust_env = False
+            resp = direct_session.get(url, headers=headers, timeout=12)
+            if resp.status_code == 200 and len(resp.text) > 500:
+                html_content = resp.text
+        except Exception as e2:
+            logger.warning(f"Primary Singapore Pools direct retry failed: {e2}")
 
     # 2. Try Fallback if primary failed
     if not html_content:
         try:
-            resp = requests.get(FALLBACK_SG_POOLS_URL, headers=headers, timeout=15)
+            resp = session.get(FALLBACK_SG_POOLS_URL, headers=headers, timeout=15)
             if resp.status_code == 200:
                 html_content = resp.text
         except Exception as e:
-            logger.error(f"Fallback Singapore Pools endpoint failed: {e}")
-            return []
+            logger.warning(f"Fallback Singapore Pools endpoint with default env failed: {e}")
+            try:
+                direct_session = requests.Session()
+                direct_session.trust_env = False
+                resp = direct_session.get(FALLBACK_SG_POOLS_URL, headers=headers, timeout=15)
+                if resp.status_code == 200:
+                    html_content = resp.text
+            except Exception as e2:
+                logger.error(f"Fallback Singapore Pools direct retry failed: {e2}")
+                return []
+
 
     if not html_content:
         return []

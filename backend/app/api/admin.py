@@ -1696,40 +1696,44 @@ def get_4d_game_monitor(
         draws_to_show = past_draws
     else:
         # Only return open / upcoming draws where result has not come out yet
+        from app.core.timezone_utils import get_upcoming_week_draws
+        current_time = now_mmt()
+        setting = db.query(SystemSetting).first()
+        cutoff_str = setting.bet_end_time if setting and setting.bet_end_time else None
+        result_str = setting.result_confirm_time if setting and setting.result_confirm_time else None
+        upcoming = get_upcoming_week_draws(current_time, cutoff_time_str=cutoff_str, result_time_str=result_str)
+        
+        if upcoming:
+            for item in upcoming:
+                d = db.query(LotteryDraw).filter(LotteryDraw.draw_date == item["draw_date"]).first()
+                if not d:
+                    draw_num_seq = f"54{item['draw_date'].replace('-', '')[-4:]}/26"
+                    d = LotteryDraw(
+                        draw_number=draw_num_seq,
+                        draw_date=item["draw_date"],
+                        draw_time_mmt=item["draw_time_mmt"],
+                        status=DrawStatus.OPEN,
+                        total_pool_stake=0.0,
+                        total_payout=0.0
+                    )
+                    db.add(d)
+                    db.commit()
+                    db.refresh(d)
+
+        upcoming_dates = [item["draw_date"] for item in upcoming] if upcoming else []
         open_draws = (
             db.query(LotteryDraw)
-            .filter(LotteryDraw.status == DrawStatus.OPEN, LotteryDraw.first_prize == None)
+            .filter(
+                LotteryDraw.status == DrawStatus.OPEN,
+                LotteryDraw.first_prize == None,
+                LotteryDraw.draw_date.in_(upcoming_dates)
+            )
             .order_by(LotteryDraw.draw_date.asc(), LotteryDraw.id.asc())
             .all()
         )
 
-        if not open_draws:
-            from app.core.timezone_utils import get_upcoming_week_draws
-            current_time = now_mmt()
-            setting = db.query(SystemSetting).first()
-            cutoff_str = setting.bet_end_time if setting and setting.bet_end_time else None
-            result_str = setting.result_confirm_time if setting and setting.result_confirm_time else None
-            upcoming = get_upcoming_week_draws(current_time, cutoff_time_str=cutoff_str, result_time_str=result_str)
-            if upcoming:
-                for item in upcoming:
-                    d = db.query(LotteryDraw).filter(LotteryDraw.draw_date == item["draw_date"]).first()
-                    if not d:
-                        draw_num_seq = f"54{item['draw_date'].replace('-', '')[-4:]}/26"
-                        d = LotteryDraw(
-                            draw_number=draw_num_seq,
-                            draw_date=item["draw_date"],
-                            draw_time_mmt=item["draw_time_mmt"],
-                            status=DrawStatus.OPEN,
-                            total_pool_stake=0.0,
-                            total_payout=0.0
-                        )
-                        db.add(d)
-                        db.commit()
-                        db.refresh(d)
-                    if d.status == DrawStatus.OPEN and d.first_prize is None:
-                        open_draws.append(d)
-
         draws_to_show = open_draws if open_draws else db.query(LotteryDraw).order_by(LotteryDraw.draw_date.desc()).limit(1).all()
+
 
     target_draw = None
     if draw_id:

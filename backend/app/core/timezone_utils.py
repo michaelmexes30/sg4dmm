@@ -282,7 +282,24 @@ def get_upcoming_week_draws(
             "is_today": (draw_date == today_date)
         })
 
+    # If all draws in the current week have passed (e.g. Sunday evening past cutoff),
+    # automatically roll over to the next week's Wed, Sat, Sun draws!
+    if not available_draws:
+        next_monday = current_monday + timedelta(days=7)
+        for item in draw_schedule:
+            draw_date = next_monday + timedelta(days=item["offset"])
+            draw_date_str = draw_date.strftime("%Y-%m-%d")
+            available_draws.append({
+                "day_name": item["day_name"],
+                "day_short": item["day_short"],
+                "draw_date": draw_date_str,
+                "cutoff_time": cutoff_display,
+                "draw_time_mmt": f"{result_display_prefix} (Singapore 4D {item['day_short']})",
+                "is_today": False
+            })
+
     return available_draws
+
 
 def format_mmt(dt: datetime, include_tz: bool = True) -> str:
     """Formats datetime in human readable MMT string."""
