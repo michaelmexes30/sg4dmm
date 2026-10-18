@@ -1,20 +1,24 @@
-const getApiBase = () => {
-  const custom = typeof window !== 'undefined' ? localStorage.getItem('sg4d_api_base') : null;
-  if (custom) return custom;
+export const getApiBase = () => {
   if (typeof window !== 'undefined') {
-    const isMobileApp = window.Capacitor || 
+    const custom = localStorage.getItem('sg4d_api_base');
+    if (custom) return custom;
+
+    const isMobileApp = Boolean(
+      window.Capacitor || 
       window.location.protocol === 'capacitor:' || 
       window.location.protocol === 'file:' || 
-      window.location.hostname === 'localhost' && window.location.port !== '3000' && window.location.port !== '5173';
+      (window.location.hostname === 'localhost' && (!window.location.port || window.location.port === '80' || window.location.port === '443')) ||
+      (window.location.hostname === 'localhost' && window.location.port !== '3000' && window.location.port !== '5173')
+    );
+
     if (isMobileApp) {
-      return 'http://192.168.99.224:8000/api';
+      return 'https://sg4dmm.onrender.com/api';
     }
   }
   return '/api';
 };
 
-const API_BASE = getApiBase();
-
+export const API_BASE = getApiBase();
 
 export const apiClient = {
   getToken() {
@@ -40,7 +44,8 @@ export const apiClient = {
       headers['Content-Type'] = 'application/json';
     }
 
-    const res = await fetch(`${API_BASE}${endpoint}`, {
+    const base = getApiBase();
+    const res = await fetch(`${base}${endpoint}`, {
       ...options,
       headers,
     });
