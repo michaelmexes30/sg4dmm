@@ -158,6 +158,7 @@ def serve_legacy_admin():
     return FileResponse(os.path.join(static_dir, "admin_dashboard.html"))
 
 # Backend Admin Web UI Routes (Directly serves the Admin Backend Portal)
+@app.get("/")
 @app.get("/backend")
 @app.get("/backend/dashboard")
 @app.get("/backend/login")
