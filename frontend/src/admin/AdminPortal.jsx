@@ -19,7 +19,8 @@ import {
   CheckCircle,
   AlertCircle,
   Menu,
-  X
+  X,
+  Lock
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -161,6 +162,30 @@ export default function AdminPortal({ onBackToApp }) {
     setMobileMenuOpen(false);
   };
 
+  if (!user || user.role !== 'ADMIN') {
+    return (
+      <div className="min-h-screen bg-navy-950 flex items-center justify-center p-4">
+        <div className="max-w-md w-full p-8 rounded-3xl bg-navy-900 border border-gold-500/30 text-center space-y-6 shadow-2xl">
+          <div className="w-16 h-16 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center mx-auto text-rose-400">
+            <Lock className="w-8 h-8" />
+          </div>
+          <div>
+            <h2 className="text-xl font-black text-white">Access Denied (ဝင်ရောက်ခွင့်မရှိပါ)</h2>
+            <p className="text-xs text-gray-400 mt-2">
+              ဤစာမျက်နှာသည် Chief Administrator သီးသန့်ဖြစ်ပါသည်။ သင့်အကောင့်တွင် စီမံခန့်ခွဲခွင့် မရှိပါခင်ဗျာ။
+            </p>
+          </div>
+          <button
+            onClick={() => { window.location.href = '/'; }}
+            className="w-full py-3 rounded-xl bg-gold-500 hover:bg-gold-400 text-navy-950 font-bold text-xs transition-all cursor-pointer"
+          >
+            ပင်မစာမျက်နှာသို့ ပြန်သွားမည်
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-navy-950 text-slate-100 flex flex-col font-sans selection:bg-gold-500 selection:text-black">
       {/* Top Header Bar (Legacy Luxury Navy & Gold) */}
@@ -204,23 +229,8 @@ export default function AdminPortal({ onBackToApp }) {
           </span>
         </div>
 
-        {/* Right Tools (Betting App button, User profile, Logout) */}
+        {/* Right Tools (Admin User profile, Logout) */}
         <div className="flex items-center gap-2 sm:gap-3">
-          <button
-            onClick={() => {
-              if (onBackToApp) {
-                onBackToApp();
-              } else {
-                window.location.href = '/';
-              }
-            }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs shadow-md transition-all cursor-pointer"
-            title="Go to 4D Betting Page"
-          >
-            <Dice5 className="w-4 h-4" />
-            <span className="hidden sm:inline">4D ထီထိုးစာမျက်နှာ</span>
-            <span className="sm:hidden">ထီထိုးရန်</span>
-          </button>
 
           <div className="hidden sm:flex items-center gap-2 bg-navy-800 px-3 py-1 rounded-xl border border-gold-500/20 text-xs">
             <ShieldCheck className="w-4 h-4 text-emerald-400" />

@@ -282,19 +282,6 @@ export default function Navbar({ activeTab, setActiveTab, onOpenDeposit, onNavig
               <User className="w-4 h-4" />
               <span>{t('tabProfile')}</span>
             </button>
-            {user?.role === 'ADMIN' && (
-              <button
-                onClick={() => setActiveTab('admin')}
-                className={`px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center space-x-1.5 ${
-                  activeTab === 'admin'
-                    ? 'bg-gradient-to-r from-amber-600 to-amber-500 text-dark-bg font-extrabold shadow-gold-sm'
-                    : 'text-amber-300 hover:text-amber-200 hover:bg-amber-950/40 border border-amber-500/40'
-                }`}
-              >
-                <ShieldCheck className="w-4 h-4 text-amber-400" />
-                <span>Backend</span>
-              </button>
-            )}
           </nav>
 
           {/* User Section (Right: Balance, Noti, MM/EN) */}
@@ -554,18 +541,6 @@ export default function Navbar({ activeTab, setActiveTab, onOpenDeposit, onNavig
                     </div>
                   )}
                 </div>
-
-                {/* Admin Quick Entry Button (Visible for ADMIN accounts) */}
-                {user.role === 'ADMIN' && (
-                  <button
-                    onClick={() => setActiveTab('admin')}
-                    className="flex items-center space-x-1 px-1.5 py-1 sm:px-2.5 sm:py-2 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-dark-bg text-[11px] sm:text-xs font-black transition-all shadow-md cursor-pointer shrink-0"
-                    title={lang === 'mm' ? 'စီမံခန့်ခွဲမှု Backend Portal' : 'Admin Portal'}
-                  >
-                    <ShieldCheck className="w-3.5 h-3.5 text-dark-bg shrink-0" />
-                    <span className="font-extrabold tracking-wide">Admin</span>
-                  </button>
-                )}
 
                 {/* 3. Language Toggle (မြန်မာ / ENG) */}
                 <button

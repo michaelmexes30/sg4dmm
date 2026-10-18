@@ -175,18 +175,17 @@ export default function App() {
         {activeTab === 'profile' && (
           <ProfileView 
             onOpenWallet={() => setIsDepositOpen(true)} 
-            onOpenAdmin={() => setActiveTab('admin')} 
           />
         )}
 
         {/* TAB 5: Admin Financial Ledger */}
         {activeTab === 'admin' && (
-          <AdminPortal onBackToApp={() => setActiveTab('betting')} />
+          <AdminPortal />
         )}
 
       </main>
 
-      {/* Mobile Bottom Navigation Bar: "4D Bet" "Results" "+" "Slips" "Profile" ("Admin") */}
+      {/* Mobile Bottom Navigation Bar: "4D Bet" "Results" "+" "Slips" "Profile" */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-dark-surface/95 backdrop-blur-xl border-t border-gold-700/60 px-3 py-2 flex items-center justify-around shadow-2xl">
         <button
           onClick={() => setActiveTab('betting')}
@@ -236,18 +235,6 @@ export default function App() {
           <User className="w-5 h-5 mb-0.5" />
           <span>{t('tabProfile')}</span>
         </button>
-
-        {user?.role === 'ADMIN' && (
-          <button
-            onClick={() => setActiveTab('admin')}
-            className={`flex flex-col items-center py-1 px-2 rounded-lg text-xs font-bold transition-colors ${
-              activeTab === 'admin' ? 'text-amber-400 font-extrabold' : 'text-amber-400/80 hover:text-amber-300'
-            }`}
-          >
-            <ShieldCheck className="w-5 h-5 mb-0.5 text-amber-400" />
-            <span>Admin</span>
-          </button>
-        )}
       </nav>
 
       {/* Global Modals */}
