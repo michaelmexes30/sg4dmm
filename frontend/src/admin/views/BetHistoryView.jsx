@@ -356,6 +356,7 @@ export default function BetHistoryView({ onNotify }) {
                 <th className="py-3 px-4 text-center">Type</th>
                 <th className="py-3 px-4 text-right">Stake (MMK)</th>
                 <th className="py-3 px-4">Voucher Slip</th>
+                <th className="py-3 px-4 text-center">Prize</th>
                 <th className="py-3 px-4 text-center">Status</th>
                 <th className="py-3 px-4 text-center">Action</th>
               </tr>
@@ -363,7 +364,7 @@ export default function BetHistoryView({ onNotify }) {
             <tbody className="divide-y divide-slate-800 text-slate-300">
               {loading ? (
                 <tr>
-                  <td colSpan={10} className="py-16 text-center text-slate-400">
+                  <td colSpan={11} className="py-16 text-center text-slate-400">
                     <div className="flex flex-col items-center justify-center space-y-2">
                       <div className="w-6 h-6 border-2 border-gold-500/20 border-t-gold-400 rounded-full animate-spin" />
                       <span className="font-mono text-xs">Loading bet slips from database...</span>
@@ -372,7 +373,7 @@ export default function BetHistoryView({ onNotify }) {
                 </tr>
               ) : bets.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="py-16 text-center text-slate-500">
+                  <td colSpan={11} className="py-16 text-center text-slate-500">
                     <div className="flex flex-col items-center justify-center space-y-2">
                       <Receipt className="w-8 h-8 text-slate-600" />
                       <p className="font-semibold text-xs">No bet tickets found matching current filters.</p>
@@ -446,6 +447,23 @@ export default function BetHistoryView({ onNotify }) {
                             )}
                           </button>
                         </div>
+                      </td>
+                      <td className="py-3 px-4 text-center whitespace-nowrap">
+                        {bet.prize && bet.prize !== '-' ? (
+                          <div className="inline-flex flex-col items-center">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-black bg-amber-500/20 text-gold-300 border border-gold-500/40 shadow-sm">
+                              <Award className="w-3.5 h-3.5 text-amber-400" />
+                              <span>{bet.prize}</span>
+                            </span>
+                            {Number(bet.payout || 0) > 0 && (
+                              <span className="text-[10px] font-mono font-bold text-emerald-400 mt-0.5">
+                                +{Number(bet.payout).toLocaleString()} MMK
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-slate-500 font-mono text-xs">-</span>
+                        )}
                       </td>
                       <td className="py-3 px-4 text-center">
                         {getStatusBadge(bet.status)}

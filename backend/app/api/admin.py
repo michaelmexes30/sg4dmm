@@ -1975,25 +1975,35 @@ def get_4d_bets_history(
         query = query.filter(or_(BetItem.number.contains(clean_num), BetItem.combinations_json.contains(clean_num)))
     if target_status and target_status.upper() != "ALL":
         if target_status.upper() in ["WIN", "WON"]:
-            query = query.filter(or_(BetItem.is_won > 0, BetSlip.status == BetSlipStatus.WON))
+            # Strictly actual winning bet items only!
+            query = query.filter(BetItem.is_won > 0)
         elif target_status.upper() in ["LOSE", "LOST"]:
-            query = query.filter(BetItem.is_won == 0, BetSlip.status == BetSlipStatus.LOST)
+            query = query.filter(
+                BetItem.is_won == 0,
+                or_(
+                    BetSlip.status == BetSlipStatus.LOST,
+                    LotteryDraw.status == DrawStatus.SETTLED,
+                    LotteryDraw.first_prize != None
+                )
+            )
         elif target_status.upper() in ["PENDING"]:
-            query = query.filter(BetSlip.status == BetSlipStatus.PENDING)
+            query = query.filter(
+                BetSlip.status == BetSlipStatus.PENDING,
+                LotteryDraw.status == DrawStatus.OPEN,
+                LotteryDraw.first_prize == None
+            )
     if voucher:
         query = query.filter(BetSlip.slip_code.contains(voucher))
 
-    total_count = query.with_entities(func.sum(func.coalesce(BetItem.combination_count, 1))).scalar() or 0
+    if target_status and target_status.upper() in ["WIN", "WON"]:
+        total_count = query.count()
+    else:
+        total_count = query.with_entities(func.sum(func.coalesce(BetItem.combination_count, 1))).scalar() or 0
+
     items = query.order_by(BetItem.id.desc()).offset((page - 1) * actual_limit).limit(actual_limit).all()
 
     results = []
     for bi, bs, u, d in items:
-        status_label = "Pending"
-        if bs.status == BetSlipStatus.LOST:
-            status_label = "Lost"
-        elif bi.is_won > 0 or bs.status == BetSlipStatus.WON:
-            status_label = "Won"
-
         unit_stake = float(bi.big_amount if (bi.big_amount and bi.big_amount > 0) else (bi.item_stake / (bi.combination_count or 1)))
         
         display_type = "Ordinary"
@@ -2023,7 +2033,42 @@ def get_4d_bets_history(
             clean_num = number.strip()
             ordered_combos = [c for c in ordered_combos if clean_num in c]
 
+        win_details = bi.win_details
+
         for idx, combo in enumerate(ordered_combos):
+            is_combo_won = False
+            combo_prize = "-"
+            combo_payout = 0.0
+
+            if bi.is_won > 0:
+                for m in win_details:
+                    w_num = m.get("winning_number") or bi.number
+                    if w_num == combo:
+                        is_combo_won = True
+                        combo_payout += float(m.get("payout", 0.0))
+                        tier_name = m.get("prize_tier", "Won")
+                        combo_prize = tier_name
+
+                if not is_combo_won and (combo == bi.number or len(ordered_combos) == 1):
+                    is_combo_won = True
+                    combo_payout = float(bi.item_payout or 0.0)
+                    combo_prize = "Won"
+
+            # When filtering specifically by WON, exclude non-winning numbers!
+            if target_status and target_status.upper() in ["WIN", "WON"] and not is_combo_won:
+                continue
+
+            # When filtering specifically by LOST, exclude winning numbers!
+            if target_status and target_status.upper() in ["LOSE", "LOST"] and is_combo_won:
+                continue
+
+            if is_combo_won:
+                status_label = "Won"
+            elif d.status == DrawStatus.SETTLED or d.first_prize is not None or bs.status in [BetSlipStatus.LOST, BetSlipStatus.WON]:
+                status_label = "Lost"
+            else:
+                status_label = "Pending"
+
             results.append({
                 "id": f"{bi.id}_{idx}",
                 "item_id": bi.id,
@@ -2044,7 +2089,9 @@ def get_4d_bets_history(
                 "stake_amount": unit_stake,
                 "combination_count": 1,
                 "per_unit_stake": unit_stake,
-                "payout": float(bi.item_payout or 0.0) if (bi.is_won and combo in (bi.win_details_json or "")) else 0.0,
+                "payout": combo_payout,
+                "prize": combo_prize,
+                "prize_tier": combo_prize,
                 "status": status_label,
                 "voucher": bs.slip_code,
                 "voucher_code": bs.slip_code,
@@ -2060,6 +2107,7 @@ def get_4d_bets_history(
         "limit": actual_limit,
         "page_size": actual_limit
     }
+
 
 
 # ----------------- 3. Balance Withdrawals (Screenshots 3, 4, 5) -----------------
