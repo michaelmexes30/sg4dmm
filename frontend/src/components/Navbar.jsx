@@ -202,31 +202,31 @@ export default function Navbar({ activeTab, setActiveTab, onOpenDeposit, onNavig
 
   return (
     <header className="sticky top-0 z-40 w-full glass-panel-gold border-b border-gold-600/40">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-20">
+      <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-16 sm:h-20">
           
           {/* Logo & Platform Name (Golden Peacock Theme) */}
-          <div className="flex items-center space-x-3.5 cursor-pointer" onClick={() => setActiveTab('betting')}>
-            <div className="relative w-14 h-14 rounded-2xl bg-gradient-to-tr from-gold-600 via-gold-400 to-gold-200 p-[2px] shadow-gold-sm flex items-center justify-center">
-              <div className="w-full h-full bg-dark-bg rounded-[14px] flex items-center justify-center overflow-hidden p-1">
+          <div className="flex items-center space-x-2 sm:space-x-3 cursor-pointer min-w-0" onClick={() => setActiveTab('betting')}>
+            <div className="relative w-9 h-9 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded-xl sm:rounded-2xl bg-gradient-to-tr from-gold-600 via-gold-400 to-gold-200 p-[1.5px] sm:p-[2px] shadow-gold-sm flex items-center justify-center shrink-0">
+              <div className="w-full h-full bg-dark-bg rounded-[10px] sm:rounded-[14px] flex items-center justify-center overflow-hidden p-0.5 sm:p-1">
                 <img
                   src={logoImg}
-                  alt="SG4DMyanmar Golden Peacock"
+                  alt="SG4D"
                   className="w-full h-full object-contain filter drop-shadow"
                 />
               </div>
             </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <span className="font-black text-2xl tracking-tight gold-gradient-text">
-                  {t('platformName')}<span className="text-white ml-1">{t('platformSub')}</span>
+            <div className="min-w-0">
+              <div className="flex items-center space-x-1.5">
+                <span className="font-black text-sm sm:text-lg md:text-2xl tracking-tight gold-gradient-text whitespace-nowrap">
+                  {lang === 'mm' ? 'SG4D ရွှေဥဒေါင်း' : 'SG4D Myanmar'}
                 </span>
-                <span className="text-[10px] bg-gold-950 text-gold-300 font-extrabold px-2 py-0.5 rounded-full border border-gold-600/60 uppercase tracking-wider">
+                <span className="hidden md:inline-block text-[10px] bg-gold-950 text-gold-300 font-extrabold px-2 py-0.5 rounded-full border border-gold-600/60 uppercase tracking-wider shrink-0">
                   {t('peacockBadge')}
                 </span>
               </div>
-              <p className="text-[10px] text-gold-400/90 tracking-widest uppercase font-semibold">
-                {t('officialAgent')}
+              <p className="text-[9px] sm:text-[10px] text-gold-400/90 tracking-wider uppercase font-semibold whitespace-nowrap truncate max-w-[110px] sm:max-w-none">
+                {lang === 'mm' ? 'စင်ကာပူ ၄လုံးထီ' : 'Official 4D Agent'}
               </p>
             </div>
           </div>
@@ -285,24 +285,24 @@ export default function Navbar({ activeTab, setActiveTab, onOpenDeposit, onNavig
           </nav>
 
           {/* User Section (Right: Balance, Noti, MM/EN) */}
-          <div className="flex items-center space-x-2 sm:space-x-3">
+          <div className="flex items-center space-x-1 sm:space-x-2 shrink-0">
             {user ? (
-              <div className="flex items-center space-x-2 sm:space-x-3 relative">
+              <div className="flex items-center space-x-1 sm:space-x-2 relative shrink-0">
                 
                 {/* 1. Deposit Badge for Agent (ONLY when credit enabled) / Balance Badge for User & Agent when credit disabled */}
                 {user.role === 'AGENT' && user.is_agent_credit_enabled ? (
                   <div
                     onClick={() => setActiveTab('profile')}
                     title={lang === 'mm' ? 'အာမခံစပေါ်ငွေ (Security Deposit)' : 'Security Deposit'}
-                    className="flex items-center space-x-2 bg-dark-card border border-gold-600/50 hover:border-gold-400 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl shadow-gold-sm cursor-pointer transition-all active:scale-95"
+                    className="flex items-center space-x-1 sm:space-x-1.5 bg-dark-card border border-gold-600/50 hover:border-gold-400 px-1.5 py-1 sm:px-3 sm:py-1.5 rounded-xl shadow-gold-sm cursor-pointer transition-all active:scale-95 shrink-0"
                   >
-                    <ShieldCheck className="w-4 h-4 text-amber-400 shrink-0" />
+                    <ShieldCheck className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                     <div className="text-left">
-                      <p className="text-[10px] text-gold-400 uppercase tracking-wider font-bold leading-none mb-0.5">
-                        {lang === 'mm' ? 'စပေါ်ငွေ (Deposit)' : 'Deposit'}
+                      <p className="text-[8px] sm:text-[10px] text-gold-400 uppercase tracking-wider font-bold leading-none mb-0.5">
+                        {lang === 'mm' ? 'စပေါ်ငွေ' : 'Deposit'}
                       </p>
-                      <p className="text-xs sm:text-sm font-extrabold font-mono text-gold-200 leading-none">
-                        {num((user.security_deposit || 0).toLocaleString())} <span className="text-[10px] text-gray-400 font-sans">{t('currencySymbol')}</span>
+                      <p className="text-[11px] sm:text-sm font-extrabold font-mono text-gold-200 leading-none whitespace-nowrap">
+                        {num((user.security_deposit || 0).toLocaleString())} <span className="text-[8px] sm:text-[10px] text-gray-400 font-sans">{t('currencySymbol')}</span>
                       </p>
                     </div>
                   </div>
@@ -310,15 +310,15 @@ export default function Navbar({ activeTab, setActiveTab, onOpenDeposit, onNavig
                   <div
                     onClick={onOpenDeposit}
                     title={lang === 'mm' ? 'ငွေသွင်း၊ ငွေထုတ် ပြုလုပ်ရန်' : 'Manage Wallet'}
-                    className="flex items-center space-x-2 bg-dark-card border border-gold-600/50 hover:border-gold-400 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl shadow-gold-sm cursor-pointer transition-all active:scale-95"
+                    className="flex items-center space-x-1 sm:space-x-1.5 bg-dark-card border border-gold-600/50 hover:border-gold-400 px-1.5 py-1 sm:px-3 sm:py-1.5 rounded-xl shadow-gold-sm cursor-pointer transition-all active:scale-95 shrink-0"
                   >
-                    <Wallet className="w-4 h-4 text-gold-400 shrink-0" />
+                    <Wallet className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gold-400 shrink-0" />
                     <div className="text-left">
-                      <p className="text-[10px] text-gold-400 uppercase tracking-wider font-bold leading-none mb-0.5">
+                      <p className="text-[8px] sm:text-[10px] text-gold-400 uppercase tracking-wider font-bold leading-none mb-0.5">
                         {t('balance')}
                       </p>
-                      <p className="text-xs sm:text-sm font-extrabold font-mono text-gold-200 leading-none">
-                        {num((user.balance || 0).toLocaleString())} <span className="text-[10px] text-gray-400 font-sans">{t('currencySymbol')}</span>
+                      <p className="text-[11px] sm:text-sm font-extrabold font-mono text-gold-200 leading-none whitespace-nowrap">
+                        {num((user.balance || 0).toLocaleString())} <span className="text-[8px] sm:text-[10px] text-gray-400 font-sans">{t('currencySymbol')}</span>
                       </p>
                     </div>
                   </div>
@@ -329,7 +329,7 @@ export default function Navbar({ activeTab, setActiveTab, onOpenDeposit, onNavig
                   <div
                     onClick={() => setActiveTab('profile')}
                     title={lang === 'mm' ? 'အေးဂျင့် Credit & ကော်မရှင် စာရင်းကြည့်ရန်' : 'View Agent Credit & Commissions'}
-                    className="flex items-center space-x-2 bg-gradient-to-r from-amber-950/80 to-navy-950 border border-amber-500/60 hover:border-amber-400 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl shadow-gold-sm cursor-pointer transition-all active:scale-95"
+                    className="hidden sm:flex items-center space-x-2 bg-gradient-to-r from-amber-950/80 to-navy-950 border border-amber-500/60 hover:border-amber-400 px-2.5 py-1 sm:px-3.5 sm:py-2 rounded-xl shadow-gold-sm cursor-pointer transition-all active:scale-95 shrink-0"
                   >
                     <div className="text-left font-mono">
                       <div className="flex items-center space-x-1.5">
@@ -355,12 +355,12 @@ export default function Navbar({ activeTab, setActiveTab, onOpenDeposit, onNavig
                   </div>
                 )}
 
-                {/* 1.6 Agent Badge when Credit is Disabled (shows Agent Code pill without deposit or credit) */}
+                {/* 1.6 Agent Badge when Credit is Disabled */}
                 {user.role === 'AGENT' && !user.is_agent_credit_enabled && (
                   <div
                     onClick={() => setActiveTab('profile')}
                     title={lang === 'mm' ? 'Agent စာရင်းကြည့်ရန်' : 'Agent Details'}
-                    className="hidden sm:flex items-center space-x-1.5 bg-amber-500/10 border border-amber-500/40 hover:border-amber-400 px-2.5 py-1.5 rounded-xl cursor-pointer transition-all active:scale-95"
+                    className="hidden sm:flex items-center space-x-1.5 bg-amber-500/10 border border-amber-500/40 hover:border-amber-400 px-2.5 py-1.5 rounded-xl cursor-pointer transition-all active:scale-95 shrink-0"
                   >
                     <span className="text-[11px] font-extrabold text-amber-300 font-mono">
                       🦚 {user.agent_code || 'AGENT'}
@@ -369,15 +369,15 @@ export default function Navbar({ activeTab, setActiveTab, onOpenDeposit, onNavig
                 )}
 
                 {/* 2. Notifications Bell (Noti) */}
-                <div className="relative" ref={notifDropdownRef}>
+                <div className="relative shrink-0" ref={notifDropdownRef}>
                   <button
                     onClick={() => setShowNotifDropdown(!showNotifDropdown)}
                     title={t('noti')}
-                    className="p-2 sm:p-2.5 rounded-xl bg-dark-card border border-gold-700/60 hover:border-gold-400 text-gray-300 hover:text-white transition-colors relative cursor-pointer"
+                    className="p-1.5 sm:p-2.5 rounded-xl bg-dark-card border border-gold-700/60 hover:border-gold-400 text-gray-300 hover:text-white transition-colors relative cursor-pointer shrink-0"
                   >
-                    <Bell className="w-4 h-4" />
+                    <Bell className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gold-400" />
                     {unreadCount > 0 && (
-                      <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-gold-500 text-[10px] font-black text-black flex items-center justify-center animate-pulse shadow-gold-sm">
+                      <span className="absolute -top-1 -right-1 w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-gold-500 text-[9px] sm:text-[10px] font-black text-black flex items-center justify-center animate-pulse shadow-gold-sm">
                         {num(unreadCount)}
                       </span>
                     )}
@@ -545,7 +545,7 @@ export default function Navbar({ activeTab, setActiveTab, onOpenDeposit, onNavig
                 {/* 3. Language Toggle (မြန်မာ / ENG) */}
                 <button
                   onClick={toggleLanguage}
-                  className="flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-dark-card border border-gold-600/70 hover:border-gold-400 text-gold-300 text-xs font-black transition-all shadow-gold-sm cursor-pointer"
+                  className="flex items-center space-x-1 px-1.5 py-1 sm:px-3 sm:py-2 rounded-xl bg-dark-card border border-gold-600/70 hover:border-gold-400 text-gold-300 text-[11px] sm:text-xs font-black transition-all shadow-gold-sm cursor-pointer shrink-0"
                   title={lang === 'mm' ? 'English သို့ ပြောင်းမည်' : 'Switch to Myanmar'}
                 >
                   <Globe className="w-3.5 h-3.5 text-gold-400 shrink-0" />
@@ -554,20 +554,20 @@ export default function Navbar({ activeTab, setActiveTab, onOpenDeposit, onNavig
 
               </div>
             ) : (
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-1.5 sm:space-x-2 shrink-0">
                 <button
                   onClick={toggleLanguage}
-                  className="flex items-center space-x-1.5 px-3 py-2 rounded-xl bg-dark-card border border-gold-600/70 text-gold-300 text-xs font-black transition-all cursor-pointer"
+                  className="flex items-center space-x-1 px-1.5 py-1 sm:px-3 sm:py-2 rounded-xl bg-dark-card border border-gold-600/70 text-gold-300 text-[11px] sm:text-xs font-black transition-all cursor-pointer shrink-0"
                 >
                   <Globe className="w-3.5 h-3.5 text-gold-400 shrink-0" />
                   <span>{lang === 'mm' ? 'မြန်မာ' : 'ENG'}</span>
                 </button>
                 <button
                   onClick={() => setIsAuthModalOpen(true)}
-                  className="flex items-center space-x-2 px-4 py-2 rounded-xl gold-gradient-btn text-dark-bg font-extrabold text-xs tracking-wider shadow-gold transition-all"
+                  className="flex items-center space-x-1.5 px-2.5 py-1.5 sm:px-4 sm:py-2 rounded-xl gold-gradient-btn text-dark-bg font-extrabold text-[11px] sm:text-xs tracking-wider shadow-gold transition-all shrink-0 whitespace-nowrap"
                 >
-                  <User className="w-4 h-4 text-dark-bg" />
-                  <span>{lang === 'mm' ? 'အကောင့်ဝင် / ဖွင့်မည်' : 'Login / Register'}</span>
+                  <User className="w-3.5 h-3.5 text-dark-bg shrink-0" />
+                  <span>{lang === 'mm' ? 'အကောင့်ဝင်မည်' : 'Login'}</span>
                 </button>
               </div>
             )}
