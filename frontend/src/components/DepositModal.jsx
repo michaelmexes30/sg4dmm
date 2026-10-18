@@ -14,11 +14,12 @@ import {
   ArrowDownLeft,
   ArrowUpRight,
   ArrowLeft,
-  Wallet
+  Wallet,
+  Eye
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
-import { apiClient } from '../api/client';
+import { apiClient, getApiBase } from '../api/client';
 import logoImg from '../assets/logo.png';
 
 export default function DepositModal({ isOpen, onClose }) {
@@ -38,6 +39,8 @@ export default function DepositModal({ isOpen, onClose }) {
   const [clientTimezone, setClientTimezone] = useState('MMT');
   const [slipFile, setSlipFile] = useState(null);
   const [slipPreviewUrl, setSlipPreviewUrl] = useState('');
+  const [localPreviewUrl, setLocalPreviewUrl] = useState('');
+  const [showSlipModal, setShowSlipModal] = useState(false);
   const fileInputRef = useRef(null);
   const modalScrollRef = useRef(null);
   const modalTopRef = useRef(null);
@@ -71,9 +74,24 @@ export default function DepositModal({ isOpen, onClose }) {
     setAmount('');
     setSlipFile(null);
     setSlipPreviewUrl('');
+    setLocalPreviewUrl('');
+    setShowSlipModal(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+  };
+
+  const getServerOrigin = () => {
+    const base = getApiBase();
+    return base.replace(/\/api\/?$/, '');
+  };
+
+  const getSlipImageSrc = () => {
+    if (localPreviewUrl) return localPreviewUrl;
+    if (!slipPreviewUrl) return '';
+    if (slipPreviewUrl.startsWith('http') || slipPreviewUrl.startsWith('blob:')) return slipPreviewUrl;
+    const origin = getServerOrigin();
+    return `${origin}${slipPreviewUrl.startsWith('/') ? '' : '/'}${slipPreviewUrl}`;
   };
 
   const handleClose = () => {
@@ -138,14 +156,18 @@ export default function DepositModal({ isOpen, onClose }) {
     if (!file) return;
 
     setSlipFile(file);
-    setSlipPreviewUrl(URL.createObjectURL(file));
+    const localUrl = URL.createObjectURL(file);
+    setLocalPreviewUrl(localUrl);
+    setSlipPreviewUrl(localUrl);
 
-    // Upload immediately
+    // Upload immediately to cloud
     const formData = new FormData();
     formData.append('file', file);
     try {
       const res = await apiClient.uploadSlip(formData);
-      setSlipPreviewUrl(res.file_url);
+      if (res && res.file_url) {
+        setSlipPreviewUrl(res.file_url);
+      }
     } catch (err) {
       console.error('Slip upload failed:', err);
     }
@@ -504,14 +526,20 @@ export default function DepositModal({ isOpen, onClose }) {
                 </label>
                 <div className="flex items-center space-x-2 sm:space-x-3">
                   <label className="flex-1 border-2 border-dashed border-gold-800 hover:border-gold-500 rounded-xl p-2 sm:p-3 flex items-center justify-center space-x-2 text-xs text-gold-300 cursor-pointer bg-dark-bg/60">
-                    <Upload className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gold-400" />
-                    <span className="truncate max-w-[200px]">{slipFile ? slipFile.name : t('chooseFile')}</span>
+                    <Upload className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gold-400 shrink-0" />
+                    <span className="truncate max-w-[160px] sm:max-w-[200px]">{slipFile ? slipFile.name : t('chooseFile')}</span>
                     <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
                   </label>
-                  {slipPreviewUrl && (
-                    <a href={slipPreviewUrl} target="_blank" rel="noreferrer" className="text-xs text-sky-400 underline font-bold shrink-0">
-                      {t('previewFile')}
-                    </a>
+                  {(localPreviewUrl || slipPreviewUrl) && (
+                    <button
+                      type="button"
+                      onClick={() => setShowSlipModal(true)}
+                      className="px-3 py-2 sm:py-2.5 rounded-xl bg-sky-950/80 border border-sky-400/70 hover:border-sky-300 text-sky-300 hover:text-white text-xs font-bold flex items-center space-x-1.5 shrink-0 shadow-md transition-all active:scale-95 cursor-pointer"
+                      title={t('previewFile')}
+                    >
+                      <Eye className="w-3.5 h-3.5 text-sky-400" />
+                      <span>{t('previewFile')}</span>
+                    </button>
                   )}
                 </div>
               </div>
@@ -723,6 +751,67 @@ export default function DepositModal({ isOpen, onClose }) {
         )}
 
       </div>
+
+      {/* Lightbox / In-App Slip Preview Modal for checking TxID */}
+      {showSlipModal && (
+        <div 
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 backdrop-blur-md p-3 sm:p-5"
+          onClick={() => setShowSlipModal(false)}
+        >
+          <div 
+            className="relative max-w-lg w-full bg-dark-surface border-2 border-gold-500 rounded-2xl p-4 shadow-2xl space-y-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-gold-500/30 pb-2.5">
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 rounded-xl bg-gold-500/20 flex items-center justify-center text-gold-400">
+                  <Eye className="w-4 h-4" />
+                </div>
+                <div>
+                  <h4 className="text-xs sm:text-sm font-black text-white gold-gradient-text leading-tight">
+                    {lang === 'mm' ? 'ငွေလွှဲပြေစာ ပုံကြည့်ရန် (TxID စစ်ဆေးခြင်း)' : 'Slip Preview (Check TxID)'}
+                  </h4>
+                  <p className="text-[10px] text-gold-400/90 leading-none">
+                    {lang === 'mm' ? 'ပြေစာထဲမှ Transaction ID နံပါတ်ကို ကြည့်ရှုနိုင်ပါသည်' : 'Inspect transaction number on your transfer slip'}
+                  </p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setShowSlipModal(false)} 
+                className="p-1.5 rounded-xl bg-dark-bg text-gray-400 hover:text-white border border-gold-700/60 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="max-h-[60vh] overflow-auto rounded-xl bg-black/60 border border-gold-950 flex items-center justify-center p-2 custom-scrollbar">
+              <img
+                src={getSlipImageSrc()}
+                alt="Payment Slip Preview"
+                className="max-h-[56vh] w-auto max-w-full object-contain rounded-lg shadow-2xl"
+              />
+            </div>
+
+            <div className="bg-amber-950/40 border border-amber-500/40 rounded-xl p-2.5 text-center">
+              <p className="text-[11px] text-amber-200 font-semibold leading-relaxed">
+                {lang === 'mm' 
+                  ? '💡 ပြေစာထဲရှိ Transaction ID (ဥပမာ: နောက်ဆုံးဂဏန်း ၆ လုံး သို့မဟုတ် အပြည့်အစုံ) ကို မှတ်သားပြီး အောက်ပါခလုတ်ကို နှိပ်၍ အကွက်ထဲတွင် ဖြည့်သွင်းပါ' 
+                  : '💡 Check the Transaction ID on your slip and enter it into the input box below'}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowSlipModal(false)}
+              className="w-full py-2.5 rounded-xl gold-gradient-btn text-dark-bg font-black text-xs tracking-wider shadow-gold hover:shadow-gold-lg transition-all cursor-pointer"
+            >
+              {lang === 'mm' ? '✓ အတည်ပြုပြီး လွှဲငွေအမှတ် ဖြည့်မည်' : '✓ Done (Enter TxID)'}
+            </button>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
