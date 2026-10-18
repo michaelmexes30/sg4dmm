@@ -174,10 +174,8 @@ def get_apk_download_url() -> str:
     """Returns public APK download URL based on environment or server config"""
     if settings.APK_DOWNLOAD_URL:
         return settings.APK_DOWNLOAD_URL
-    if settings.RENDER_EXTERNAL_URL:
-        base = settings.RENDER_EXTERNAL_URL.rstrip('/')
-        return f"{base}/download/apk"
-    return "http://192.168.99.224:8000/download/apk"
+    return "https://tinyurl.com/sg4d-myanmar-apk"
+
 
 def send_apk_info_message(chat_id: str, first_name: str = "Member"):
     """Sends Android APK download link and info to user using short/masked link"""
@@ -295,7 +293,7 @@ def handle_telegram_update(update: dict, db: Session):
                 return
 
         # General /start (without params)
-        render_apk = "https://sg4dmm.onrender.com/download/apk"
+        short_apk = "https://tinyurl.com/sg4d-myanmar-apk"
         github_apk = "https://github.com/michaelmexes30/sg4dmm/releases/download/v1.0.1/SG4D_Myanmar_V1.0.1.apk"
         web_url = "https://sg4dmm.onrender.com/"
         keyboard = {
@@ -312,12 +310,12 @@ def handle_telegram_update(update: dict, db: Session):
             f"• ဝဘ်ဆိုက်တွင် အကောင့်ဖွင့်ရန် သို့မဟုတ် စကားဝှက် Reset ပြုလုပ်ရန် အောက်ပါ <b>[ 📱 ဖုန်းနံပါတ် ပေးပို့ရန် ]</b> ခလုတ်ကို နှိပ်ပါ (သို့မဟုတ် ဖုန်းနံပါတ် ရိုက်ထည့်ပို့ပါ)။\n\n"
             f"၂။ <b>Android Mobile App (APK) ရယူရန်</b>:\n"
             f"• အောက်ပါ <b>[ 📲 Download Android APK ]</b> ခလုတ်ကို နှိပ်၍ ဖုန်းထဲသို့ ဒေါင်းလုဒ်ဆွဲယူနိုင်ပါသည် ခင်ဗျာ။\n"
-            f"👉 <a href=\"{render_apk}\"><b>တိုက်ရိုက်ဒေါင်းလုဒ်ရယူရန် Link</b></a>"
+            f"👉 <a href=\"{short_apk}\"><b>[ 📲 Download SG4D APK ]</b></a>"
         )
         inline_markup = {
             "inline_keyboard": [
-                [{"text": "📲 Download APK (တိုက်ရိုက်ဒေါင်းရန်)", "url": render_apk}],
-                [{"text": "⚡️ Download APK (GitHub Mirror)", "url": github_apk}],
+                [{"text": "📲 Download APK (တိုက်ရိုက်ဒေါင်းရန်)", "url": short_apk}],
+                [{"text": "⚡️ Download APK (Backup Link)", "url": github_apk}],
                 [{"text": "🌐 Online Platform သို့ ဝင်ရန်", "url": web_url}]
             ]
         }

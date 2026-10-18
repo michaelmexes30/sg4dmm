@@ -83,7 +83,7 @@ class Settings(BaseModel):
     RENDER_EXTERNAL_URL: str = os.getenv("RENDER_EXTERNAL_URL", "https://sg4dmm.onrender.com")
     APK_DOWNLOAD_URL: str = os.getenv(
         "APK_DOWNLOAD_URL", 
-        "https://sg4dmm.onrender.com/download/apk"
+        "https://tinyurl.com/sg4d-myanmar-apk"
     )
 
 settings = Settings()
