@@ -86,14 +86,8 @@ def verify_and_process_deposit(
     """
     submission_time = now_mmt()
     
-    # 1. Operating Hours Check (8:00 AM to 8:00 PM MMT)
-    is_open, hours_msg = is_within_gateway_operating_hours(submission_time)
-    if not is_open:
-        return {
-            "success": False,
-            "status": TransactionStatus.REJECTED,
-            "message": f"Payment channels are closed. {hours_msg}"
-        }
+    # 1. 24/7 Topup / Deposit Support (Operating hours only apply to Withdrawals)
+    # Deposits are verified and auto-approved round-the-clock
 
     # 2. Format Check
     is_fmt_valid, fmt_msg = validate_gateway_tx_format(gateway, transaction_id)

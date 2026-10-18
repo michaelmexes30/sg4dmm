@@ -20,7 +20,7 @@ from app.schemas.payment import (
 )
 from app.core.security import get_current_user
 from app.core.payment_verifier import verify_and_process_deposit
-from app.core.timezone_utils import now_mmt
+from app.core.timezone_utils import now_mmt, is_within_gateway_operating_hours
 
 router = APIRouter(prefix="/payments", tags=["Financial & Payment Verification"])
 
@@ -127,6 +127,15 @@ def submit_withdrawal(
     Submits a withdrawal cash-out request.
     Deducts balance immediately and creates a pending withdrawal record for review.
     """
+    # Enforce Withdrawal Operating Hours (08:00 AM to 08:00 PM MMT)
+    current_time = now_mmt()
+    is_open, hours_msg = is_within_gateway_operating_hours(current_time)
+    if not is_open:
+        raise HTTPException(
+            status_code=400,
+            detail=f"ငွေထုတ်ယူခြင်း ဝန်ဆောင်မှုကို နံနက် ၀၈:၀၀ မှ ည ၀၈:၀၀ နာရီ (MMT) အတွင်းသာ ဆောင်ရွက်ပေးပါသည် ခင်ဗျာ။ (Withdrawals operate 08:00 AM - 08:00 PM MMT. {hours_msg})"
+        )
+
     if req.amount < 1000.0:
         raise HTTPException(status_code=400, detail="Minimum withdrawal amount is 1,000 MMK.")
     
@@ -136,7 +145,6 @@ def submit_withdrawal(
             detail=f"Insufficient balance. Your current balance is {current_user.balance:,.0f} MMK."
         )
 
-    current_time = now_mmt()
     tx_code = f"WD{current_time.strftime('%Y%m%d%H%M%S')}{current_user.id}"
 
     # Deduct balance immediately
