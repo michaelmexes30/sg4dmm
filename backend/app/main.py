@@ -9,6 +9,7 @@ import pytz
 from app.config import settings
 from app.database import Base, engine
 from app.seeds.seed_data import seed_database
+from app.seeds.seed_admin_data import seed_admin_and_system_data
 from app.core.archiver import archive_old_records
 from app.core.bonus_engine import calculate_and_distribute_weekly_bonus
 from app.core.notifications import send_cutoff_reminder_job
@@ -31,6 +32,10 @@ async def lifespan(app: FastAPI):
     # Startup: Ensure DB schema and seeds
     Base.metadata.create_all(bind=engine)
     seed_database()
+    try:
+        seed_admin_and_system_data()
+    except Exception as e:
+        print(f"seed_admin_and_system_data warning: {e}")
     
     # 1. Schedule automated archiving job every night at 02:00 AM MMT
     scheduler.add_job(

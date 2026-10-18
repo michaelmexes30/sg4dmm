@@ -57,8 +57,8 @@ def seed_admin_and_system_data():
             wave_phone="09894169717",
             wave_name="Ye Win Htut",
             wave_qr_url="/assets/wave_qr_sample.png",
-            kpay_phone="09798888888",
-            kpay_name="Daw Hla Hla",
+            kpay_phone="09795007441",
+            kpay_name="Daw Myo Thiri Khin",
             kpay_qr_url="/assets/kpay_qr_sample.png",
             bet_end_time="04:30 PM",
             result_confirm_time="06:00 PM",
@@ -71,6 +71,12 @@ def seed_admin_and_system_data():
             company_balance_oct=4198200.0
         )
         db.add(setting)
+    else:
+        # Strictly ensure official company receiver accounts are synchronized
+        setting.kpay_phone = "09795007441"
+        setting.kpay_name = "Daw Myo Thiri Khin"
+        setting.wave_phone = "09894169717"
+        setting.wave_name = "Ye Win Htut"
 
     # 3. Application Releases from Screenshot 14
     app_releases = [

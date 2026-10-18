@@ -273,18 +273,39 @@ def parse_and_validate_receipt(
         if phone_match:
             slip_phone_suffix = phone_match.group(1).strip()
 
-    # Compare Receiver Name with expected company receiver name
-    expected_tokens = [w.lower() for w in (expected_receiver_name or "").split() if len(w) > 2]
-    # words that identify the name uniquely (ignoring U, Daw, Ko, Ma honorifics)
-    name_core_tokens = [w for w in expected_tokens if w not in ["daw", "u", "ko", "ma", "mg"]]
-    if not name_core_tokens:
-        name_core_tokens = expected_tokens
+    # Expected official receiver name tokens
+    official_names = []
+    if expected_receiver_name:
+        official_names.append(expected_receiver_name)
+    if "kpay" in g:
+        official_names.extend(["Daw Myo Thiri Khin", "Myo Thiri Khin"])
+    elif "wave" in g:
+        official_names.extend(["Ye Win Htut", "Ko Ye Win Htut"])
 
     name_matches = False
-    if name_core_tokens:
-        matches_count = sum(1 for tok in name_core_tokens if tok in normalized_text.lower())
-        if matches_count >= max(1, len(name_core_tokens) - 1):
-            name_matches = True
+    norm_lower = normalized_text.lower()
+    
+    for off_name in official_names:
+        tokens = [w.lower() for w in off_name.split() if len(w) > 2 and w.lower() not in ["daw", "u", "ko", "ma", "mg"]]
+        if not tokens:
+            tokens = [w.lower() for w in off_name.split() if len(w) > 2]
+        if tokens:
+            matches_count = sum(1 for tok in tokens if tok in norm_lower)
+            required = max(1, len(tokens) - 1) if len(tokens) > 2 else len(tokens)
+            if matches_count >= required:
+                name_matches = True
+                break
+
+    # STRICT: Receiver name MUST match the official company account
+    if not name_matches:
+        detected_name_str = f"'{slip_receiver_name}'" if slip_receiver_name else "မကိုက်ညီသော အမည်"
+        return False, f"ငွေလွှဲပြေစာပါ လက်ခံသူအမည် ({detected_name_str}) သည် ကုမ္ပဏီ တရားဝင်ငွေလက်ခံသူ '{expected_receiver_name}' နှင့် မကိုက်ညီပါသဖြင့် အလိုအလျောက်အတည်ပြုခြင်းကို ပယ်ဖျက်လိုက်ပါသည် (Receiver Name Mismatch).", {
+            "error_code": "RECEIVER_NAME_MISMATCH",
+            "slip_receiver_name": slip_receiver_name,
+            "expected_receiver_name": expected_receiver_name,
+            "slip_phone_suffix": slip_phone_suffix,
+            "expected_phone": expected_receiver_phone
+        }
 
     phone_matches = False
     if expected_phone_suffix:
@@ -293,29 +314,11 @@ def parse_and_validate_receipt(
         elif slip_phone_suffix and clean_expected_phone.endswith(slip_phone_suffix):
             phone_matches = True
 
-    # If slip explicitly contains another receiver name (e.g. U Phone Thiha) and DOES NOT match our company receiver
-    if slip_receiver_name and not name_matches:
-        return False, f"ငွေလွှဲပြေစာပါ လက်ခံသူမှာ '{slip_receiver_name}' ဖြစ်နေပြီး ကုမ္ပဏီ တရားဝင်ငွေလက်ခံသူ '{expected_receiver_name}' နှင့် မကိုက်ညီသောကြောင့် အလိုအလျောက်အတည်ပြုခြင်းကို ပယ်ဖျက်လိုက်ပါသည် (Receiver Name Mismatch).", {
-            "error_code": "RECEIVER_NAME_MISMATCH",
-            "slip_receiver_name": slip_receiver_name,
-            "expected_receiver_name": expected_receiver_name,
-            "slip_phone_suffix": slip_phone_suffix,
-            "expected_phone": expected_receiver_phone
-        }
-
     # If phone suffix is detected and explicitly does not match
     if slip_phone_suffix and not phone_matches:
         return False, f"ငွေလွှဲပြေစာပါ လက်ခံသူဖုန်းနံပါတ် (အဆုံး: {slip_phone_suffix}) သည် ကုမ္ပဏီငွေလက်ခံသူဖုန်းနံပါတ် ({expected_receiver_phone}) နှင့် မကိုက်ညီပါခင်ဗျာ (Receiver Phone Mismatch).", {
             "error_code": "RECEIVER_PHONE_MISMATCH",
             "slip_phone_suffix": slip_phone_suffix,
-            "expected_phone": expected_receiver_phone
-        }
-
-    # Neither name nor phone found in slip
-    if not name_matches and not phone_matches:
-        return False, f"ငွေလွှဲပြေစာတွင် ကုမ္ပဏီငွေလက်ခံသူ '{expected_receiver_name}' ({expected_receiver_phone}) အချက်အလက်များ မတွေ့ရှိရပါသဖြင့် Admin မှ စစ်ဆေးပေးပါမည် (Receiver Not Found).", {
-            "error_code": "RECEIVER_NOT_FOUND",
-            "expected_receiver_name": expected_receiver_name,
             "expected_phone": expected_receiver_phone
         }
 
