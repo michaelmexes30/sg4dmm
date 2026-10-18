@@ -1,0 +1,180 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background-color: #0A0803;
+  color: #F7FAFC;
+  font-family: 'Outfit', 'Padauk', sans-serif;
+  overflow-x: hidden;
+}
+
+/* Royal Golden Peacock Glow & Shimmer Effects */
+.glow-gold {
+  text-shadow: 0 0 14px rgba(245, 208, 97, 0.8), 0 0 28px rgba(212, 175, 55, 0.5);
+}
+
+.glow-gold-subtle {
+  text-shadow: 0 0 8px rgba(212, 175, 55, 0.6);
+}
+
+.box-glow-gold {
+  box-shadow: 0 0 30px -5px rgba(212, 175, 55, 0.5), inset 0 0 15px rgba(212, 175, 55, 0.2);
+}
+
+.box-glow-gold-sm {
+  box-shadow: 0 0 14px -2px rgba(212, 175, 55, 0.45);
+}
+
+/* Metallic Gold Gradient Text */
+.gold-gradient-text {
+  background: linear-gradient(135deg, #FFF9C2 0%, #F5D061 35%, #D4AF37 70%, #B8860B 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.gold-gradient-btn {
+  background: linear-gradient(135deg, #B8860B 0%, #D4AF37 40%, #F5D061 70%, #B8860B 100%);
+  background-size: 200% auto;
+  transition: all 0.3s ease;
+}
+
+.gold-gradient-btn:hover {
+  background-position: right center;
+  box-shadow: 0 0 25px rgba(212, 175, 55, 0.6);
+}
+
+/* Glassmorphism with Ornate Gold Trims */
+.glass-panel-gold {
+  background: rgba(18, 14, 6, 0.82);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(212, 175, 55, 0.3);
+}
+
+.glass-panel-gold:hover {
+  border-color: rgba(245, 208, 97, 0.6);
+  box-shadow: 0 0 25px -4px rgba(212, 175, 55, 0.35);
+}
+
+/* Casino Gold LED Cyber Display */
+.font-cyber {
+  font-family: 'Orbitron', 'Noto Sans Myanmar', monospace;
+}
+
+.text-gold-led {
+  color: #FFF2A1;
+  text-shadow: 0 0 10px rgba(255, 215, 0, 0.75), 0 0 20px rgba(212, 175, 55, 0.5);
+}
+
+.box-gold-led {
+  background: radial-gradient(circle at center, rgba(32, 25, 10, 0.95) 0%, rgba(14, 11, 4, 0.98) 100%);
+  border: 2px solid rgba(212, 175, 55, 0.75);
+  box-shadow: 
+    inset 0 0 18px rgba(212, 175, 55, 0.2),
+    0 0 20px -4px rgba(212, 175, 55, 0.35);
+}
+
+.box-gold-led:focus-within {
+  border-color: #F5D061;
+  box-shadow: 
+    inset 0 0 22px rgba(245, 208, 97, 0.3),
+    0 0 28px -2px rgba(245, 208, 97, 0.55);
+}
+
+/* Custom Gold Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0A0803;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #332710;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #D4AF37;
+}
+
+/* Continuous Smooth Marquee for Recent Winners */
+@keyframes continuousMarquee {
+  0% { transform: translateX(0%); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-marquee-slow {
+  display: flex;
+  width: max-content;
+  animation: continuousMarquee 45s linear infinite;
+}
+
+.animate-marquee-slow:hover {
+  animation-play-state: paused;
+}
+
+/* Radiant Gold Glow & Shimmer for 1st Prize */
+@keyframes radiantGlowPulse {
+  0%, 100% {
+    box-shadow: 0 0 25px rgba(255, 215, 0, 0.6), inset 0 0 15px rgba(255, 215, 0, 0.25), 0 0 40px rgba(212, 175, 55, 0.4);
+    border-color: #F5D061;
+  }
+  50% {
+    box-shadow: 0 0 45px rgba(255, 223, 0, 0.95), inset 0 0 25px rgba(255, 223, 0, 0.5), 0 0 70px rgba(255, 215, 0, 0.6);
+    border-color: #FFF9C2;
+  }
+}
+
+@keyframes goldShimmerSweep {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+.first-prize-radiant-card {
+  background: linear-gradient(135deg, rgba(82, 58, 12, 0.92) 0%, rgba(26, 19, 5, 0.96) 50%, rgba(98, 70, 14, 0.92) 100%);
+  border: 2px solid #F5D061;
+  animation: radiantGlowPulse 2.8s ease-in-out infinite;
+  position: relative;
+  overflow: hidden;
+}
+
+.first-prize-shimmer-badge {
+  background: linear-gradient(90deg, #B8860B 0%, #FFF4A3 25%, #F5D061 50%, #FFF4A3 75%, #B8860B 100%);
+  background-size: 200% auto;
+  animation: goldShimmerSweep 3s linear infinite;
+  color: #0A0803;
+  font-weight: 900;
+}
+
+/* Legacy Luxury Navy & Gold Theme Styles */
+.gold-border {
+  border: 1px solid rgba(212, 175, 55, 0.25);
+}
+
+.gold-border-glow {
+  border: 1px solid rgba(212, 175, 55, 0.45);
+  box-shadow: 0 0 16px -2px rgba(212, 175, 55, 0.35);
+}
+
+.navy-surface {
+  background-color: #06080D;
+}
+
+.navy-card {
+  background-color: #0A0D14;
+  border: 1px solid rgba(212, 175, 55, 0.22);
+}
+
+.font-cinzel {
+  font-family: 'Cinzel', serif;
+}
+

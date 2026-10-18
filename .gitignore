@@ -1,0 +1,46 @@
+# Python
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.log
+
+# Databases & local state
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+salone4d_*
+inspect_salone4d*
+scratch/
+
+# Build tools & JDK
+tools/
+*.zip
+
+# Node & Frontend
+frontend/node_modules/
+frontend/.vite/
+
+# Android Native Build artifacts
+frontend/android/.gradle/
+frontend/android/build/
+frontend/android/app/build/
+frontend/android/capacitor-android/build/
+frontend/android/capacitor-cordova-android-plugins/build/
+frontend/android/local.properties
+frontend/android/.idea/
+frontend/android/*.iml
+
+# IDE & OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.gemini/
+
+# Keep releases APKs and frontend dist in repository for Render deployment
+!backend/app/static/releases/SG4D_Myanmar.apk
+!backend/app/static/releases/SG4D_Myanmar_V1.0.1.apk
+!frontend/dist/

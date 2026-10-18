@@ -1,0 +1,19 @@
+                tbody.innerHTML = users.map(u => `
+                    <tr class="hover:bg-navy-850">
+                        <td class="p-4 font-mono text-slate-400">#${u.id}</td>
+                        <td class="p-4 font-bold text-white">${u.phone}</td>
+                        <td class="p-4 text-slate-300">
+                            <div>${u.full_name}</div>
+                            ${u.username && u.username !== u.full_name ? `<div class="text-[10px] text-gold-400 font-mono">@${u.username}</div>` : ''}
+                        </td>
+                        <td class="p-4 font-mono font-bold text-gold-400">${Number(u.balance).toLocaleString()} MMK</td>
+                        <td class="p-4 font-mono font-bold ${u.role === 'AGENT' || u.role === 'ADMIN' ? 'text-gold-400' : 'text-slate-300'}">
+                            ${u.display_agent_code || u.referred_by_code || u.agent_code || '-'}
+                        </td>
+                        <td class="p-4"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${u.role === 'ADMIN' ? 'bg-purple-500/20 text-purple-300' : (u.role === 'AGENT' ? 'bg-gold-500/20 text-gold-400' : 'bg-slate-700 text-slate-300')}">${u.role}</span></td>
+                        <td class="p-4"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${u.is_active ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}">${u.is_active ? 'ACTIVE' : 'BANNED'}</span></td>
+                        <td class="p-4 text-right">
+                            <button onclick="toggleUser(${u.id})" class="px-2.5 py-1 rounded bg-navy-950 border border-slate-700 hover:border-gold-500 text-slate-300 text-xs">${u.is_active ? 'Suspend' : 'Activate'}</button>
+                        </td>
+                    </tr>
+                `).join('');

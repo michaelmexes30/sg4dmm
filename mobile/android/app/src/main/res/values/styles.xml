@@ -1,0 +1,13 @@
+<resources>
+    <!-- SG4DMyanmar Royal Golden Peacock (ရွှေဥဒေါင်း) Android Theme -->
+    <style name="Theme.SG4DMyanmar" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/royal_gold</item>
+        <item name="colorPrimaryVariant">@color/royal_gold_dark</item>
+        <item name="colorOnPrimary">#000000</item>
+        
+        <item name="android:windowBackground">@color/dark_bg</item>
+        <item name="android:statusBarColor">@color/dark_bg</item>
+        <item name="android:navigationBarColor">@color/dark_surface</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

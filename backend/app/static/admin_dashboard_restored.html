@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SG4D Myanmar | Backend Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        gold: {
+                            300: '#F5DE88',
+                            400: '#E6C65B',
+                            500: '#D4AF37',
+                            600: '#AA8820',
+                            700: '#806412'
+                        },
+                        navy: {
+                            700: '#141824',
+                            800: '#0F131E',
+                            900: '#0A0D14',
+                            950: '#06080D'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                        serif: ['Cinzel', 'serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .gold-gradient-text {
+            background: linear-gradient(135deg, #FFF3C4 0%, #D4AF37 50%, #AA8820 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .gold-border {
+            border: 1px solid rgba(212, 175, 55, 0.25);
+        }
+    </style>
+</head>
+<body class="bg-navy-950 text-slate-100 min-h-screen flex flex-col antialiased">
+
+    <!-- Top Navbar -->
+    <header class="bg-navy-900 border-b border-gold-500/20 px-6 py-4 flex items-center justify-between sticky top-0 z-30">
+        <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 rounded-xl gold-border bg-black/60 p-1 flex items-center justify-center shadow-md">
+                <img src="/static/logo.png" alt="Logo" class="w-full h-full object-contain" onerror="this.src='https://api.iconify.design/solar:crown-line-duotone.svg?color=%23d4af37'">
+            </div>
+            <div>
+                <h1 class="font-serif text-lg font-bold gold-gradient-text tracking-wide">SG4D MYANMAR</h1>
+                <p class="text-[10px] uppercase tracking-widest text-gold-400">Backend Control Panel</p>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-4">
+            <div class="text-right hidden sm:block">
+                <div id="user-name" class="text-xs font-semibold text-white">Loading...</div>
+                <div id="user-role" class="text-[10px] text-gold-400 font-mono">ROLE</div>
+            </div>
+            <button onclick="logout()" class="px-3 py-1.5 rounded-lg bg-navy-950 border border-slate-700 hover:border-rose-500 text-slate-300 hover:text-rose-400 text-xs font-medium transition-colors">
+                Sign Out
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-6 space-y-6">
+
+        <!-- Welcome Banner -->
+        <div class="p-6 rounded-2xl bg-gradient-to-r from-navy-900 via-navy-800 to-navy-900 gold-border shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div>
+                <span class="inline-flex items-center space-x-2 px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 text-xs font-medium border border-emerald-500/20 mb-2">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                    <span id="server-clock">MMT Time: Checking...</span>
+                </span>
+                <h2 class="text-2xl font-bold text-white">SG4D Real-time Financial Ledger & Operations</h2>
+                <p class="text-slate-400 text-sm mt-1">တရားဝင် စင်ကာပူ 4D ထီ၊ 30% အေးဂျင့်ကော်မရှင်၊ 10% အပတ်စဉ်ဘောနပ်စ် နှင့် ငွေသွင်း/ငွေထုတ် စီမံခန့်ခွဲမှု။</p>
+            </div>
+            <div class="flex space-x-2">
+                <a href="/docs" target="_blank" class="px-3.5 py-2 rounded-xl bg-gold-500 text-navy-950 font-bold text-xs hover:bg-gold-400 transition-colors">
+                    Swagger API Docs
+                </a>
+                <button onclick="loadDashboard()" class="px-3.5 py-2 rounded-xl bg-navy-950 border border-gold-500/40 text-gold-400 text-xs font-semibold hover:bg-navy-800 transition-colors">
+                    Refresh Data
+                </button>
+            </div>
+        </div>
+
+        <!-- Metric Cards Grid -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <!-- 1. Total Bets -->
+            <div class="p-5 rounded-xl bg-navy-900/90 border border-slate-800 shadow-lg">
+                <div class="text-xs text-slate-400 uppercase font-semibold">Total Bet Volume</div>
+                <div id="stat-bets" class="text-2xl font-bold text-white mt-1">-- MMK</div>
+                <div class="text-[11px] text-gold-400 mt-2 flex items-center space-x-1">
+                    <span>Singapore 4D Standard</span>
+                </div>
+            </div>
+
+            <!-- 2. Agent Commissions -->
+            <div class="p-5 rounded-xl bg-navy-900/90 border border-slate-800 shadow-lg">
+                <div class="text-xs text-slate-400 uppercase font-semibold">30% Agent Commission</div>
+                <div id="stat-commissions" class="text-2xl font-bold text-gold-400 mt-1">-- MMK</div>
+                <div class="text-[11px] text-slate-400 mt-2">Instant wallet payout on bet</div>
+            </div>
+
+            <!-- 3. Total Payouts -->
+            <div class="p-5 rounded-xl bg-navy-900/90 border border-slate-800 shadow-lg">
+                <div class="text-xs text-slate-400 uppercase font-semibold">Total Winning Payouts</div>
+                <div id="stat-payouts" class="text-2xl font-bold text-rose-400 mt-1">-- MMK</div>
+                <div class="text-[11px] text-slate-400 mt-2">1st (2000x), 2nd (1000x), 3rd (500x)</div>
+            </div>
+
+            <!-- 4. Net Profit / Loss -->
+            <div class="p-5 rounded-xl bg-navy-900/90 border border-slate-800 shadow-lg">
+                <div class="text-xs text-slate-400 uppercase font-semibold">Net Profit (Ledger)</div>
+                <div id="stat-profit" class="text-2xl font-bold text-emerald-400 mt-1">-- MMK</div>
+                <div class="text-[11px] text-slate-400 mt-2">Bets - (Payouts + Comm + Bonus)</div>
+            </div>
+        </div>
+
+        <!-- System Rules & Active Draw Banner -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Active Draw Status -->
+            <div class="p-5 rounded-xl bg-navy-900/90 border border-slate-800 space-y-4">
+                <h3 class="text-sm font-bold text-white uppercase tracking-wider flex items-center justify-between">
+                    <span>Active Singapore 4D Draw</span>
+                    <span id="draw-badge" class="px-2 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-400">OPEN</span>
+                </h3>
+                <div class="space-y-2 text-xs">
+                    <div class="flex justify-between py-1 border-b border-slate-800">
+                        <span class="text-slate-400">Draw Number:</span>
+                        <span id="draw-no" class="font-mono text-white font-bold">#5234</span>
+                    </div>
+                    <div class="flex justify-between py-1 border-b border-slate-800">
+                        <span class="text-slate-400">Draw Date:</span>
+                        <span id="draw-date" class="text-white">Loading...</span>
+                    </div>
+                    <div class="flex justify-between py-1 border-b border-slate-800">
+                        <span class="text-slate-400">Bet Cut-off:</span>
+                        <span class="text-gold-400 font-bold">04:30 PM MMT (Strict)</span>
+                    </div>
+                    <div class="flex justify-between py-1">
+                        <span class="text-slate-400">Auto Payout Time:</span>
+                        <span class="text-white font-mono">06:00 PM MMT</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Weekly Bonus & Archiving Cron Status -->
+            <div class="p-5 rounded-xl bg-navy-900/90 border border-slate-800 space-y-4 lg:col-span-2">
+                <h3 class="text-sm font-bold text-white uppercase tracking-wider">
+                    Automated Background Engines (APScheduler)
+                </h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                    <div class="p-3.5 rounded-lg bg-navy-950 border border-slate-800">
+                        <div class="text-gold-400 font-bold flex items-center space-x-1.5">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                            <span>10% Weekly Bonus Engine</span>
+                        </div>
+                        <p class="text-slate-400 mt-1">Runs every Monday 11:00 AM MMT. Qualifying players: &ge; 10,000 MMK bet on Wed/Sat/Sun.</p>
+                    </div>
+                    <div class="p-3.5 rounded-lg bg-navy-950 border border-slate-800">
+                        <div class="text-gold-400 font-bold flex items-center space-x-1.5">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                            <span>3-Month Data Archiver</span>
+                        </div>
+                        <p class="text-slate-400 mt-1">Runs nightly 02:00 AM MMT. Automatically compresses logs &gt; 90 days into SQLite archive tables.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        const token = localStorage.getItem('sg4d_token');
+        const userStr = localStorage.getItem('sg4d_user');
+
+        if (!token || !userStr) {
+            window.location.href = '/backend/login';
+        }
+
+        const user = JSON.parse(userStr);
+        document.getElementById('user-name').textContent = user.name || user.phone;
+        document.getElementById('user-role').textContent = `${user.role} (${user.agent_code || 'DIRECT'})`;
+
+        function logout() {
+            localStorage.clear();
+            window.location.href = '/backend/login';
+        }
+
+        async function loadDashboard() {
+            try {
+                // Fetch Health
+                const hRes = await fetch('/api/health');
+                const health = await hRes.json();
+                document.getElementById('server-clock').textContent = health.server_time_mmt;
+
+                // Fetch Financial overview
+                const fRes = await fetch('/api/admin/financial-overview', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (fRes.ok) {
+                    const data = await fRes.json();
+                    document.getElementById('stat-bets').textContent = `${Number(data.all_time.total_bet_volume).toLocaleString()} MMK`;
+                    document.getElementById('stat-commissions').textContent = `${Number(data.all_time.total_agent_commissions_paid).toLocaleString()} MMK`;
+                    document.getElementById('stat-payouts').textContent = `${Number(data.all_time.total_payouts_distributed).toLocaleString()} MMK`;
+                    document.getElementById('stat-profit').textContent = `${Number(data.all_time.net_profit_loss).toLocaleString()} MMK`;
+                }
+
+                // Fetch Active Draw
+                const dRes = await fetch('/api/bets/active-draw');
+                if (dRes.ok) {
+                    const draw = await dRes.json();
+                    document.getElementById('draw-no').textContent = `#${draw.draw_number}`;
+                    document.getElementById('draw-date').textContent = `${draw.draw_date} (${draw.day_of_week})`;
+                    document.getElementById('draw-badge').textContent = draw.status;
+                }
+            } catch (err) {
+                console.error("Dashboard error:", err);
+            }
+        }
+
+        loadDashboard();
+        setInterval(loadDashboard, 15000);
+    </script>
+</body>
+</html>

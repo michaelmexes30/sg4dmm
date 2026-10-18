@@ -1,0 +1,1063 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SG4D Myanmar | Management Backend Portal</title>
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome & Tailwind -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        gold: {
+                            300: '#F5DE88',
+                            400: '#E6C65B',
+                            500: '#D4AF37',
+                            600: '#AA8820',
+                            700: '#806412'
+                        },
+                        navy: {
+                            700: '#141824',
+                            750: '#101420',
+                            800: '#0F131E',
+                            900: '#0A0D14',
+                            950: '#06080D'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                        serif: ['Cinzel', 'serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        .gold-gradient-text {
+            background: linear-gradient(135deg, #FFF3C4 0%, #D4AF37 50%, #AA8820 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .gold-border {
+            border: 1px solid rgba(212, 175, 55, 0.25);
+        }
+        .custom-scroll::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .custom-scroll::-webkit-scrollbar-track {
+            background: #0A0D14;
+        }
+        .custom-scroll::-webkit-scrollbar-thumb {
+            background: #252D3D;
+            border-radius: 3px;
+        }
+        .custom-scroll::-webkit-scrollbar-thumb:hover {
+            background: #D4AF37;
+        }
+    </style>
+</head>
+<body class="bg-navy-950 text-slate-100 min-h-screen flex antialiased selection:bg-gold-500 selection:text-black">
+
+    <!-- Left Sidebar (Full Salone4D Tree Navigation) -->
+    <aside class="w-64 bg-navy-900 border-r border-gold-500/15 flex flex-col justify-between fixed inset-y-0 z-40 transition-all duration-300">
+        <div>
+            <!-- Brand Logo -->
+            <div class="p-5 flex items-center space-x-3 border-b border-slate-800/80">
+                <div class="w-10 h-10 rounded-xl gold-border bg-black/60 p-1 flex items-center justify-center shadow-lg">
+                    <img src="/static/logo.png" alt="Logo" class="w-full h-full object-contain" onerror="this.src='https://api.iconify.design/solar:crown-line-duotone.svg?color=%23d4af37'">
+                </div>
+                <div>
+                    <h1 class="font-serif text-base font-bold gold-gradient-text tracking-wide">SG4D MYANMAR</h1>
+                    <p class="text-[9px] uppercase tracking-widest text-gold-400 font-semibold">Salone4D Agent Edition</p>
+                </div>
+            </div>
+
+            <!-- Navigation Links -->
+            <nav class="p-3 space-y-1 text-xs font-medium custom-scroll overflow-y-auto max-h-[calc(100vh-140px)]">
+                <!-- Section: Dashboard -->
+                <button onclick="switchTab('dashboard')" id="nav-dashboard" class="nav-item w-full flex items-center space-x-3 px-3 py-2.5 rounded-xl bg-gold-500/15 text-gold-400 font-semibold transition-all">
+                    <i class="fa-solid fa-chart-pie w-4 text-center"></i>
+                    <span>Dashboard & Overview</span>
+                </button>
+
+                <!-- Section: 4D Game Management -->
+                <div class="pt-2">
+                    <div class="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">4D Games & Betting</div>
+                    <button onclick="switchTab('game')" id="nav-game" class="nav-item w-full flex items-center space-x-3 px-3 py-2 rounded-xl text-slate-400 hover:text-white hover:bg-navy-800 transition-all">
+                        <i class="fa-solid fa-dice w-4 text-center"></i>
+                        <span>4D Games & Draws</span>
+                    </button>
+                    <button onclick="switchTab('heatmap')" id="nav-heatmap" class="nav-item w-full flex items-center space-x-3 px-3 py-2 rounded-xl text-slate-400 hover:text-white hover:bg-navy-800 transition-all">
+                        <i class="fa-solid fa-fire w-4 text-center text-rose-400"></i>
+                        <span>Live Heatmap & Closed</span>
+                    </button>
+                    <button onclick="switchTab('bets')" id="nav-bets" class="nav-item w-full flex items-center space-x-3 px-3 py-2 rounded-xl text-slate-400 hover:text-white hover:bg-navy-800 transition-all">
+                        <i class="fa-solid fa-receipt w-4 text-center"></i>
+                        <span>Bet History & Slips</span>
+                    </button>
+                </div>
+
+                <!-- Section: Financial & Balance -->
+                <div class="pt-2">
+                    <div class="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Balance & Gateways</div>
+                    <button onclick="switchTab('topups')" id="nav-topups" class="nav-item w-full flex items-center justify-between px-3 py-2 rounded-xl text-slate-400 hover:text-white hover:bg-navy-800 transition-all">
+                        <div class="flex items-center space-x-3">
+                            <i class="fa-solid fa-money-bill-transfer w-4 text-center text-emerald-400"></i>
+                            <span>Top Up Requests</span>
+                        </div>
+                        <span id="badge-topup" class="px-1.5 py-0.5 text-[10px] rounded bg-emerald-500/20 text-emerald-400 font-bold">KPay</span>
+                    </button>
+                    <button onclick="switchTab('withdrawals')" id="nav-withdrawals" class="nav-item w-full flex items-center justify-between px-3 py-2 rounded-xl text-slate-400 hover:text-white hover:bg-navy-800 transition-all">
+                        <div class="flex items-center space-x-3">
+                            <i class="fa-solid fa-hand-holding-dollar w-4 text-center text-amber-400"></i>
+                            <span>Withdraw Requests</span>
+                        </div>
+                        <span id="badge-withdraw" class="px-1.5 py-0.5 text-[10px] rounded bg-amber-500/20 text-amber-400 font-bold">Wave</span>
+                    </button>
+                </div>
+
+                <!-- Section: Users & Agents -->
+                <div class="pt-2">
+                    <div class="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Members & Agents</div>
+                    <button onclick="switchTab('users')" id="nav-users" class="nav-item w-full flex items-center space-x-3 px-3 py-2 rounded-xl text-slate-400 hover:text-white hover:bg-navy-800 transition-all">
+                        <i class="fa-solid fa-users w-4 text-center"></i>
+                        <span>App Users & Members</span>
+                    </button>
+                    <button onclick="switchTab('agents')" id="nav-agents" class="nav-item w-full flex items-center space-x-3 px-3 py-2 rounded-xl text-slate-400 hover:text-white hover:bg-navy-800 transition-all">
+                        <i class="fa-solid fa-award w-4 text-center text-gold-400"></i>
+                        <span>30% Agent Commission</span>
+                    </button>
+                </div>
+
+                <!-- Section: Reports -->
+                <div class="pt-2">
+                    <div class="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Reports & Statements</div>
+                    <button onclick="switchTab('financial-report')" id="nav-financial-report" class="nav-item w-full flex items-center space-x-3 px-3 py-2 rounded-xl text-slate-400 hover:text-white hover:bg-navy-800 transition-all">
+                        <i class="fa-solid fa-file-invoice-dollar w-4 text-center"></i>
+                        <span>Financial Statements</span>
+                    </button>
+                    <button onclick="switchTab('bonuses')" id="nav-bonuses" class="nav-item w-full flex items-center space-x-3 px-3 py-2 rounded-xl text-slate-400 hover:text-white hover:bg-navy-800 transition-all">
+                        <i class="fa-solid fa-gift w-4 text-center text-purple-400"></i>
+                        <span>10% Weekly Bonuses</span>
+                    </button>
+                </div>
+
+                <!-- Section: Settings -->
+                <div class="pt-2">
+                    <div class="px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500">Configuration</div>
+                    <button onclick="switchTab('settings')" id="nav-settings" class="nav-item w-full flex items-center space-x-3 px-3 py-2 rounded-xl text-slate-400 hover:text-white hover:bg-navy-800 transition-all">
+                        <i class="fa-solid fa-sliders w-4 text-center"></i>
+                        <span>System Settings</span>
+                    </button>
+                </div>
+            </nav>
+        </div>
+
+        <!-- User Profile & Logout Bottom Box -->
+        <div class="p-3 border-t border-slate-800 bg-navy-950/60">
+            <div class="flex items-center justify-between mb-2 px-2">
+                <div class="truncate">
+                    <div id="sidebar-user-name" class="text-xs font-bold text-white truncate">Administrator</div>
+                    <div id="sidebar-user-role" class="text-[10px] text-gold-400 font-mono">ADMIN (ADM001)</div>
+                </div>
+                <div class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
+            </div>
+            <button onclick="logout()" class="w-full py-2 px-3 rounded-lg bg-rose-600/10 border border-rose-500/30 hover:bg-rose-600 hover:text-white text-rose-400 text-xs font-semibold transition-all flex items-center justify-center space-x-2">
+                <i class="fa-solid fa-arrow-right-from-bracket"></i>
+                <span>Sign Out</span>
+            </button>
+        </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <div class="flex-1 ml-64 flex flex-col min-h-screen">
+        <!-- Top Sticky Header -->
+        <header class="bg-navy-900/90 backdrop-blur-md border-b border-gold-500/15 px-8 py-3.5 flex items-center justify-between sticky top-0 z-30">
+            <div class="flex items-center space-x-4">
+                <div id="page-title" class="text-base font-bold text-white flex items-center space-x-2">
+                    <i class="fa-solid fa-chart-pie text-gold-400"></i>
+                    <span>Dashboard Overview</span>
+                </div>
+            </div>
+
+            <!-- Header Right Stats (Company Balance - Salone4D style) -->
+            <div class="flex items-center space-x-6">
+                <!-- Company Balance Pill -->
+                <div class="hidden sm:flex items-center space-x-3 px-4 py-1.5 rounded-xl bg-navy-950 border border-gold-500/30 shadow-inner">
+                    <span class="text-[11px] text-slate-400">Company Balance:</span>
+                    <span id="header-company-balance" class="text-sm font-bold text-gold-400 font-mono">-- MMK</span>
+                </div>
+
+                <!-- Clock Pill -->
+                <div class="flex items-center space-x-2 text-xs text-slate-400 font-mono bg-navy-950 px-3 py-1.5 rounded-lg border border-slate-800">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                    <span id="header-clock">MMT 00:00:00</span>
+                </div>
+
+                <a href="/docs" target="_blank" class="px-3 py-1.5 rounded-lg bg-gold-500/15 border border-gold-500/40 text-gold-400 hover:bg-gold-500 hover:text-navy-950 text-xs font-bold transition-all">
+                    Swagger API
+                </a>
+            </div>
+        </header>
+
+        <!-- Dynamic Content Body -->
+        <main class="flex-1 p-8 space-y-6">
+
+            <!-- TAB 1: DASHBOARD OVERVIEW -->
+            <div id="tab-dashboard" class="tab-pane space-y-6">
+                <!-- Top Metric Cards -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div class="p-5 rounded-2xl bg-navy-900 border border-slate-800 shadow-xl relative overflow-hidden">
+                        <div class="absolute top-0 right-0 p-4 text-slate-700"><i class="fa-solid fa-dice text-4xl"></i></div>
+                        <div class="text-xs uppercase font-semibold text-slate-400">Total 4D Bet Volume</div>
+                        <div id="d-total-bets" class="text-2xl font-bold text-white mt-1">0 MMK</div>
+                        <div class="text-[11px] text-emerald-400 mt-2 font-medium"><i class="fa-solid fa-check"></i> Wed, Sat, Sun Singapore 4D</div>
+                    </div>
+
+                    <div class="p-5 rounded-2xl bg-navy-900 border border-slate-800 shadow-xl relative overflow-hidden">
+                        <div class="absolute top-0 right-0 p-4 text-slate-700"><i class="fa-solid fa-trophy text-4xl"></i></div>
+                        <div class="text-xs uppercase font-semibold text-slate-400">Total Winning Payouts</div>
+                        <div id="d-total-payouts" class="text-2xl font-bold text-rose-400 mt-1">0 MMK</div>
+                        <div class="text-[11px] text-slate-400 mt-2 font-mono">1st (2,000x), 2nd (1,000x), 3rd (500x)</div>
+                    </div>
+
+                    <div class="p-5 rounded-2xl bg-navy-900 border border-slate-800 shadow-xl relative overflow-hidden">
+                        <div class="absolute top-0 right-0 p-4 text-slate-700"><i class="fa-solid fa-handshake text-4xl"></i></div>
+                        <div class="text-xs uppercase font-semibold text-slate-400">30% Agent Commission</div>
+                        <div id="d-total-commissions" class="text-2xl font-bold text-gold-400 mt-1">0 MMK</div>
+                        <div class="text-[11px] text-slate-400 mt-2">Instant wallet payout on bet</div>
+                    </div>
+
+                    <div class="p-5 rounded-2xl bg-navy-900 border border-slate-800 shadow-xl relative overflow-hidden">
+                        <div class="absolute top-0 right-0 p-4 text-slate-700"><i class="fa-solid fa-wallet text-4xl"></i></div>
+                        <div class="text-xs uppercase font-semibold text-slate-400">Net Profit (Ledger)</div>
+                        <div id="d-net-profit" class="text-2xl font-bold text-emerald-400 mt-1">0 MMK</div>
+                        <div class="text-[11px] text-slate-400 mt-2">Bets - (Payouts + Comm + Bonuses)</div>
+                    </div>
+                </div>
+
+                <!-- Active Draw Banner & Quick Actions -->
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="p-6 rounded-2xl bg-gradient-to-br from-navy-900 via-navy-850 to-navy-900 gold-border shadow-xl">
+                        <div class="flex items-center justify-between mb-4">
+                            <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Current Active Draw</span>
+                            <span id="active-draw-badge" class="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">OPEN</span>
+                        </div>
+                        <div class="text-3xl font-extrabold text-white font-serif mb-1" id="active-draw-number">#----</div>
+                        <div class="text-xs text-gold-400 mb-6" id="active-draw-date">Loading Draw Date...</div>
+
+                        <div class="space-y-3 text-xs border-t border-slate-800 pt-4">
+                            <div class="flex justify-between py-1 border-b border-slate-850">
+                                <span class="text-slate-400">Cut-off Time:</span>
+                                <span class="font-bold text-rose-400">04:30 PM MMT (Strict)</span>
+                            </div>
+                            <div class="flex justify-between py-1 border-b border-slate-850">
+                                <span class="text-slate-400">Singapore Results Draw:</span>
+                                <span class="font-mono text-white">05:00 PM - 06:00 PM MMT</span>
+                            </div>
+                            <div class="flex justify-between py-1">
+                                <span class="text-slate-400">Automated Settlement:</span>
+                                <span class="font-mono text-gold-400">06:00 PM MMT</span>
+                            </div>
+                        </div>
+
+                        <div class="mt-6 flex space-x-2">
+                            <button onclick="switchTab('heatmap')" class="flex-1 py-2 rounded-xl bg-gold-500 text-navy-950 font-bold text-xs hover:bg-gold-400 transition-all text-center">
+                                View Draw Heatmap
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Quick Background Jobs & Archiving Trigger -->
+                    <div class="lg:col-span-2 p-6 rounded-2xl bg-navy-900 border border-slate-800 shadow-xl space-y-4">
+                        <div class="flex items-center justify-between">
+                            <h3 class="text-sm font-bold text-white uppercase tracking-wider">Automated Background Engine Status</h3>
+                            <button onclick="triggerWeeklyBonusManual()" class="px-3 py-1.5 rounded-lg bg-purple-600/20 border border-purple-500/30 text-purple-300 hover:bg-purple-600 hover:text-white text-xs font-semibold transition-all">
+                                <i class="fa-solid fa-bolt mr-1"></i> Trigger Monday Bonus
+                            </button>
+                        </div>
+
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                            <div class="p-4 rounded-xl bg-navy-950 border border-slate-800">
+                                <div class="text-gold-400 font-bold flex items-center space-x-2 mb-1">
+                                    <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                                    <span>10% Active Player Weekly Bonus</span>
+                                </div>
+                                <p class="text-slate-400 leading-relaxed">
+                                    Every Monday at 11:00 AM MMT. Qualifying users who bet &ge; 10,000 MMK on Wed, Sat, or Sun receive 10% cash bonus.
+                                </p>
+                            </div>
+
+                            <div class="p-4 rounded-xl bg-navy-950 border border-slate-800">
+                                <div class="text-gold-400 font-bold flex items-center space-x-2 mb-1">
+                                    <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                                    <span>3-Month Automated Data Archiver</span>
+                                </div>
+                                <p class="text-slate-400 leading-relaxed">
+                                    Nightly 02:00 AM MMT. Archives bet slips and transaction records older than 90 days to keep the active DB ultra-fast.
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Recent Transactions Ledger Snapshot -->
+                        <div class="pt-2">
+                            <div class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Live Ledger Stream</div>
+                            <div id="d-ledger-stream" class="space-y-2 text-xs max-h-48 overflow-y-auto custom-scroll">
+                                <div class="text-slate-500 italic py-2">Loading ledger stream...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 2: 4D GAMES & DRAWS (/backend/game) -->
+            <div id="tab-game" class="tab-pane hidden space-y-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-xl font-bold text-white">Singapore 4D Games & Draws</h2>
+                        <p class="text-xs text-slate-400 mt-0.5">Manage draw dates, input official results, and trigger automated payouts.</p>
+                    </div>
+                </div>
+
+                <div class="bg-navy-900 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
+                    <table class="w-full text-left text-xs text-slate-300">
+                        <thead class="bg-navy-950 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
+                            <tr>
+                                <th class="p-4">Draw No</th>
+                                <th class="p-4">Date (MMT)</th>
+                                <th class="p-4">1st Prize</th>
+                                <th class="p-4">2nd Prize</th>
+                                <th class="p-4">3rd Prize</th>
+                                <th class="p-4">Total Staked</th>
+                                <th class="p-4">Status</th>
+                                <th class="p-4 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="games-table-body" class="divide-y divide-slate-800">
+                            <tr><td colspan="8" class="p-6 text-center text-slate-500">Loading games...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TAB 3: LIVE HEATMAP & CLOSED NUMBERS (Salone4D Heatmap & Closed numbers) -->
+            <div id="tab-heatmap" class="tab-pane hidden space-y-6">
+                <!-- Heatmap Controls -->
+                <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div>
+                        <h2 class="text-xl font-bold text-white">4D Bet Heatmap & Number Cap (ဂဏန်းထိုးကြေးအပိတ်/အဖွင့်)</h2>
+                        <p class="text-xs text-slate-400 mt-0.5">Real-time number stake volume. Red = Maximum / Hot stake; Green = Open.</p>
+                    </div>
+                    <!-- Add Closed Number Box -->
+                    <div class="flex items-center space-x-2">
+                        <input type="text" id="input-close-number" maxlength="4" placeholder="4-Digit (e.g. 1234)" class="px-3 py-2 rounded-xl bg-navy-950 border border-slate-700 text-white text-xs placeholder-slate-500 focus:outline-none focus:border-gold-500">
+                        <button onclick="addClosedNumber()" class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all flex items-center space-x-1.5">
+                            <i class="fa-solid fa-ban"></i>
+                            <span>Close Number</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Closed Numbers Tag Bar -->
+                <div class="p-4 rounded-xl bg-navy-900 border border-slate-800">
+                    <div class="text-xs font-semibold text-rose-400 mb-2 flex items-center space-x-2">
+                        <i class="fa-solid fa-lock"></i>
+                        <span>Currently Closed Numbers (ထိုးကြေးပိတ်ထားသော ဂဏန်းများ):</span>
+                    </div>
+                    <div id="closed-numbers-list" class="flex flex-wrap gap-2 text-xs">
+                        <span class="text-slate-500 italic">No closed numbers yet.</span>
+                    </div>
+                </div>
+
+                <!-- 4D Bet Numbers Heatmap Grid (Salone4D 10x10 Matrix) -->
+                <div class="p-6 rounded-2xl bg-navy-900 border border-slate-800">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="text-sm font-bold text-white flex items-center space-x-2">
+                            <span>Betted Numbers Matrix</span>
+                            <span id="heatmap-betted-count" class="px-2 py-0.5 rounded text-[10px] bg-gold-500/20 text-gold-400 font-bold">0 numbers</span>
+                        </div>
+                        <div class="flex items-center space-x-4 text-xs">
+                            <span class="flex items-center space-x-1"><span class="w-3 h-3 rounded bg-emerald-500 inline-block"></span> <span>Normal Stake</span></span>
+                            <span class="flex items-center space-x-1"><span class="w-3 h-3 rounded bg-rose-500 inline-block"></span> <span>Hot / Max (10,000 MMK)</span></span>
+                        </div>
+                    </div>
+
+                    <div id="heatmap-grid" class="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 gap-3">
+                        <div class="col-span-full py-12 text-center text-slate-500">Loading live bet heatmap...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 4: BET HISTORY & VOUCHERS (/backend/bet) -->
+            <div id="tab-bets" class="tab-pane hidden space-y-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-xl font-bold text-white">4D Bet Slips & Ticket Vouchers</h2>
+                        <p class="text-xs text-slate-400 mt-0.5">Filter bets by draw, user phone number, or 4D number.</p>
+                    </div>
+                    <button onclick="loadBets()" class="px-3.5 py-2 rounded-xl bg-navy-950 border border-gold-500/40 text-gold-400 text-xs font-semibold hover:bg-navy-800 transition-colors">
+                        Refresh Slips
+                    </button>
+                </div>
+
+                <div class="bg-navy-900 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
+                    <table class="w-full text-left text-xs text-slate-300">
+                        <thead class="bg-navy-950 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
+                            <tr>
+                                <th class="p-4">Slip Voucher</th>
+                                <th class="p-4">Player Phone</th>
+                                <th class="p-4">Draw Date</th>
+                                <th class="p-4">4D Numbers & Type</th>
+                                <th class="p-4">Total Stake</th>
+                                <th class="p-4">30% Comm</th>
+                                <th class="p-4">Payout</th>
+                                <th class="p-4">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="bets-table-body" class="divide-y divide-slate-800">
+                            <tr><td colspan="8" class="p-6 text-center text-slate-500">Loading bet history...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TAB 5: TOP UP REQUESTS (/backend/balance/top-up) -->
+            <div id="tab-topups" class="tab-pane hidden space-y-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-xl font-bold text-white">Deposit & Top Up Requests (KPay, WavePay, AYA Pay)</h2>
+                        <p class="text-xs text-slate-400 mt-0.5">Auto-approved transactions within 15 mins; manual review for expired or flagged.</p>
+                    </div>
+                    <button onclick="loadTopUps()" class="px-3.5 py-2 rounded-xl bg-navy-950 border border-gold-500/40 text-gold-400 text-xs font-semibold hover:bg-navy-800 transition-colors">
+                        Refresh Deposits
+                    </button>
+                </div>
+
+                <div class="bg-navy-900 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
+                    <table class="w-full text-left text-xs text-slate-300">
+                        <thead class="bg-navy-950 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
+                            <tr>
+                                <th class="p-4">Tx ID</th>
+                                <th class="p-4">Player</th>
+                                <th class="p-4">Gateway</th>
+                                <th class="p-4">Amount</th>
+                                <th class="p-4">Transferred At (MMT)</th>
+                                <th class="p-4">Status</th>
+                                <th class="p-4 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="topups-table-body" class="divide-y divide-slate-800">
+                            <tr><td colspan="7" class="p-6 text-center text-slate-500">Loading top-ups...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TAB 6: WITHDRAW REQUESTS (/backend/balance/withdraw) -->
+            <div id="tab-withdrawals" class="tab-pane hidden space-y-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-xl font-bold text-white">Withdrawal Requests</h2>
+                        <p class="text-xs text-slate-400 mt-0.5">Approve or reject customer wallet cash-out requests.</p>
+                    </div>
+                    <button onclick="loadWithdrawals()" class="px-3.5 py-2 rounded-xl bg-navy-950 border border-gold-500/40 text-gold-400 text-xs font-semibold hover:bg-navy-800 transition-colors">
+                        Refresh Withdrawals
+                    </button>
+                </div>
+
+                <div class="bg-navy-900 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
+                    <table class="w-full text-left text-xs text-slate-300">
+                        <thead class="bg-navy-950 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
+                            <tr>
+                                <th class="p-4">Tx ID</th>
+                                <th class="p-4">Player Phone</th>
+                                <th class="p-4">Gateway</th>
+                                <th class="p-4">Receiver Phone / Account</th>
+                                <th class="p-4">Amount</th>
+                                <th class="p-4">Status</th>
+                                <th class="p-4 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="withdrawals-table-body" class="divide-y divide-slate-800">
+                            <tr><td colspan="7" class="p-6 text-center text-slate-500">Loading withdrawals...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TAB 7: APP USERS (/backend/members/users) -->
+            <div id="tab-users" class="tab-pane hidden space-y-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-xl font-bold text-white">App Users & Player Profiles</h2>
+                        <p class="text-xs text-slate-400 mt-0.5">Manage player accounts, wallet balances, associated agents, and active/banned status.</p>
+                    </div>
+                </div>
+
+                <div class="bg-navy-900 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
+                    <table class="w-full text-left text-xs text-slate-300">
+                        <thead class="bg-navy-950 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
+                            <tr>
+                                <th class="p-4">ID</th>
+                                <th class="p-4">Phone Number</th>
+                                <th class="p-4">Full Name</th>
+                                <th class="p-4">Balance</th>
+                                <th class="p-4">Agent Code</th>
+                                <th class="p-4">Role</th>
+                                <th class="p-4">Status</th>
+                                <th class="p-4 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="users-table-body" class="divide-y divide-slate-800">
+                            <tr><td colspan="8" class="p-6 text-center text-slate-500">Loading users...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TAB 8: 30% AGENT COMMISSION (/backend/members/agents) -->
+            <div id="tab-agents" class="tab-pane hidden space-y-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-xl font-bold text-white">Master Agent Commission Management (30% Cashback)</h2>
+                        <p class="text-xs text-slate-400 mt-0.5">Every player bet automatically credits 30% to their linked Agent code.</p>
+                    </div>
+                </div>
+
+                <div class="p-6 rounded-2xl bg-navy-900 gold-border shadow-xl">
+                    <div class="flex items-center space-x-3 mb-4">
+                        <div class="w-10 h-10 rounded-xl bg-gold-500/20 text-gold-400 flex items-center justify-center font-bold text-lg">🦚</div>
+                        <div>
+                            <div class="text-sm font-bold text-white">Default Master Agent Code: <span class="text-gold-400 font-mono">AGT8899</span></div>
+                            <div class="text-xs text-slate-400">All direct player signups with AGT8899 pay instant 30% commission upon ticket submission.</div>
+                        </div>
+                    </div>
+                    <div class="p-4 rounded-xl bg-navy-950 border border-slate-800 text-xs text-slate-300">
+                        <div class="font-semibold text-gold-400 mb-1">Commission Enforcement Rule:</div>
+                        <p>User registration strictly requires an Agent Code. If a player places 10,000 MMK, the system instantly logs a 3,000 MMK credit to the Agent's wallet with ledger type <code class="text-emerald-400">AGENT_COMMISSION</code>.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAB 9: FINANCIAL REPORTS (/backend/reports/financial) -->
+            <div id="tab-financial-report" class="tab-pane hidden space-y-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-xl font-bold text-white">Financial Statement & Win/Loss Report</h2>
+                        <p class="text-xs text-slate-400 mt-0.5">Daily & Draw-by-Draw breakdown of stakes, payouts, commissions, and net profit.</p>
+                    </div>
+                </div>
+
+                <div class="bg-navy-900 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
+                    <table class="w-full text-left text-xs text-slate-300">
+                        <thead class="bg-navy-950 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
+                            <tr>
+                                <th class="p-4">Draw Date</th>
+                                <th class="p-4">Draw No</th>
+                                <th class="p-4">Total Bets</th>
+                                <th class="p-4">4D Payouts</th>
+                                <th class="p-4">30% Cashback</th>
+                                <th class="p-4">1st / 2nd / 3rd</th>
+                                <th class="p-4">Company Profit</th>
+                                <th class="p-4">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="statement-table-body" class="divide-y divide-slate-800">
+                            <tr><td colspan="8" class="p-6 text-center text-slate-500">Loading statements...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TAB 10: 10% WEEKLY BONUSES -->
+            <div id="tab-bonuses" class="tab-pane hidden space-y-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <h2 class="text-xl font-bold text-white">10% Active Player Weekly Bonus Logs</h2>
+                        <p class="text-xs text-slate-400 mt-0.5">Calculated & distributed every Monday at 11:00 AM MMT for players with &ge; 10,000 MMK draw bet.</p>
+                    </div>
+                    <button onclick="triggerWeeklyBonusManual()" class="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-all">
+                        Execute Bonus Run
+                    </button>
+                </div>
+
+                <div class="bg-navy-900 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
+                    <table class="w-full text-left text-xs text-slate-300">
+                        <thead class="bg-navy-950 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
+                            <tr>
+                                <th class="p-4">Player</th>
+                                <th class="p-4">Week Span</th>
+                                <th class="p-4">Qualifying Bets</th>
+                                <th class="p-4">Qualifying Days</th>
+                                <th class="p-4">Bonus Amount (10%)</th>
+                                <th class="p-4">Status</th>
+                                <th class="p-4">Credited At</th>
+                            </tr>
+                        </thead>
+                        <tbody id="bonuses-table-body" class="divide-y divide-slate-800">
+                            <tr><td colspan="7" class="p-6 text-center text-slate-500">Loading weekly bonus records...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- TAB 11: SYSTEM SETTINGS (/backend/system/settings) -->
+            <div id="tab-settings" class="tab-pane hidden space-y-6">
+                <div>
+                    <h2 class="text-xl font-bold text-white">System Settings & Rules Configuration</h2>
+                    <p class="text-xs text-slate-400 mt-0.5">Singapore 4D limits, cutoff timers, and payment channels.</p>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="p-6 rounded-2xl bg-navy-900 border border-slate-800 space-y-4">
+                        <h3 class="text-sm font-bold text-white uppercase tracking-wider">4D Game Configuration</h3>
+                        <div class="space-y-3 text-xs">
+                            <div class="flex justify-between py-2 border-b border-slate-800">
+                                <span class="text-slate-400">Minimum Bet per Number:</span>
+                                <span class="text-white font-bold font-mono">50 MMK</span>
+                            </div>
+                            <div class="flex justify-between py-2 border-b border-slate-800">
+                                <span class="text-slate-400">Maximum Bet per Number:</span>
+                                <span class="text-white font-bold font-mono">10,000 MMK</span>
+                            </div>
+                            <div class="flex justify-between py-2 border-b border-slate-800">
+                                <span class="text-slate-400">Draw Cutoff Time:</span>
+                                <span class="text-rose-400 font-bold font-mono">04:30 PM MMT</span>
+                            </div>
+                            <div class="flex justify-between py-2 border-b border-slate-800">
+                                <span class="text-slate-400">Draw Days:</span>
+                                <span class="text-gold-400 font-bold">Wednesday, Saturday, Sunday</span>
+                            </div>
+                            <div class="flex justify-between py-2">
+                                <span class="text-slate-400">1st Prize Multiplier:</span>
+                                <span class="text-emerald-400 font-bold font-mono">2,000x</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="p-6 rounded-2xl bg-navy-900 border border-slate-800 space-y-4">
+                        <h3 class="text-sm font-bold text-white uppercase tracking-wider">Gateways & Smart Verification</h3>
+                        <div class="space-y-3 text-xs">
+                            <div class="flex justify-between py-2 border-b border-slate-800">
+                                <span class="text-slate-400">Operating Hours:</span>
+                                <span class="text-white font-bold font-mono">08:00 AM - 08:00 PM MMT</span>
+                            </div>
+                            <div class="flex justify-between py-2 border-b border-slate-800">
+                                <span class="text-slate-400">Smart Expiry Rule:</span>
+                                <span class="text-gold-400 font-bold font-mono">15 Minutes Window</span>
+                            </div>
+                            <div class="flex justify-between py-2 border-b border-slate-800">
+                                <span class="text-slate-400">Supported Providers:</span>
+                                <span class="text-white">KBZPay, WavePay, AYA Pay</span>
+                            </div>
+                            <div class="flex justify-between py-2">
+                                <span class="text-slate-400">Timezone Normalization:</span>
+                                <span class="text-emerald-400 font-bold">Asia/Yangon (UTC+6:30)</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- Core Scripts -->
+    <script>
+        const token = localStorage.getItem('sg4d_token');
+        const userStr = localStorage.getItem('sg4d_user');
+
+        if (!token || !userStr) {
+            window.location.href = '/backend/login';
+        }
+
+        const user = JSON.parse(userStr);
+        document.getElementById('sidebar-user-name').textContent = user.name || user.phone;
+        document.getElementById('sidebar-user-role').textContent = `${user.role} (${user.agent_code || 'DIRECT'})`;
+
+        function logout() {
+            localStorage.clear();
+            window.location.href = '/backend/login';
+        }
+
+        // Tab Switching
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-pane').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.nav-item').forEach(el => {
+                el.classList.remove('bg-gold-500/15', 'text-gold-400', 'font-semibold');
+                el.classList.add('text-slate-400');
+            });
+
+            const targetPane = document.getElementById(`tab-${tabId}`);
+            if (targetPane) targetPane.classList.remove('hidden');
+
+            const navBtn = document.getElementById(`nav-${tabId}`);
+            if (navBtn) {
+                navBtn.classList.remove('text-slate-400');
+                navBtn.classList.add('bg-gold-500/15', 'text-gold-400', 'font-semibold');
+            }
+
+            // Load data for specific tab
+            if (tabId === 'dashboard') loadDashboard();
+            if (tabId === 'game') loadGames();
+            if (tabId === 'heatmap') loadHeatmap();
+            if (tabId === 'bets') loadBets();
+            if (tabId === 'topups') loadTopUps();
+            if (tabId === 'withdrawals') loadWithdrawals();
+            if (tabId === 'users') loadUsers();
+            if (tabId === 'financial-report') loadFinancialReport();
+            if (tabId === 'bonuses') loadBonuses();
+        }
+
+        // Global draw ID for heatmap
+        let currentDrawId = null;
+
+        // 1. Load Dashboard
+        async function loadDashboard() {
+            try {
+                const hRes = await fetch('/api/health');
+                const health = await hRes.json();
+                document.getElementById('header-clock').textContent = health.server_time_mmt.split(' ')[1] + ' MMT';
+
+                const fRes = await fetch('/api/admin/financial-overview', {
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (fRes.ok) {
+                    const data = await fRes.json();
+                    document.getElementById('d-total-bets').textContent = `${Number(data.all_time.total_bet_volume).toLocaleString()} MMK`;
+                    document.getElementById('d-total-payouts').textContent = `${Number(data.all_time.total_payouts_distributed).toLocaleString()} MMK`;
+                    document.getElementById('d-total-commissions').textContent = `${Number(data.all_time.total_agent_commissions_paid).toLocaleString()} MMK`;
+                    document.getElementById('d-net-profit').textContent = `${Number(data.all_time.net_profit_loss).toLocaleString()} MMK`;
+                    document.getElementById('header-company-balance').textContent = `${Number(data.all_time.net_profit_loss).toLocaleString()} MMK`;
+
+                    // Render ledger stream
+                    const streamEl = document.getElementById('d-ledger-stream');
+                    if (data.recent_transactions && data.recent_transactions.length > 0) {
+                        streamEl.innerHTML = data.recent_transactions.slice(0, 6).map(t => `
+                            <div class="flex items-center justify-between p-2 rounded-lg bg-navy-950 border border-slate-850">
+                                <div>
+                                    <span class="font-bold text-white">${t.entry_type}</span>: 
+                                    <span class="text-slate-400">${t.description}</span>
+                                </div>
+                                <span class="font-mono text-gold-400 font-bold">${Number(t.amount).toLocaleString()} MMK</span>
+                            </div>
+                        `).join('');
+                    }
+                }
+
+                // Active Draw
+                const dRes = await fetch('/api/bets/active-draw');
+                if (dRes.ok) {
+                    const draw = await dRes.json();
+                    currentDrawId = draw.id;
+                    document.getElementById('active-draw-number').textContent = `#${draw.draw_number}`;
+                    document.getElementById('active-draw-date').textContent = `${draw.draw_date} (${draw.day_of_week})`;
+                    document.getElementById('active-draw-badge').textContent = draw.status;
+                }
+            } catch (err) {
+                console.error("Dashboard error:", err);
+            }
+        }
+
+        // 2. Load Games
+        async function loadGames() {
+            try {
+                const res = await fetch('/api/admin/4d-games', { headers: { 'Authorization': `Bearer ${token}` } });
+                const games = await res.json();
+                const tbody = document.getElementById('games-table-body');
+                if (!games || games.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="8" class="p-6 text-center text-slate-500">No draw games found.</td></tr>`;
+                    return;
+                }
+                tbody.innerHTML = games.map(g => `
+                    <tr class="hover:bg-navy-850">
+                        <td class="p-4 font-bold text-white font-mono">#${g.draw_number}</td>
+                        <td class="p-4 text-slate-300">${g.draw_date}</td>
+                        <td class="p-4 font-mono font-bold text-gold-400">${g.first_prize || '-'}</td>
+                        <td class="p-4 font-mono font-bold text-slate-300">${g.second_prize || '-'}</td>
+                        <td class="p-4 font-mono font-bold text-slate-400">${g.third_prize || '-'}</td>
+                        <td class="p-4 font-mono text-emerald-400">${Number(g.total_pool_stake).toLocaleString()} MMK</td>
+                        <td class="p-4"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${g.status === 'OPEN' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-700 text-slate-300'}">${g.status}</span></td>
+                        <td class="p-4 text-right">
+                            <button onclick="switchTab('heatmap')" class="px-2.5 py-1 rounded bg-navy-950 border border-slate-700 hover:border-gold-500 text-gold-400 text-xs">Heatmap</button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (e) { console.error(e); }
+        }
+
+        // 3. Load Heatmap & Closed Numbers
+        async function loadHeatmap() {
+            if (!currentDrawId) {
+                const dRes = await fetch('/api/bets/active-draw');
+                const d = await dRes.json();
+                currentDrawId = d.id;
+            }
+            try {
+                const res = await fetch(`/api/admin/heatmap/${currentDrawId}`, { headers: { 'Authorization': `Bearer ${token}` } });
+                const data = await res.json();
+
+                // Closed numbers list
+                const closedEl = document.getElementById('closed-numbers-list');
+                if (data.closed_numbers && data.closed_numbers.length > 0) {
+                    closedEl.innerHTML = data.closed_numbers.map(num => `
+                        <span class="inline-flex items-center space-x-1.5 px-3 py-1 rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/40 font-mono font-bold">
+                            <span>${num}</span>
+                            <button onclick="removeClosedNumber('${num}')" class="text-rose-400 hover:text-white">&times;</button>
+                        </span>
+                    `).join('');
+                } else {
+                    closedEl.innerHTML = `<span class="text-slate-500 italic">No closed numbers yet.</span>`;
+                }
+
+                // Grid Numbers
+                document.getElementById('heatmap-betted-count').textContent = `${data.betted_count} numbers`;
+                const gridEl = document.getElementById('heatmap-grid');
+                if (data.numbers && data.numbers.length > 0) {
+                    gridEl.innerHTML = data.numbers.map(item => `
+                        <div class="p-3 rounded-xl ${item.is_hot ? 'bg-rose-600/90 shadow-lg shadow-rose-900/40 text-white' : 'bg-navy-950 border border-slate-800 text-slate-200'} text-center transition-all hover:scale-105">
+                            <div class="font-mono text-base font-bold tracking-wider">${item.number}</div>
+                            <div class="text-[11px] font-mono mt-1 ${item.is_hot ? 'text-white' : 'text-emerald-400'}">${Number(item.total_staked).toLocaleString()} Ks</div>
+                            <div class="text-[9px] opacity-70 mt-0.5">${item.bet_count} bets</div>
+                        </div>
+                    `).join('');
+                } else {
+                    gridEl.innerHTML = `<div class="col-span-full py-12 text-center text-slate-500">No bets placed on this draw yet.</div>`;
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        async function addClosedNumber() {
+            const input = document.getElementById('input-close-number');
+            const num = input.value.trim();
+            if (!num || num.length !== 4) {
+                alert("Please enter a valid 4-digit number (e.g. 1234).");
+                return;
+            }
+            try {
+                const res = await fetch(`/api/admin/closed-numbers/add?draw_id=${currentDrawId}&number=${num}`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    input.value = '';
+                    loadHeatmap();
+                } else {
+                    alert("Failed to add closed number");
+                }
+            } catch (e) { alert(e.message); }
+        }
+
+        async function removeClosedNumber(num) {
+            try {
+                const res = await fetch(`/api/admin/closed-numbers/remove?draw_id=${currentDrawId}&number=${num}`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) loadHeatmap();
+            } catch (e) { alert(e.message); }
+        }
+
+        // 4. Load Bets
+        async function loadBets() {
+            try {
+                const res = await fetch('/api/admin/all-bets?limit=50', { headers: { 'Authorization': `Bearer ${token}` } });
+                const bets = await res.json();
+                const tbody = document.getElementById('bets-table-body');
+                if (!bets || bets.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="8" class="p-6 text-center text-slate-500">No bet slips placed yet.</td></tr>`;
+                    return;
+                }
+                tbody.innerHTML = bets.map(s => `
+                    <tr class="hover:bg-navy-850">
+                        <td class="p-4 font-mono font-bold text-gold-400">#${s.slip_code}</td>
+                        <td class="p-4 text-white">${s.user_phone}</td>
+                        <td class="p-4 text-slate-400">${s.draw_date}</td>
+                        <td class="p-4">
+                            <div class="flex flex-wrap gap-1">
+                                ${s.items.map(it => `<span class="px-1.5 py-0.5 rounded bg-navy-950 border border-slate-800 text-[10px] font-mono text-white">${it.number} (${Number(it.amount).toLocaleString()} Ks)</span>`).join('')}
+                            </div>
+                        </td>
+                        <td class="p-4 font-mono font-bold text-white">${Number(s.total_stake).toLocaleString()} MMK</td>
+                        <td class="p-4 font-mono text-gold-400">+${Number(s.agent_commission).toLocaleString()} MMK</td>
+                        <td class="p-4 font-mono text-emerald-400">${Number(s.total_payout).toLocaleString()} MMK</td>
+                        <td class="p-4"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${s.status === 'WON' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-700 text-slate-300'}">${s.status}</span></td>
+                    </tr>
+                `).join('');
+            } catch (e) { console.error(e); }
+        }
+
+        // 5. Load Top Ups
+        async function loadTopUps() {
+            try {
+                const res = await fetch('/api/admin/top-ups?limit=50', { headers: { 'Authorization': `Bearer ${token}` } });
+                const txs = await res.json();
+                const tbody = document.getElementById('topups-table-body');
+                if (!txs || txs.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-slate-500">No deposit requests.</td></tr>`;
+                    return;
+                }
+                tbody.innerHTML = txs.map(t => `
+                    <tr class="hover:bg-navy-850">
+                        <td class="p-4 font-mono text-gold-400 font-bold">${t.transaction_id}</td>
+                        <td class="p-4 text-white">${t.user_phone} (${t.user_name})</td>
+                        <td class="p-4 font-bold text-slate-300">${t.gateway}</td>
+                        <td class="p-4 font-mono font-bold text-emerald-400">${Number(t.amount).toLocaleString()} MMK</td>
+                        <td class="p-4 text-slate-400 text-[11px]">${t.transferred_at_mmt || t.created_at}</td>
+                        <td class="p-4"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${t.status === 'AUTO_APPROVED' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}">${t.status}</span></td>
+                        <td class="p-4 text-right">
+                            ${t.status === 'MANUAL_REVIEW' || t.status === 'FLAGGED_EXPIRED' ? `
+                                <button onclick="resolveTx(${t.id}, 'approve')" class="px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] mr-1">Approve</button>
+                                <button onclick="resolveTx(${t.id}, 'reject')" class="px-2 py-1 rounded bg-rose-600 hover:bg-rose-500 text-white text-[10px]">Reject</button>
+                            ` : `<span class="text-slate-500 text-[11px]">Processed</span>`}
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (e) { console.error(e); }
+        }
+
+        // 6. Load Withdrawals
+        async function loadWithdrawals() {
+            try {
+                const res = await fetch('/api/admin/withdrawals?limit=50', { headers: { 'Authorization': `Bearer ${token}` } });
+                const txs = await res.json();
+                const tbody = document.getElementById('withdrawals-table-body');
+                if (!txs || txs.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="7" class="p-6 text-center text-slate-500">No withdrawal requests found.</td></tr>`;
+                    return;
+                }
+                tbody.innerHTML = txs.map(t => `
+                    <tr class="hover:bg-navy-850">
+                        <td class="p-4 font-mono text-gold-400 font-bold">${t.id}</td>
+                        <td class="p-4 text-white">${t.user_phone} (${t.user_name})</td>
+                        <td class="p-4 font-bold text-slate-300">${t.gateway}</td>
+                        <td class="p-4 font-mono text-slate-300">${t.receiver_account}</td>
+                        <td class="p-4 font-mono font-bold text-rose-400">${Number(t.amount).toLocaleString()} MMK</td>
+                        <td class="p-4"><span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400">${t.status}</span></td>
+                        <td class="p-4 text-right">
+                            <button onclick="resolveTx(${t.id}, 'approve')" class="px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] mr-1">Approve</button>
+                            <button onclick="resolveTx(${t.id}, 'reject')" class="px-2 py-1 rounded bg-rose-600 hover:bg-rose-500 text-white text-[10px]">Reject</button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (e) { console.error(e); }
+        }
+
+        async function resolveTx(txId, action) {
+            if (!confirm(`Are you sure you want to ${action} transaction #${txId}?`)) return;
+            try {
+                const res = await fetch(`/api/admin/resolve-transaction/${txId}?action=${action}`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    loadTopUps();
+                    loadWithdrawals();
+                } else {
+                    alert("Failed to update transaction");
+                }
+            } catch (e) { alert(e.message); }
+        }
+
+        // 7. Load Users
+        async function loadUsers() {
+            try {
+                const res = await fetch('/api/admin/users-list?limit=50', { headers: { 'Authorization': `Bearer ${token}` } });
+                const users = await res.json();
+                const tbody = document.getElementById('users-table-body');
+                tbody.innerHTML = users.map(u => `
+                    <tr class="hover:bg-navy-850">
+                        <td class="p-4 font-mono text-slate-400">#${u.id}</td>
+                        <td class="p-4 font-bold text-white">${u.phone}</td>
+                        <td class="p-4 text-slate-300">${u.full_name}</td>
+                        <td class="p-4 font-mono font-bold text-gold-400">${Number(u.balance).toLocaleString()} MMK</td>
+                        <td class="p-4 font-mono text-slate-300">${u.agent_code || '-'}</td>
+                        <td class="p-4"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${u.role === 'ADMIN' ? 'bg-purple-500/20 text-purple-300' : (u.role === 'AGENT' ? 'bg-gold-500/20 text-gold-400' : 'bg-slate-700 text-slate-300')}">${u.role}</span></td>
+                        <td class="p-4"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${u.is_active ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}">${u.is_active ? 'ACTIVE' : 'BANNED'}</span></td>
+                        <td class="p-4 text-right">
+                            <button onclick="toggleUser(${u.id})" class="px-2.5 py-1 rounded bg-navy-950 border border-slate-700 hover:border-gold-500 text-slate-300 text-xs">${u.is_active ? 'Suspend' : 'Activate'}</button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (e) { console.error(e); }
+        }
+
+        async function toggleUser(uid) {
+            try {
+                const res = await fetch(`/api/admin/toggle-user-status/${uid}`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                if (res.ok) loadUsers();
+            } catch (e) { alert(e.message); }
+        }
+
+        // 8. Financial Report
+        async function loadFinancialReport() {
+            try {
+                const res = await fetch('/api/admin/financial-statement', { headers: { 'Authorization': `Bearer ${token}` } });
+                const statements = await res.json();
+                const tbody = document.getElementById('statement-table-body');
+                tbody.innerHTML = statements.map(s => `
+                    <tr class="hover:bg-navy-850">
+                        <td class="p-4 font-bold text-white">${s.draw_date}</td>
+                        <td class="p-4 font-mono text-gold-400">#${s.draw_number}</td>
+                        <td class="p-4 font-mono font-bold text-white">${Number(s.total_bet_amount).toLocaleString()} MMK</td>
+                        <td class="p-4 font-mono text-rose-400">${Number(s.total_payout).toLocaleString()} MMK</td>
+                        <td class="p-4 font-mono text-gold-400">${Number(s.agent_cashback).toLocaleString()} MMK</td>
+                        <td class="p-4 font-mono text-slate-300">${s.first_prize} / ${s.second_prize} / ${s.third_prize}</td>
+                        <td class="p-4 font-mono font-bold ${s.net_profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${Number(s.net_profit).toLocaleString()} MMK</td>
+                        <td class="p-4"><span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-700 text-slate-300">${s.status}</span></td>
+                    </tr>
+                `).join('');
+            } catch (e) { console.error(e); }
+        }
+
+        // 9. Bonuses
+        async function loadBonuses() {
+            try {
+                const res = await fetch('/api/admin/weekly-bonuses', { headers: { 'Authorization': `Bearer ${token}` } });
+                const bonuses = await res.json();
+                const tbody = document.getElementById('bonuses-table-body');
+                tbody.innerHTML = bonuses.map(b => `
+                    <tr class="hover:bg-navy-850">
+                        <td class="p-4 text-white font-bold">${b.player_name} (${b.player_phone})</td>
+                        <td class="p-4 text-slate-300">${b.week_span}</td>
+                        <td class="p-4 font-mono text-white">${Number(b.qualifying_bets).toLocaleString()} MMK</td>
+                        <td class="p-4 text-gold-400 font-bold">${b.qualifying_days} days</td>
+                        <td class="p-4 font-mono font-bold text-emerald-400">+${Number(b.bonus_amount).toLocaleString()} MMK</td>
+                        <td class="p-4"><span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400">CREDITED</span></td>
+                        <td class="p-4 text-slate-400 text-[11px]">${b.credited_at || 'Monday 11:00 AM'}</td>
+                    </tr>
+                `).join('');
+            } catch (e) { console.error(e); }
+        }
+
+        async function triggerWeeklyBonusManual() {
+            if (!confirm("Execute Monday 11:00 AM 10% Weekly Bonus batch settlement right now?")) return;
+            try {
+                const res = await fetch('/api/admin/trigger-weekly-bonus', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` }
+                });
+                const d = await res.json();
+                alert(`Executed! Distributed ${d.credited_count || 0} bonuses totaling ${(d.total_distributed || 0).toLocaleString()} MMK.`);
+                loadBonuses();
+            } catch (e) { alert(e.message); }
+        }
+
+        // Init
+        loadDashboard();
+        setInterval(loadDashboard, 15000);
+    </script>
+</body>
+</html>

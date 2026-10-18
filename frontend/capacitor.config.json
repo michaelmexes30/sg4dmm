@@ -1,0 +1,9 @@
+{
+  "appId": "com.sg4d.myanmar",
+  "appName": "SG4D Myanmar",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  }
+}

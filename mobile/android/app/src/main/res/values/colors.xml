@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- SG4DMyanmar Royal Golden Peacock (ရွှေဥဒေါင်း) Palette -->
+    <color name="royal_gold">#D4AF37</color>
+    <color name="royal_gold_light">#F5D061</color>
+    <color name="royal_gold_dark">#B8860B</color>
+    
+    <color name="dark_bg">#0A0803</color>
+    <color name="dark_surface">#120E06</color>
+    <color name="dark_card">#1A1409</color>
+    
+    <color name="white">#FFFFFF</color>
+    <color name="text_gold">#FFE68A</color>
+    <color name="text_gray">#A0AEC0</color>
+</resources>

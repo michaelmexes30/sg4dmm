@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: sg4d-myanmar-platform
+    runtime: python
+    region: singapore
+    plan: free
+    buildCommand: "pip install -r backend/requirements.txt"
+    startCommand: "cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: TIMEZONE_MMT
+        value: Asia/Yangon
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_BOT_USERNAME
+        value: SG4DMyanmarBot
+      - key: SECRET_KEY
+        generateValue: true

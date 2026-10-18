@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">SG4D Myanmar</string>
+    <string name="title_activity_main">SG4D Myanmar</string>
+    <string name="package_name">com.sg4d.myanmar</string>
+    <string name="custom_url_scheme">com.sg4d.myanmar</string>
+</resources>

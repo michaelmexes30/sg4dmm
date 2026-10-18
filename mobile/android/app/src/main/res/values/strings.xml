@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">SG4D Myanmar</string>
+    <string name="loading">Loading SG4D Myanmar Lottery...</string>
+    <string name="error_network">Network connection error. Please check your internet connection.</string>
+</resources>
