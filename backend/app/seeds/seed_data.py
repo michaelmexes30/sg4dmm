@@ -25,8 +25,10 @@ def seed_database():
     admin = db.query(User).filter(User.phone == "09999999999").first()
     if not admin:
         admin = User(
+            username="michael",
+            nickname="Michael",
             phone="09999999999",
-            full_name="Chief Administrator",
+            full_name="Michael (Chief Administrator)",
             hashed_password=hash_password("Admin123!"),
             role=UserRole.ADMIN,
             balance=10000000.0,
@@ -35,6 +37,9 @@ def seed_database():
         )
         db.add(admin)
     else:
+        admin.username = "michael"
+        admin.nickname = "Michael"
+        admin.full_name = "Michael (Chief Administrator)"
         admin.agent_code = "ADM001"
 
     # 2. Master Agent (Agent Code AGT8899)

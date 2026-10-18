@@ -224,7 +224,7 @@ export default function AdminPortal({ onBackToApp }) {
 
           <div className="hidden sm:flex items-center gap-2 bg-navy-800 px-3 py-1 rounded-xl border border-gold-500/20 text-xs">
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            <span className="font-bold text-white">{user?.nickname || user?.username || 'mglikko'}</span>
+            <span className="font-bold text-white">{user?.nickname || user?.username || 'Michael'}</span>
             <span className="text-[10px] bg-gold-500/20 text-gold-300 font-mono px-1.5 py-0.5 rounded border border-gold-500/30">
               {user?.role || 'ADMIN'}
             </span>

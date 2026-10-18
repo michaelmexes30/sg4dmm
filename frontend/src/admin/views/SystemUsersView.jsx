@@ -735,7 +735,7 @@ export default function SystemUsersView({ onNotify }) {
                   type="text"
                   required
                   disabled={!!editingUser}
-                  placeholder="e.g. CS3 or mglikko"
+                  placeholder="e.g. CS3 or Michael"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   className="w-full bg-navy-950 border border-gold-500/30 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-gold-400 disabled:opacity-50"
