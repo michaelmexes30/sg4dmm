@@ -546,6 +546,20 @@ def start_telegram_bot_background():
     logger.info("Telegram Bot background poller thread started.")
     return thread
 
+def _calc_minutes_elapsed(ts) -> int:
+    """Safely calculates elapsed minutes from a naive or aware datetime relative to now_mmt."""
+    if not ts:
+        return 0
+    now = now_mmt()
+    try:
+        if ts.tzinfo is None:
+            ts = MMT_TZ.localize(ts)
+        else:
+            ts = ts.astimezone(MMT_TZ)
+        return max(0, int((now - ts).total_seconds() / 60))
+    except Exception:
+        return 0
+
 def check_and_notify_pending_withdrawals_job():
     """
     Recurring Background Job:
@@ -554,17 +568,22 @@ def check_and_notify_pending_withdrawals_job():
     """
     db = SessionLocal()
     try:
+        from sqlalchemy import or_
         from app.models.settings import SystemSetting
         from app.models.transaction import Transaction, TransactionType, TransactionStatus
 
         setting = db.query(SystemSetting).first()
         group_id = setting.telegram_finance_group_id if setting else None
         if not group_id:
+            logger.warning("Pending withdrawal reminder job: No telegram_finance_group_id configured.")
             return
 
         pending_txs = db.query(Transaction).filter(
             Transaction.tx_type == TransactionType.WITHDRAWAL,
-            Transaction.status == TransactionStatus.MANUAL_REVIEW
+            or_(
+                Transaction.status == TransactionStatus.MANUAL_REVIEW,
+                Transaction.status == "MANUAL_REVIEW"
+            )
         ).order_by(Transaction.id.asc()).all()
 
         if not pending_txs:
@@ -575,32 +594,41 @@ def check_and_notify_pending_withdrawals_job():
         time_str = now_mmt().strftime("%I:%M:%S %p MMT")
 
         items_text = []
-        for i, t in enumerate(pending_txs[:6], 1):
-            u_phone = t.user.phone if t.user else "Unknown"
-            u_name = t.user.nickname or t.user.full_name or t.user.username or "Player"
-            delta_mins = max(0, int((now_mmt() - (t.submission_timestamp_mmt or now_mmt())).total_seconds() / 60))
+        for i, t in enumerate(pending_txs[:8], 1):
+            u_phone = t.user.phone if (t.user and t.user.phone) else "Unknown"
+            u_name = (t.user.nickname or t.user.full_name or t.user.username) if t.user else "Player"
+            gw_str = (t.gateway or "KPAY").upper()
+            delta_mins = _calc_minutes_elapsed(t.submission_timestamp_mmt or t.created_at)
+            rec_id = t.receiver_id or u_phone
+
             items_text.append(
-                f"{i}. <b>{t.amount:,.0f} MMK</b> ({t.gateway.upper()}) ➔ {u_name} (<code>{u_phone}</code>) "
-                f"<i>[ဆိုင်းငံ့: {delta_mins} mins]</i>"
+                f"{i}. <b>{t.amount:,.0f} MMK</b> ({gw_str})\n"
+                f"   👤 {u_name} (<code>{u_phone}</code>)\n"
+                f"   🏦 လက်ခံ: <code>{rec_id}</code>\n"
+                f"   🔖 ID: <code>{t.transaction_id}</code>\n"
+                f"   ⏳ <b>ဆိုင်းငံ့ကြာချိန်: {delta_mins} မိနစ်</b>"
             )
 
-        more_text = f"\n... နှင့် အခြား <b>{count - 6}</b> စောင် ကျန်ရှိနေပါသည်" if count > 6 else ""
+        more_text = f"\n... နှင့် အခြား <b>{count - 8}</b> စောင် ကျန်ရှိနေပါသည်" if count > 8 else ""
 
         alert_text = (
             f"⏰ <b>[PENDING WITHDRAWAL REMINDER - သတိပေးချက်]</b> ⏰\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"⚠️ <b>ငွေလွှဲပေးရန် စောင့်ဆိုင်းနေသော ငွေထုတ်စာရင်း ({count}) စောင် ရှိနေပါသည်!</b>\n"
             f"💰 <b>ဆိုင်းငံ့ စုစုပေါင်း:</b> <b>{total_amount:,.0f} MMK</b>\n"
-            f"⏱️ <b>စစ်ဆေးချိန်:</b> {time_str}\n\n"
-            f"📋 <b>ဆိုင်းငံ့ စာရင်းများ:</b>\n"
-            + "\n".join(items_text)
+            f"⏱️ <b>သတိပေးချိန်:</b> {time_str}\n\n"
+            f"📋 <b>ဆိုင်းငံ့ စာရင်းများ:</b>\n\n"
+            + "\n\n".join(items_text)
             + more_text +
-            f"\n━━━━━━━━━━━━━━━━━━━━\n"
-            f"👉 <i>(ငွေလွှဲမပြီးမချင်း ၃ မိနစ်တစ်ကြိမ် အသိပေးပါမည်။ ကျေးဇူးပြု၍ Admin Panel တွင် စိစစ်ငွေလွှဲပေးပါရန်။)</i>"
+            f"\n\n━━━━━━━━━━━━━━━━━━━━\n"
+            f"👉 <i>(ငွေထုတ်စာရင်း ဆိုင်းငံ့နေသ၍ ၃ မိနစ်တစ်ကြိမ် အသိပေးစာ ပေးပို့နေမည် ဖြစ်ပါသည်။ Admin Panel > Withdraw Review တွင် အတည်ပြုငွေလွှဲပေးပါရန်။)</i>"
         )
 
-        send_telegram_message(group_id, alert_text)
-        logger.info(f"Sent 3-min pending withdrawal reminder for {count} pending requests.")
+        sent = send_telegram_message(group_id, alert_text)
+        if sent:
+            logger.info(f"Sent 3-min pending withdrawal reminder for {count} pending requests to group {group_id}.")
+        else:
+            logger.warning(f"Failed to send 3-min pending withdrawal reminder to group {group_id}.")
     except Exception as e:
         logger.error(f"Error in check_and_notify_pending_withdrawals_job: {e}", exc_info=True)
     finally:

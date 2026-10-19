@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -91,11 +92,12 @@ async def lifespan(app: FastAPI):
         replace_existing=True
     )
 
-    # 6. Check and notify pending withdrawal reviews every 3 minutes
+    # 6. Check and notify pending withdrawal reviews immediately on startup, then every 3 minutes
     scheduler.add_job(
         check_and_notify_pending_withdrawals_job,
         "interval",
         minutes=3,
+        next_run_time=datetime.now(pytz.timezone(settings.TIMEZONE_MMT)),
         id="pending_withdrawals_telegram_reminder_job",
         replace_existing=True
     )
