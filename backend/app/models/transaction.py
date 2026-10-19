@@ -39,6 +39,7 @@ class Transaction(Base):
     
     # Screenshot proof
     slip_image_url = Column(String(255), nullable=True)
+    slip_hash = Column(String(64), index=True, nullable=True) # SHA-256 hash of slip file to prevent duplicate reuse
     
     # Timezone & 15-Min Expiry Audit Trail
     tx_timestamp_raw = Column(String(64), nullable=True) # Time string from receipt / user device

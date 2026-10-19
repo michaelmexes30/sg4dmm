@@ -1,5 +1,8 @@
 import os
 import re
+import hashlib
+import threading
+import logging
 from datetime import datetime
 from typing import Dict, Any, Tuple, Optional
 from sqlalchemy.orm import Session
@@ -16,6 +19,27 @@ from app.core.timezone_utils import (
     is_within_gateway_operating_hours,
     format_mmt
 )
+
+logger = logging.getLogger("payment_verifier")
+
+# In-Memory Concurrency Guards (Prevent simultaneous double/triple submit race conditions)
+_tx_lock = threading.Lock()
+_processing_txs = set()
+_processing_hashes = set()
+
+def calculate_file_sha256(filepath: str) -> Optional[str]:
+    """Calculates SHA-256 hash of a receipt image file to detect duplicate uploads."""
+    if not filepath or not os.path.exists(filepath):
+        return None
+    try:
+        h = hashlib.sha256()
+        with open(filepath, "rb") as f:
+            while chunk := f.read(8192):
+                h.update(chunk)
+        return h.hexdigest()
+    except Exception as e:
+        logger.error(f"Error calculating slip hash: {e}")
+        return None
 
 def validate_gateway_tx_format(gateway: str, tx_id: str) -> Tuple[bool, str]:
     """Validates if transaction ID looks structurally valid for the gateway."""
@@ -79,21 +103,21 @@ def verify_and_process_deposit(
     slip_image_url: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Smart Payment Verification Pipeline:
+    Hardened Smart Payment Verification Pipeline:
     1. 24/7 Topup / Deposit Support.
-    2. Format check & Duplicate TxID check.
-    3. Receiver ID verification against official agent accounts.
-    4. Timezone normalization to MMT (UTC+6:30).
-    5. 15-Minute Expiry Rule enforcement.
-    6. Instant Auto-Approval if all conditions match.
+    2. Format check & In-memory Concurrency Lock (prevents race conditions).
+    3. Global duplicate Transaction ID & Duplicate Slip Image Hash check.
+    4. Official receiver account check (KPay/WavePay).
+    5. Fail-Safe OCR receipt analysis (Date, Time, TxID, Receiver Name, Amount).
+    6. 15-Minute Expiry Rule enforcement.
+    7. Safety Threshold (amounts > 50,000 MMK require Admin Manual Review).
+    8. Real-time Telegram Finance Alert for transactions >= 50,000 MMK.
     """
     submission_time = now_mmt()
-    
-    # 1. 24/7 Topup / Deposit Support (Operating hours only apply to Withdrawals)
-    # Deposits are verified and auto-approved round-the-clock
+    clean_tx = transaction_id.strip()
 
-    # 2. Format Check
-    is_fmt_valid, fmt_msg = validate_gateway_tx_format(gateway, transaction_id)
+    # 1. Format Check
+    is_fmt_valid, fmt_msg = validate_gateway_tx_format(gateway, clean_tx)
     if not is_fmt_valid:
         return {
             "success": False,
@@ -101,36 +125,7 @@ def verify_and_process_deposit(
             "message": f"Invalid Transaction ID format: {fmt_msg}"
         }
 
-    # 3. Duplicate Check
-    existing_tx = db.query(Transaction).filter(
-        Transaction.transaction_id == transaction_id.strip(),
-        Transaction.status.in_([
-            TransactionStatus.AUTO_APPROVED, 
-            TransactionStatus.COMPLETED, 
-            TransactionStatus.MANUAL_REVIEW
-        ])
-    ).first()
-    
-    if existing_tx:
-        return {
-            "success": False,
-            "status": TransactionStatus.REJECTED,
-            "message": f"Duplicate Transaction ID '{transaction_id}'! This transaction has already been submitted."
-        }
-
-    # 4. Receiver ID & Official Accounts
-    setting = db.query(SystemSetting).first() if db else None
-    g = gateway.lower()
-    if g in ["kpay", "kbzpay"]:
-        expected_receiver_phone = setting.kpay_phone if setting and setting.kpay_phone else "09795007441"
-        expected_receiver_name = setting.kpay_name if setting and setting.kpay_name else "Daw Myo Thiri Khin"
-    else:
-        expected_receiver_phone = setting.wave_phone if setting and setting.wave_phone else "09894169717"
-        expected_receiver_name = setting.wave_name if setting and setting.wave_name else "Ye Win Htut"
-
-    receiver_valid = is_valid_receiver(gateway, receiver_id, db)
-
-    # 4b. Local Slip OCR Extraction & Verification (Optional)
+    # Locate slip image and compute SHA-256 hash
     local_slip_path = None
     if slip_image_url:
         clean_name = os.path.basename(slip_image_url)
@@ -144,177 +139,281 @@ def verify_and_process_deposit(
                 local_slip_path = p
                 break
 
-    ocr_valid = True
-    ocr_msg = ""
-    ocr_details = {}
+    slip_hash = calculate_file_sha256(local_slip_path) if local_slip_path else None
 
-    if local_slip_path:
-        try:
-            from app.core.ocr_verifier import parse_and_validate_receipt
-            ocr_valid, ocr_msg, ocr_details = parse_and_validate_receipt(
-                slip_image_path=local_slip_path,
-                gateway=gateway,
-                input_tx_id=transaction_id,
-                input_amount=amount,
-                expected_receiver_phone=expected_receiver_phone,
-                expected_receiver_name=expected_receiver_name,
-                submission_time_mmt=submission_time
-            )
-        except Exception as e:
-            ocr_valid = True
-            ocr_msg = "Slip image attached."
-            ocr_details = {}
-    else:
+    # In-memory concurrency lock (prevents multi-tab / simultaneous double submissions)
+    with _tx_lock:
+        if clean_tx in _processing_txs:
+            return {
+                "success": False,
+                "status": TransactionStatus.REJECTED,
+                "message": "ဤ Transaction ID အား စစ်ဆေးနေဆဲဖြစ်ပါသည်။ ထပ်ခါတလဲလဲ မနှိပ်ပါနှင့် ခင်ဗျာ (Duplicate request being processed)."
+            }
+        if slip_hash and slip_hash in _processing_hashes:
+            return {
+                "success": False,
+                "status": TransactionStatus.REJECTED,
+                "message": "ဤ ငွေလွှဲပြေစာပုံအား စစ်ဆေးနေဆဲဖြစ်ပါသည်။ ထပ်ခါတလဲလဲ မနှိပ်ပါနှင့် ခင်ဗျာ (Duplicate slip being processed)."
+            }
+        _processing_txs.add(clean_tx)
+        if slip_hash:
+            _processing_hashes.add(slip_hash)
+
+    try:
+        # 2. Global Duplicate Transaction ID Check
+        existing_tx = db.query(Transaction).filter(
+            Transaction.transaction_id == clean_tx,
+            Transaction.status.in_([
+                TransactionStatus.AUTO_APPROVED, 
+                TransactionStatus.COMPLETED, 
+                TransactionStatus.MANUAL_REVIEW
+            ])
+        ).first()
+        
+        if existing_tx:
+            return {
+                "success": False,
+                "status": TransactionStatus.REJECTED,
+                "message": f"Duplicate Transaction ID '{clean_tx}'! ဤ Transaction ID ဖြင့် ငွေသွင်းထားပြီး ဖြစ်ပါသဖြင့် ထပ်မံဖြည့်သွင်း၍ မရနိုင်ပါ ခင်ဗျာ။"
+            }
+
+        # 2b. Global Duplicate Slip Image Hash Check (Detects reused receipt screenshots)
+        if slip_hash:
+            existing_slip = db.query(Transaction).filter(
+                Transaction.slip_hash == slip_hash,
+                Transaction.status.in_([
+                    TransactionStatus.AUTO_APPROVED, 
+                    TransactionStatus.COMPLETED, 
+                    TransactionStatus.MANUAL_REVIEW
+                ])
+            ).first()
+            if existing_slip:
+                return {
+                    "success": False,
+                    "status": TransactionStatus.REJECTED,
+                    "message": "ဤ ငွေလွှဲပြေစာပုံ (Slip Image) ကို ယခင်က အသုံးပြုပြီးဖြစ်ပါသဖြင့် ထပ်မံအသုံးပြုခွင့် မရှိပါ ခင်ဗျာ (Duplicate Slip Image Detected)."
+                }
+
+        # 3. Receiver ID & Official Accounts
+        setting = db.query(SystemSetting).first() if db else None
+        g = gateway.lower()
+        if g in ["kpay", "kbzpay"]:
+            expected_receiver_phone = setting.kpay_phone if setting and setting.kpay_phone else "09795007441"
+            expected_receiver_name = setting.kpay_name if setting and setting.kpay_name else "Daw Myo Thiri Khin"
+        else:
+            expected_receiver_phone = setting.wave_phone if setting and setting.wave_phone else "09894169717"
+            expected_receiver_name = setting.wave_name if setting and setting.wave_name else "Ye Win Htut"
+
+        receiver_valid = is_valid_receiver(gateway, receiver_id, db)
+
+        # 4. Fail-Safe Local Slip OCR Extraction & Verification
         ocr_valid = True
-        ocr_msg = "Structured transaction verification."
+        ocr_msg = ""
         ocr_details = {}
 
-    # 5. Timestamp validation: Prioritize true slip datetime from OCR if extracted, else use form timestamp
-    if ocr_details.get("slip_datetime"):
-        tx_time_mmt = ocr_details["slip_datetime"]
-    else:
-        tx_time_mmt = parse_slip_timestamp(raw_timestamp, client_tz=client_timezone)
-
-    delta_minutes = (submission_time - tx_time_mmt).total_seconds() / 60.0
-    time_valid = (-2.0 <= delta_minutes <= 15.0)
-    time_msg = f"Receipt timestamp {format_mmt(tx_time_mmt)} evaluated ({delta_minutes:.1f} mins ago)."
-
-    # Determine status & audit notes
-    verification_notes = []
-    verification_notes.append(f"Gateway: {gateway.upper()} (24/7 Topup Active)")
-    verification_notes.append(f"Slip Timestamp MMT: {format_mmt(tx_time_mmt)}")
-    verification_notes.append(f"Submission Time MMT: {format_mmt(submission_time)}")
-    verification_notes.append(f"Elapsed Time: {delta_minutes:.1f} mins. Result: {time_msg}")
-    
-    if receiver_valid:
-        verification_notes.append(f"Receiver ID '{receiver_id}' matches official agent account.")
-    else:
-        verification_notes.append(f"WARNING: Receiver ID '{receiver_id}' does not match official receiver accounts.")
-
-    # Decision Matrix with Strict Multi-Tier Verification
-    err_code = ocr_details.get("error_code")
-    
-    if err_code == "SLIP_DATE_MISMATCH":
-        status = TransactionStatus.REJECTED
-        verification_notes.append(f"ACTION: REJECTED (Date Mismatch): {ocr_msg}")
-    elif err_code in ["RECEIVER_NAME_MISMATCH", "RECEIVER_PHONE_MISMATCH", "TXID_MISMATCH", "AMOUNT_MISMATCH"]:
-        status = TransactionStatus.REJECTED
-        verification_notes.append(f"ACTION: REJECTED: {ocr_msg}")
-    elif err_code in ["SLIP_TIMESTAMP_EXPIRED", "SLIP_TIMESTAMP_FUTURE"] or delta_minutes > 15.0:
-        status = TransactionStatus.FLAGGED_EXPIRED
-        verification_notes.append(f"ACTION: Auto-flagged as EXPIRED (>15 mins). {ocr_msg}")
-    elif err_code in ["SLIP_DATE_NOT_FOUND", "SLIP_TIME_UNVERIFIED", "OCR_FAILED"]:
-        status = TransactionStatus.MANUAL_REVIEW
-        verification_notes.append(f"ACTION: Flagged for Manual Review (Slip Time Unverified): {ocr_msg}")
-    elif not is_fmt_valid:
-        status = TransactionStatus.REJECTED
-        verification_notes.append(f"ACTION: REJECTED (Invalid Format): {fmt_msg}")
-    elif not receiver_valid:
-        status = TransactionStatus.MANUAL_REVIEW
-        verification_notes.append("ACTION: Flagged for Manual Review (Receiver ID mismatch).")
-    elif not ocr_valid:
-        status = TransactionStatus.MANUAL_REVIEW
-        verification_notes.append(f"ACTION: Flagged for Manual Review: {ocr_msg}")
-    elif not local_slip_path:
-        status = TransactionStatus.MANUAL_REVIEW
-        verification_notes.append("ACTION: Flagged for Manual Review (No Slip Image attached).")
-    else:
-        status = TransactionStatus.AUTO_APPROVED
-        verification_notes.append(f"ACTION: Auto-Verified & Instant Credit Approved! {ocr_msg}")
-
-    # Create transaction record
-    tx_record = Transaction(
-        user_id=user.id,
-        tx_type=TransactionType.DEPOSIT,
-        gateway=gateway.lower(),
-        transaction_id=transaction_id.strip(),
-        receiver_id=receiver_id.strip(),
-        amount=amount,
-        slip_image_url=slip_image_url,
-        tx_timestamp_raw=raw_timestamp,
-        client_timezone=client_timezone,
-        tx_timestamp_mmt=tx_time_mmt,
-        submission_timestamp_mmt=submission_time,
-        delta_minutes=delta_minutes,
-        is_time_valid=time_valid,
-        is_receiver_valid=receiver_valid,
-        is_tx_unique=True,
-        status=status,
-        verification_notes=" | ".join(verification_notes)
-    )
-    db.add(tx_record)
-    db.flush()
-
-    # If AUTO_APPROVED, credit wallet and record in Financial Ledger
-    if status == TransactionStatus.AUTO_APPROVED:
-        user.balance += amount
-        
-        today_str = submission_time.strftime("%Y-%m-%d")
-        ledger_entry = FinancialLedger(
-            entry_type=LedgerEntryType.DEPOSIT,
-            amount=amount,
-            running_balance=user.balance,
-            reference_id=transaction_id.strip(),
-            reference_type="TRANSACTION",
-            description=f"Auto-verified Deposit via {gateway.upper()} ({amount:,.0f} MMK)",
-            logged_at_mmt=submission_time,
-            date_str=today_str
-        )
-        db.add(ledger_entry)
-
-        # Send in-app notification
-        notif = Notification(
-            user_id=user.id,
-            title="💳 Deposit Approved & Credited!",
-            message=f"Your deposit of {amount:,.0f} MMK via {gateway.upper()} has been auto-verified and credited. New balance: {user.balance:,.0f} MMK.",
-            notif_type="DEPOSIT_APPROVED",
-            is_read=False
-        )
-        db.add(notif)
-
-        # Update Daily Summary
-        daily_summary = db.query(DailyLedgerSummary).filter(DailyLedgerSummary.date_str == today_str).first()
-        if not daily_summary:
-            daily_summary = DailyLedgerSummary(
-                date_str=today_str,
-                total_deposits=amount,
-                net_profit=amount,
-                total_transactions_count=1,
-                updated_at_mmt=submission_time
-            )
-            db.add(daily_summary)
+        if local_slip_path:
+            try:
+                from app.core.ocr_verifier import parse_and_validate_receipt
+                ocr_valid, ocr_msg, ocr_details = parse_and_validate_receipt(
+                    slip_image_path=local_slip_path,
+                    gateway=gateway,
+                    input_tx_id=clean_tx,
+                    input_amount=amount,
+                    expected_receiver_phone=expected_receiver_phone,
+                    expected_receiver_name=expected_receiver_name,
+                    submission_time_mmt=submission_time
+                )
+            except Exception as e:
+                logger.error(f"OCR verification failed with exception: {e}", exc_info=True)
+                ocr_valid = False
+                ocr_msg = f"ငွေလွှဲပြေစာအား စစ်ဆေးရာတွင် စနစ်အမှား ဖြစ်ပေါ်သဖြင့် Admin မှ စစ်ဆေးပေးပါမည် (OCR Error: {str(e)})"
+                ocr_details = {"error_code": "OCR_FAILED"}
         else:
-            daily_summary.total_deposits += amount
-            daily_summary.net_profit += amount
-            daily_summary.total_transactions_count += 1
-            daily_summary.updated_at_mmt = submission_time
+            ocr_valid = False
+            ocr_msg = "ငွေလွှဲပြေစာပုံ ထည့်သွင်းထားခြင်း မရှိပါသဖြင့် Admin မှ စစ်ဆေးပေးပါမည် (No Slip Attached)."
+            ocr_details = {"error_code": "NO_SLIP"}
 
-    db.commit()
-    db.refresh(tx_record)
-    db.refresh(user)
+        # 5. Timestamp validation
+        if ocr_details.get("slip_datetime"):
+            tx_time_mmt = ocr_details["slip_datetime"]
+        else:
+            tx_time_mmt = parse_slip_timestamp(raw_timestamp, client_tz=client_timezone)
 
-    if status == TransactionStatus.AUTO_APPROVED:
-        is_success = True
-        msg = f"ငွေသွင်း အောင်မြင်ပါသည်! သင့်အကောင့်ထဲသို့ {amount:,.0f} ကျပ် ချက်ချင်း အလိုအလျောက် ဖြည့်သွင်းပြီးပါပြီ ခင်ဗျာ။"
-    elif status == TransactionStatus.REJECTED:
-        is_success = False
-        msg = f"ငွေသွင်းလွှာ ပယ်ချခံရပါသည်: {ocr_msg or 'လက်ခံသူအမည် သို့မဟုတ် ငွေလွှဲအချက်အလက် မကိုက်ညီပါ။'}"
-    elif status == TransactionStatus.FLAGGED_EXPIRED:
-        is_success = False
-        msg = f"ငွေသွင်းလွှာသည် သတ်မှတ်ချိန် (၁၅ မိနစ်) ကျော်လွန်နေပါသည် ({delta_minutes:.1f} မိနစ် ကွာခြား)။ အလိုအလျောက်အတည်ပြုခြင်းကို ရပ်ဆိုင်းထားပြီး Admin စစ်ဆေးရန် စာရင်းသို့ ရောက်ရှိနေပါသည်။"
-    else:
-        is_success = False
-        msg = f"ငွေသွင်းလွှာကို Admin စစ်ဆေးရန် စာရင်းသို့ ပို့ထားပါသည်: {ocr_msg or 'စစ်ဆေးဆဲ'}"
+        delta_minutes = (submission_time - tx_time_mmt).total_seconds() / 60.0
+        time_valid = (-2.0 <= delta_minutes <= 15.0)
+        time_msg = f"Receipt timestamp {format_mmt(tx_time_mmt)} evaluated ({delta_minutes:.1f} mins ago)."
 
-    return {
-        "success": is_success,
-        "transaction_id": tx_record.id,
-        "status": status,
-        "amount": amount,
-        "new_balance": user.balance if status == TransactionStatus.AUTO_APPROVED else None,
-        "delta_minutes": round(delta_minutes, 1),
-        "is_time_valid": time_valid,
-        "is_receiver_valid": receiver_valid,
-        "notes": tx_record.verification_notes,
-        "message": msg
-    }
+        # Determine status & audit notes
+        verification_notes = []
+        verification_notes.append(f"Gateway: {gateway.upper()} (24/7 Topup Active)")
+        verification_notes.append(f"Slip Timestamp MMT: {format_mmt(tx_time_mmt)}")
+        verification_notes.append(f"Submission Time MMT: {format_mmt(submission_time)}")
+        verification_notes.append(f"Elapsed Time: {delta_minutes:.1f} mins. Result: {time_msg}")
+        if slip_hash:
+            verification_notes.append(f"Slip SHA256: {slip_hash[:16]}...")
+        
+        if receiver_valid:
+            verification_notes.append(f"Receiver ID '{receiver_id}' matches official agent account.")
+        else:
+            verification_notes.append(f"WARNING: Receiver ID '{receiver_id}' does not match official receiver accounts.")
+
+        # Safety Threshold (Default 50,000 MMK; higher amounts require Admin Manual Check)
+        max_auto_amount = setting.auto_approve_max_amount if (setting and setting.auto_approve_max_amount) else 50000.0
+
+        # Decision Matrix with Strict Multi-Tier Verification
+        err_code = ocr_details.get("error_code")
+        
+        if err_code == "SLIP_DATE_MISMATCH":
+            status = TransactionStatus.REJECTED
+            verification_notes.append(f"ACTION: REJECTED (Date Mismatch): {ocr_msg}")
+        elif err_code in ["RECEIVER_NAME_MISMATCH", "RECEIVER_PHONE_MISMATCH", "TXID_MISMATCH", "AMOUNT_MISMATCH"]:
+            status = TransactionStatus.REJECTED
+            verification_notes.append(f"ACTION: REJECTED: {ocr_msg}")
+        elif err_code in ["SLIP_TIMESTAMP_EXPIRED", "SLIP_TIMESTAMP_FUTURE"] or delta_minutes > 15.0:
+            status = TransactionStatus.FLAGGED_EXPIRED
+            verification_notes.append(f"ACTION: Auto-flagged as EXPIRED (>15 mins). {ocr_msg}")
+        elif err_code in ["SLIP_DATE_NOT_FOUND", "SLIP_TIME_UNVERIFIED", "OCR_FAILED", "NO_SLIP"]:
+            status = TransactionStatus.MANUAL_REVIEW
+            verification_notes.append(f"ACTION: Flagged for Manual Review ({err_code}): {ocr_msg}")
+        elif not is_fmt_valid:
+            status = TransactionStatus.REJECTED
+            verification_notes.append(f"ACTION: REJECTED (Invalid Format): {fmt_msg}")
+        elif not receiver_valid:
+            status = TransactionStatus.MANUAL_REVIEW
+            verification_notes.append("ACTION: Flagged for Manual Review (Receiver ID mismatch).")
+        elif not ocr_valid:
+            status = TransactionStatus.MANUAL_REVIEW
+            verification_notes.append(f"ACTION: Flagged for Manual Review: {ocr_msg}")
+        elif not local_slip_path:
+            status = TransactionStatus.MANUAL_REVIEW
+            verification_notes.append("ACTION: Flagged for Manual Review (No Slip Image attached).")
+        elif amount > max_auto_amount:
+            # High-Value Protection: Requires Admin Manual Review to prevent fake/AI-edited slips
+            status = TransactionStatus.MANUAL_REVIEW
+            verification_notes.append(f"ACTION: Flagged for Manual Review (Amount {amount:,.0f} MMK > Safety Limit {max_auto_amount:,.0f} MMK - Admin verification required). {ocr_msg}")
+        else:
+            status = TransactionStatus.AUTO_APPROVED
+            verification_notes.append(f"ACTION: Auto-Verified & Instant Credit Approved! {ocr_msg}")
+
+        # Create transaction record
+        tx_record = Transaction(
+            user_id=user.id,
+            tx_type=TransactionType.DEPOSIT,
+            gateway=gateway.lower(),
+            transaction_id=clean_tx,
+            receiver_id=receiver_id.strip(),
+            amount=amount,
+            slip_image_url=slip_image_url,
+            slip_hash=slip_hash,
+            tx_timestamp_raw=raw_timestamp,
+            client_timezone=client_timezone,
+            tx_timestamp_mmt=tx_time_mmt,
+            submission_timestamp_mmt=submission_time,
+            delta_minutes=delta_minutes,
+            is_time_valid=time_valid,
+            is_receiver_valid=receiver_valid,
+            is_tx_unique=True,
+            status=status,
+            verification_notes=" | ".join(verification_notes)
+        )
+        db.add(tx_record)
+        db.flush()
+
+        # If AUTO_APPROVED, credit wallet and record in Financial Ledger
+        if status == TransactionStatus.AUTO_APPROVED:
+            user.balance += amount
+            
+            today_str = submission_time.strftime("%Y-%m-%d")
+            ledger_entry = FinancialLedger(
+                entry_type=LedgerEntryType.DEPOSIT,
+                amount=amount,
+                running_balance=user.balance,
+                reference_id=clean_tx,
+                reference_type="TRANSACTION",
+                description=f"Auto-verified Deposit via {gateway.upper()} ({amount:,.0f} MMK)",
+                logged_at_mmt=submission_time,
+                date_str=today_str
+            )
+            db.add(ledger_entry)
+
+            # Send in-app notification
+            notif = Notification(
+                user_id=user.id,
+                title="💳 Deposit Approved & Credited!",
+                message=f"Your deposit of {amount:,.0f} MMK via {gateway.upper()} has been auto-verified and credited. New balance: {user.balance:,.0f} MMK.",
+                notif_type="DEPOSIT_APPROVED",
+                is_read=False
+            )
+            db.add(notif)
+
+            # Update Daily Summary
+            daily_summary = db.query(DailyLedgerSummary).filter(DailyLedgerSummary.date_str == today_str).first()
+            if not daily_summary:
+                daily_summary = DailyLedgerSummary(
+                    date_str=today_str,
+                    total_deposits=amount,
+                    net_profit=amount,
+                    total_transactions_count=1,
+                    updated_at_mmt=submission_time
+                )
+                db.add(daily_summary)
+            else:
+                daily_summary.total_deposits += amount
+                daily_summary.net_profit += amount
+                daily_summary.total_transactions_count += 1
+                daily_summary.updated_at_mmt = submission_time
+
+        db.commit()
+        db.refresh(tx_record)
+        db.refresh(user)
+
+        # Real-time Telegram Finance Alert for transactions >= 50,000 MMK
+        try:
+            from app.core.telegram_bot import notify_finance_alert
+            notify_finance_alert(
+                db=db,
+                tx_type="DEPOSIT",
+                amount=amount,
+                user_phone=user.phone,
+                user_name=user.nickname or user.full_name or user.username,
+                gateway=gateway,
+                transaction_id=clean_tx,
+                status=status,
+                notes=tx_record.verification_notes
+            )
+        except Exception as ex:
+            logger.error(f"Error triggering telegram deposit finance alert: {ex}")
+
+        if status == TransactionStatus.AUTO_APPROVED:
+            is_success = True
+            msg = f"ငွေသွင်း အောင်မြင်ပါသည်! သင့်အကောင့်ထဲသို့ {amount:,.0f} ကျပ် ချက်ချင်း အလိုအလျောက် ဖြည့်သွင်းပြီးပါပြီ ခင်ဗျာ။"
+        elif status == TransactionStatus.REJECTED:
+            is_success = False
+            msg = f"ငွေသွင်းလွှာ ပယ်ချခံရပါသည်: {ocr_msg or 'လက်ခံသူအမည် သို့မဟုတ် ငွေလွှဲအချက်အလက် မကိုက်ညီပါ။'}"
+        elif status == TransactionStatus.FLAGGED_EXPIRED:
+            is_success = False
+            msg = f"ငွေသွင်းလွှာသည် သတ်မှတ်ချိန် (၁၅ မိနစ်) ကျော်လွန်နေပါသည် ({delta_minutes:.1f} မိနစ် ကွာခြား)။ အလိုအလျောက်အတည်ပြုခြင်းကို ရပ်ဆိုင်းထားပြီး Admin စစ်ဆေးရန် စာရင်းသို့ ရောက်ရှိနေပါသည်။"
+        elif amount > max_auto_amount and ocr_valid:
+            is_success = False
+            msg = f"ငွေသွင်းလွှာ အချက်အလက်များ မှန်ကန်ပါသည်။ သို့သော် ငွေပမာဏ {amount:,.0f} ကျပ်သည် လုံခြုံရေး သတ်မှတ်ချက် ({max_auto_amount:,.0f} ကျပ်) ထက် များပြားပါသဖြင့် Admin မှ ဘဏ်အကောင့်ထဲ စစ်ဆေးပြီး မကြာမီ အတည်ပြုပေးပါမည် ခင်ဗျာ။"
+        else:
+            is_success = False
+            msg = f"ငွေသွင်းလွှာကို Admin စစ်ဆေးရန် စာရင်းသို့ ပို့ထားပါသည်: {ocr_msg or 'စစ်ဆေးဆဲ'}"
+
+        return {
+            "success": is_success,
+            "transaction_id": tx_record.id,
+            "status": status,
+            "amount": amount,
+            "new_balance": user.balance if status == TransactionStatus.AUTO_APPROVED else None,
+            "delta_minutes": round(delta_minutes, 1),
+            "is_time_valid": time_valid,
+            "is_receiver_valid": receiver_valid,
+            "notes": tx_record.verification_notes,
+            "message": msg
+        }
+    finally:
+        with _tx_lock:
+            _processing_txs.discard(clean_tx)
+            if slip_hash:
+                _processing_hashes.discard(slip_hash)

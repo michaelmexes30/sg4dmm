@@ -203,6 +203,23 @@ def submit_withdrawal(
     db.commit()
     db.refresh(tx)
 
+    # Real-time Telegram Finance Alert for withdrawal >= 50,000 MMK
+    try:
+        from app.core.telegram_bot import notify_finance_alert
+        notify_finance_alert(
+            db=db,
+            tx_type="WITHDRAWAL",
+            amount=req.amount,
+            user_phone=current_user.phone,
+            user_name=current_user.nickname or current_user.full_name or current_user.username,
+            gateway=req.gateway,
+            transaction_id=tx_code,
+            status="MANUAL_REVIEW",
+            notes=f"To: {req.receiver_account} ({req.receiver_name})"
+        )
+    except Exception as ex:
+        logger.error(f"Error triggering telegram withdrawal finance alert: {ex}")
+
     return {
         "success": True,
         "transaction_id": tx.id,

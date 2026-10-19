@@ -55,6 +55,80 @@ def send_telegram_message(chat_id: str, text: str, reply_markup: dict = None, pa
         logger.error(f"Error calling Telegram sendMessage for {chat_id}: {e}")
         return False
 
+def notify_finance_alert(
+    db: Session,
+    tx_type: str,            # "DEPOSIT" or "WITHDRAWAL"
+    amount: float,
+    user_phone: str,
+    user_name: str,
+    gateway: str,
+    transaction_id: str,
+    status: str,
+    notes: str = ""
+) -> bool:
+    """
+    Sends real-time Telegram alert to the designated Finance Telegram Group
+    for any Topup or Withdrawal >= 50,000 MMK.
+    """
+    if amount < 50000.0:
+        return False
+
+    try:
+        from app.models.settings import SystemSetting
+        setting = db.query(SystemSetting).first()
+        group_id = setting.telegram_finance_group_id if setting else None
+        
+        if not group_id:
+            logger.info(f"Finance alert >= 50k MMK logged but no telegram_finance_group_id configured. Amount: {amount:,.0f} MMK, Tx: {transaction_id}")
+            return False
+
+        time_str = now_mmt().strftime("%Y-%m-%d %I:%M:%S %p MMT")
+        is_deposit = (tx_type.upper() == "DEPOSIT")
+        
+        type_badge = "💳 <b>ငွေသွင်း (TOPUP)</b>" if is_deposit else "💸 <b>ငွေထုတ် (WITHDRAWAL)</b>"
+        
+        if status in ["AUTO_APPROVED", "COMPLETED"]:
+            status_badge = "✅ အောင်မြင် (AUTO APPROVED)"
+        elif status == "MANUAL_REVIEW":
+            status_badge = "⏳ စစ်ဆေးရန် (MANUAL REVIEW REQUIRED)"
+        elif status == "FLAGGED_EXPIRED":
+            status_badge = "⚠️ ၁၅ မိနစ်ကျော်လွန် (EXPIRED REVIEW)"
+        elif status == "REJECTED":
+            status_badge = "❌ ပယ်ချထားသည် (REJECTED)"
+        else:
+            status_badge = f"ℹ️ {status}"
+
+        alert_text = (
+            f"🚨 <b>SG4D FINANCE ALERT (>= 50,000 MMK)</b> 🚨\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"📌 <b>အမျိုးအစား:</b> {type_badge}\n"
+            f"💰 <b>ငွေပမာဏ:</b> <b>{amount:,.0f} MMK</b>\n"
+            f"👤 <b>ကစားသူ:</b> {user_name} (<code>{user_phone}</code>)\n"
+            f"🏦 <b>Payment Gateway:</b> <b>{gateway.upper()}</b>\n"
+            f"🔖 <b>Transaction ID:</b> <code>{transaction_id}</code>\n"
+            f"📊 <b>အခြေအနေ:</b> <b>{status_badge}</b>\n"
+            f"⏱️ <b>အချိန်:</b> {time_str}\n"
+        )
+        if notes:
+            alert_text += f"📝 <b>မှတ်ချက်:</b> <i>{notes}</i>\n"
+            
+        if is_deposit and amount > 50000.0 and status == "MANUAL_REVIEW":
+            alert_text += (
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"⚠️ <b>အရေးကြီး သတိပေးချက်:</b> ငွေပမာဏ ၅၀,၀၀၀ ကျပ်ထက် များပြားသဖြင့် AI/Fake Slip အန္တရာယ်မှ ကာကွယ်ရန် Auto-Approve မလုပ်ဘဲ Admin စစ်ဆေးရန် စာရင်းသို့ ပို့ထားပါသည်။ KPay / WavePay လက်ခံအကောင့်ထဲ ငွေတကယ်ဝင်/မဝင် စစ်ဆေးပြီးမှ Admin Dashboard တွင် Approve ပေးပါရန်။\n"
+            )
+        alert_text += f"━━━━━━━━━━━━━━━━━━━━"
+
+        def _send_async(gid, txt):
+            send_telegram_message(gid, txt)
+
+        t = threading.Thread(target=_send_async, args=(group_id, alert_text), daemon=True)
+        t.start()
+        return True
+    except Exception as e:
+        logger.error(f"Error in notify_finance_alert: {e}")
+        return False
+
 def upsert_telegram_mapping(db: Session, phone: str, chat_id: str, username: str = None, first_name: str = None):
     """Safely inserts or updates a Telegram chat mapping without duplicate key conflicts."""
     clean_phone = normalize_phone(phone)
@@ -209,11 +283,45 @@ def handle_telegram_update(update: dict, db: Session):
 
     chat = message.get("chat", {})
     chat_id = str(chat.get("id"))
+    chat_type = chat.get("type", "private")
     from_user = message.get("from", {})
     first_name = from_user.get("first_name", "Member")
     username = from_user.get("username", "")
 
     bot_username = settings.TELEGRAM_BOT_USERNAME
+
+    # Case 0: Message from a Telegram Group / Supergroup (Finance Notification Group auto-bind)
+    if chat_type in ["group", "supergroup"]:
+        text = (message.get("text") or "").strip()
+        is_bot_added = False
+        if "new_chat_members" in message:
+            for member in message["new_chat_members"]:
+                if member.get("username", "").lower() == bot_username.lower():
+                    is_bot_added = True
+                    break
+
+        from app.models.settings import SystemSetting
+        setting = db.query(SystemSetting).first()
+        should_bind = (
+            is_bot_added or 
+            text.startswith("/set_finance_group") or 
+            text.startswith("/finance") or 
+            text.startswith("/id") or 
+            (setting and not setting.telegram_finance_group_id)
+        )
+
+        if should_bind and setting:
+            setting.telegram_finance_group_id = chat_id
+            db.commit()
+            group_title = chat.get("title", "SG4D Finance Group")
+            confirm_msg = (
+                f"🔔 <b>SG4D Myanmar Finance Alert Bot ချိတ်ဆက်ပြီးပါပြီ!</b>\n\n"
+                f"ဤ Telegram Group (<code>{group_title}</code>) အား <b>Topup & Withdraw (၅၀,၀၀၀ ကျပ်နှင့်အထက်)</b> အလိုအလျောက် သတိပေးစာများ ပေးပို့မည့် တရားဝင် Group အဖြစ် သတ်မှတ်လိုက်ပါပြီ ခင်ဗျာ။\n\n"
+                f"🆔 <b>Group Chat ID:</b> <code>{chat_id}</code>\n"
+                f"💰 <b>Alert Threshold:</b> 50,000 MMK"
+            )
+            send_telegram_message(chat_id, confirm_msg)
+        return
 
     # Case A: User shared phone contact
     if "contact" in message and message["contact"]:

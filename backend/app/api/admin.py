@@ -1666,6 +1666,10 @@ class SystemSettingsUpdate(BaseModel):
     agent_tier4_turnover: Optional[float] = None
     agent_tier4_commission: Optional[float] = None
 
+    # Finance Alert & Security Settings
+    telegram_finance_group_id: Optional[str] = None
+    auto_approve_max_amount: Optional[float] = None
+
 class ToggleAgentCreditRequest(BaseModel):
     enabled: Optional[bool] = None
 
@@ -3401,6 +3405,10 @@ def get_system_settings(
         "agent_tier4_turnover": float(getattr(setting, "agent_tier4_turnover", 15000000.0) or 15000000.0),
         "agent_tier4_commission": float(getattr(setting, "agent_tier4_commission", 30.0) or 30.0),
 
+        # Finance Alert & Security Settings
+        "telegram_finance_group_id": setting.telegram_finance_group_id or "",
+        "auto_approve_max_amount": float(getattr(setting, "auto_approve_max_amount", 50000.0) or 50000.0),
+
         "company_balance_oct": float(setting.company_balance_oct or 4198200.0),
         "updated_at": setting.updated_at.strftime("%Y-%m-%d %H:%M:%S") if setting.updated_at else None
     }
@@ -3511,6 +3519,10 @@ def update_system_settings(
     if req.agent_tier3_commission is not None: setting.agent_tier3_commission = float(req.agent_tier3_commission)
     if req.agent_tier4_turnover is not None: setting.agent_tier4_turnover = float(req.agent_tier4_turnover)
     if req.agent_tier4_commission is not None: setting.agent_tier4_commission = float(req.agent_tier4_commission)
+
+    # 8. Finance Alert & Security Settings
+    if req.telegram_finance_group_id is not None: setting.telegram_finance_group_id = req.telegram_finance_group_id.strip()
+    if req.auto_approve_max_amount is not None: setting.auto_approve_max_amount = float(req.auto_approve_max_amount)
 
     setting.updated_at = now_mmt()
     db.commit()

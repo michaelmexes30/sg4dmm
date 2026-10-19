@@ -64,6 +64,8 @@ def seed_admin_and_system_data():
             ("agent_tier3_commission", "FLOAT DEFAULT 25.0"),
             ("agent_tier4_turnover", "FLOAT DEFAULT 15000000.0"),
             ("agent_tier4_commission", "FLOAT DEFAULT 30.0"),
+            ("telegram_finance_group_id", "VARCHAR(50)"),
+            ("auto_approve_max_amount", "FLOAT DEFAULT 50000.0"),
         ]
         for col_name, col_type in new_cols:
             if col_name not in cols:
@@ -72,6 +74,15 @@ def seed_admin_and_system_data():
                     db.commit()
                 except Exception as ex:
                     print(f"Notice adding {col_name}: {ex}")
+
+        # Check transactions table for slip_hash
+        tx_cols = [c['name'] for c in inspector.get_columns('transactions')]
+        if 'slip_hash' not in tx_cols:
+            try:
+                db.execute(text("ALTER TABLE transactions ADD COLUMN slip_hash VARCHAR(64)"))
+                db.commit()
+            except Exception as ex:
+                print(f"Notice adding slip_hash to transactions: {ex}")
     except Exception as e:
         print(f"System settings inspection notice: {e}")
 

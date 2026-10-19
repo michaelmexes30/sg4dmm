@@ -63,6 +63,10 @@ class SystemSetting(Base):
     agent_tier4_turnover = Column(Float, default=15000000.0) # Tier 4: 15,000,000 MMK
     agent_tier4_commission = Column(Float, default=30.0)     # Tier 4: 30%
 
+    # Security & Finance Notification
+    telegram_finance_group_id = Column(String(50), nullable=True) # e.g. -100... Telegram Group Chat ID for >= 50k alerts
+    auto_approve_max_amount = Column(Float, default=50000.0)      # Max amount to auto-approve; above this requires manual review
+
     updated_at = Column(DateTime, default=now_mmt, onupdate=now_mmt)
 
 class ApplicationRelease(Base):

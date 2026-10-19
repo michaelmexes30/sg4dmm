@@ -52,7 +52,9 @@ export default function SettingsView({ onNotify }) {
     agent_lvl2_target_turnover: 2000000,
     agent_lvl3_target_turnover: 5000000,
     agent_lvl4_target_turnover: 10000000,
-    agent_lvl5_target_turnover: 20000000
+    agent_lvl5_target_turnover: 20000000,
+    telegram_finance_group_id: '',
+    auto_approve_max_amount: 50000
   });
 
   // Application Releases state (Screenshot 13)
@@ -121,10 +123,12 @@ export default function SettingsView({ onNotify }) {
         reward_percentage: Number(systemSettings.reward_percentage),
         consecutive_reward_percent: Number(systemSettings.reward_percentage),
         weekly_bonus_rate: Number(systemSettings.reward_percentage),
-        commission_rate: Number(systemSettings.commission_rate || 30)
+        commission_rate: Number(systemSettings.commission_rate || 30),
+        telegram_finance_group_id: (systemSettings.telegram_finance_group_id || '').trim(),
+        auto_approve_max_amount: Number(systemSettings.auto_approve_max_amount ?? 50000)
       };
       await apiClient.updateAdminSystemSettings(payload);
-      if (onNotify) onNotify('System settings (Max Risk Cap, Cutoff Time & Payment Accounts) updated successfully!', 'success');
+      if (onNotify) onNotify('System settings & Telegram Finance Alerts updated successfully!', 'success');
       await loadSettingsData();
     } catch (err) {
       if (onNotify) onNotify(err.message || 'Failed to save settings', 'error');
@@ -805,6 +809,73 @@ export default function SettingsView({ onNotify }) {
                 <p className="text-[11px] text-slate-400 leading-relaxed">
                   Agent ကိုယ်တိုင် ထိုးသော ထိုးကြေး (Self-Bets) နှင့် Agent လက်အောက်ရှိ Downline ကစားသူများ ထိုးသော ထိုးကြေး (Downline Bets) ပေါင်းလဒ် (Combined Turnover) ပြည့်မီပါက စနစ်မှ Tier အလိုအလျောက် တိုးမြှင့်ပေးပြီး သက်ဆိုင်ရာ ကော်မရှင်ရာခိုင်နှုန်း (Tier 1: 15%, Tier 2: 20%, Tier 3: 25%, Tier 4: 30%) အား အလိုအလျောက် တွက်ချက်စာရင်းသွင်းပေးမည်ဖြစ်ပါသည်။
                 </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Telegram Finance Alert & Topup Security Settings Card */}
+          <div className="bg-navy-900/90 border border-sky-500/30 rounded-2xl p-5 shadow-xl space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-sky-500/20 pb-4">
+              <div>
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                  <Send className="w-5 h-5 text-sky-400" />
+                  <span>Telegram Finance Alerts & Auto-Approve Security (ငွေကြေး အသိပေးချက်နှင့် လုံခြုံရေး စနစ်)</span>
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Topup & Withdraw ငွေပမာဏ ၅၀,၀၀၀ ကျပ်နှင့်အထက် ရှိပါက Telegram Group သို့ အချိန်နှင့်တပြေးညီ အလိုအလျောက် သတိပေးစာ ပေးပို့ခြင်း
+                </p>
+              </div>
+
+              <span className="px-3 py-1 rounded-xl bg-sky-500/10 text-sky-300 border border-sky-500/30 text-xs font-bold font-mono">
+                Real-Time Telegram Sync
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Telegram Finance Group Chat ID */}
+              <div className="bg-navy-950 p-3.5 rounded-xl border border-sky-500/20 space-y-2">
+                <label className="block text-xs font-bold text-sky-300 flex items-center gap-1.5">
+                  <Bell className="w-4 h-4 text-sky-400" />
+                  <span>Telegram Finance Group Chat ID (သတိပေးစာပို့မည့် Group ID)</span>
+                </label>
+                <input
+                  type="text"
+                  value={systemSettings.telegram_finance_group_id || ''}
+                  onChange={(e) => setSystemSettings({ ...systemSettings, telegram_finance_group_id: e.target.value })}
+                  placeholder="e.g. -1002345678901 (Auto-detected)"
+                  className="w-full bg-navy-900 border border-sky-500/30 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-sky-400"
+                />
+                <div className="p-2.5 rounded-lg bg-navy-900/80 border border-sky-500/10 text-[11px] text-slate-400 space-y-1">
+                  <p className="text-sky-200 font-semibold">💡 ချိတ်ဆက်ရန် လွယ်ကူသော နည်းလမ်း-</p>
+                  <p>
+                    Telegram Group (<a href="https://t.me/+vWUCA2JnQxw2MTNl" target="_blank" rel="noreferrer" className="text-sky-400 underline font-mono">https://t.me/+vWUCA2JnQxw2MTNl</a>) ထဲသို့ <b>@SG4DMyanmarBot</b> အား Add ထည့်ထားပါက Bot မှ Group ID ကို အလိုအလျောက် ရယူချိတ်ဆက်ပေးပါမည်။
+                  </p>
+                </div>
+              </div>
+
+              {/* Auto-Approve Safety Threshold */}
+              <div className="bg-navy-950 p-3.5 rounded-xl border border-amber-500/20 space-y-2">
+                <label className="block text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-amber-400" />
+                  <span>Auto-Approve Safety Limit (အလိုအလျောက်အတည်ပြု ကန့်သတ်ချက်)</span>
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    step="5000"
+                    min="1000"
+                    value={systemSettings.auto_approve_max_amount ?? 50000}
+                    onChange={(e) => setSystemSettings({ ...systemSettings, auto_approve_max_amount: Number(e.target.value) })}
+                    className="w-full bg-navy-900 border border-amber-500/30 rounded-xl px-3 py-2 text-xs text-amber-300 font-bold font-mono focus:outline-none focus:border-amber-400"
+                  />
+                  <span className="text-xs text-slate-400 font-bold">Ks</span>
+                </div>
+                <div className="p-2.5 rounded-lg bg-navy-900/80 border border-amber-500/10 text-[11px] text-slate-400 space-y-1">
+                  <p className="text-amber-200 font-semibold">🛡️ Fake/AI-Slip ကာကွယ်မှု စည်းမျဉ်း-</p>
+                  <p>
+                    ငွေပမာဏ <b>{Number(systemSettings.auto_approve_max_amount ?? 50000).toLocaleString()} ကျပ်</b> ထက် များသော ငွေသွင်းမှုများကို AI ပြေစာအတု လိမ်လည်မှုများမှ ကာကွယ်ရန် Auto-Approve မလုပ်ဘဲ Admin ဘက်မှ KPay/WavePay အကောင့်ထဲ စစ်ဆေးပြီးမှ အတည်ပြုပေးရန် Manual Review သို့ ပို့ဆောင်ပါမည်။
+                  </p>
+                </div>
               </div>
             </div>
           </div>
