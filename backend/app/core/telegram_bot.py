@@ -68,9 +68,12 @@ def notify_finance_alert(
 ) -> bool:
     """
     Sends real-time Telegram alert to the designated Finance Telegram Group
-    for any Topup or Withdrawal >= 50,000 MMK.
-    """
-    if amount < 50000.0:
+    is_deposit = (tx_type.upper() == "DEPOSIT")
+    # For Deposits: Alert for high-value >= 50,000 MMK
+    # For Withdrawals: Alert for ALL withdrawal requests (>= 1,000 MMK) so Admin can transfer funds immediately!
+    if is_deposit and amount < 50000.0:
+        return False
+    if not is_deposit and amount < 1000.0:
         return False
 
     try:
@@ -79,18 +82,18 @@ def notify_finance_alert(
         group_id = setting.telegram_finance_group_id if setting else None
         
         if not group_id:
-            logger.info(f"Finance alert >= 50k MMK logged but no telegram_finance_group_id configured. Amount: {amount:,.0f} MMK, Tx: {transaction_id}")
+            logger.info(f"Finance alert logged but no telegram_finance_group_id configured. Type: {tx_type}, Amount: {amount:,.0f} MMK, Tx: {transaction_id}")
             return False
 
         time_str = now_mmt().strftime("%Y-%m-%d %I:%M:%S %p MMT")
-        is_deposit = (tx_type.upper() == "DEPOSIT")
         
         type_badge = "💳 <b>ငွေသွင်း (TOPUP)</b>" if is_deposit else "💸 <b>ငွေထုတ် (WITHDRAWAL)</b>"
+        header = "🚨 <b>SG4D TOPUP FINANCE ALERT (>= 50,000 MMK)</b> 🚨" if is_deposit else "💸 <b>SG4D WITHDRAWAL NOTIFICATION (ငွေထုတ်ယူမှု အသိပေးချက်)</b> 💸"
         
         if status in ["AUTO_APPROVED", "COMPLETED"]:
-            status_badge = "✅ အောင်မြင် (AUTO APPROVED)"
+            status_badge = "✅ အောင်မြင် (COMPLETED)"
         elif status == "MANUAL_REVIEW":
-            status_badge = "⏳ စစ်ဆေးရန် (MANUAL REVIEW REQUIRED)"
+            status_badge = "⏳ ငွေလွှဲပေးရန် စောင့်ဆိုင်းဆဲ (PENDING TRANSFER)" if not is_deposit else "⏳ စစ်ဆေးရန် (MANUAL REVIEW REQUIRED)"
         elif status == "FLAGGED_EXPIRED":
             status_badge = "⚠️ ၁၅ မိနစ်ကျော်လွန် (EXPIRED REVIEW)"
         elif status == "REJECTED":
@@ -99,7 +102,7 @@ def notify_finance_alert(
             status_badge = f"ℹ️ {status}"
 
         alert_text = (
-            f"🚨 <b>SG4D FINANCE ALERT (>= 50,000 MMK)</b> 🚨\n"
+            f"{header}\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"📌 <b>အမျိုးအစား:</b> {type_badge}\n"
             f"💰 <b>ငွေပမာဏ:</b> <b>{amount:,.0f} MMK</b>\n"
@@ -110,7 +113,7 @@ def notify_finance_alert(
             f"⏱️ <b>အချိန်:</b> {time_str}\n"
         )
         if notes:
-            alert_text += f"📝 <b>မှတ်ချက်:</b> <i>{notes}</i>\n"
+            alert_text += f"📝 <b>အသေးစိတ်/လက်ခံမည့်သူ:</b> <i>{notes}</i>\n"
             
         if is_deposit and amount > 50000.0 and status == "MANUAL_REVIEW":
             alert_text += (

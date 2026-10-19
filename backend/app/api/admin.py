@@ -2263,10 +2263,9 @@ def accept_withdrawal(
     )
     db.commit()
 
-    if tx.amount >= 50000.0:
-        try:
-            from app.core.telegram_bot import notify_finance_alert
-            notify_finance_alert(
+    try:
+        from app.core.telegram_bot import notify_finance_alert
+        notify_finance_alert(
                 db=db,
                 tx_type="WITHDRAWAL",
                 amount=tx.amount,
@@ -2336,7 +2335,7 @@ def reject_withdrawal(
 
     db.commit()
 
-    if tx.amount >= 50000.0 and user:
+    if user:
         try:
             from app.core.telegram_bot import notify_finance_alert
             notify_finance_alert(

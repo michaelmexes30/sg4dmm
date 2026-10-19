@@ -822,7 +822,7 @@ export default function SettingsView({ onNotify }) {
                   <span>Telegram Finance Alerts & Auto-Approve Security (ငွေကြေး အသိပေးချက်နှင့် လုံခြုံရေး စနစ်)</span>
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Topup & Withdraw ငွေပမာဏ ၅၀,၀၀၀ ကျပ်နှင့်အထက် ရှိပါက Telegram Group သို့ အချိန်နှင့်တပြေးညီ အလိုအလျောက် သတိပေးစာ ပေးပို့ခြင်း
+                  Withdraw တင်သမျှအားလုံး (၁,၀၀၀ ကျပ်မှစ၍) ချက်ချင်းထုတ်ပေးနိုင်ရန် နှင့် Topup ၅၀,၀၀၀ ကျပ်အထက် ရှိပါက Telegram Group သို့ အချိန်နှင့်တပြေးညီ အလိုအလျောက် သတိပေးစာ ပေးပို့ခြင်း
                 </p>
               </div>
 
