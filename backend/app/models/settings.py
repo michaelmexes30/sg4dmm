@@ -48,10 +48,20 @@ class SystemSetting(Base):
     agent_lvl5_deposit = Column(Float, default=1000000.0)  # Level 5: 1,000,000 MMK
 
     # Turnover Targets required to Level Up (Agent self-bets + Downline bets)
-    agent_lvl2_target_turnover = Column(Float, default=2000000.0)  # 2,000,000 MMK
-    agent_lvl3_target_turnover = Column(Float, default=5000000.0)  # 5,000,000 MMK
-    agent_lvl4_target_turnover = Column(Float, default=10000000.0) # 10,000,000 MMK
-    agent_lvl5_target_turnover = Column(Float, default=20000000.0) # 20,000,000 MMK
+    agent_lvl2_target_turnover = Column(Float, default=6000000.0)  # Tier 2: 6,000,000 MMK
+    agent_lvl3_target_turnover = Column(Float, default=10000000.0) # Tier 3: 10,000,000 MMK
+    agent_lvl4_target_turnover = Column(Float, default=15000000.0) # Tier 4: 15,000,000 MMK
+    agent_lvl5_target_turnover = Column(Float, default=20000000.0) # Tier 5: 20,000,000 MMK
+
+    # 4 Tier Commission Percentage & Turnover Targets
+    agent_tier1_turnover = Column(Float, default=3000000.0)  # Tier 1: 3,000,000 MMK
+    agent_tier1_commission = Column(Float, default=15.0)     # Tier 1: 15%
+    agent_tier2_turnover = Column(Float, default=6000000.0)  # Tier 2: 6,000,000 MMK
+    agent_tier2_commission = Column(Float, default=20.0)     # Tier 2: 20%
+    agent_tier3_turnover = Column(Float, default=10000000.0) # Tier 3: 10,000,000 MMK
+    agent_tier3_commission = Column(Float, default=25.0)     # Tier 3: 25%
+    agent_tier4_turnover = Column(Float, default=15000000.0) # Tier 4: 15,000,000 MMK
+    agent_tier4_commission = Column(Float, default=30.0)     # Tier 4: 30%
 
     updated_at = Column(DateTime, default=now_mmt, onupdate=now_mmt)
 

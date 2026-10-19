@@ -739,7 +739,7 @@ def get_agent_details_and_downline(
             "is_self_bet": (player.id == agent.id),
             "voucher": slip.slip_code if slip else f"SLIP-{c.bet_slip_id}",
             "bet_total_stake": float(c.bet_total_stake),
-            "commission_rate": "30%",
+            "commission_rate": f"{int((c.commission_rate or 0.15) * 100)}%",
             "commission_amount": float(c.commission_amount),
             "is_settled": bool(c.is_settled),
             "settlement_status": c.settlement_status or ("SETTLED" if c.is_settled else "PENDING"),
@@ -772,7 +772,7 @@ def get_agent_details_and_downline(
             "phone": agent.phone,
             "agent_code": agent.agent_code,
             "role": agent.role,
-            "level": agent.level or "Level 1",
+            "level": agent.level or "Tier 1",
             "level_number": lvl_info.get("level_number", 1),
             "balance": float(agent.balance or 0.0),
             "security_deposit": float(agent.security_deposit or 0.0),
@@ -781,7 +781,7 @@ def get_agent_details_and_downline(
             "available_credit": float(available_credit),
             "is_betting_locked": bool(agent.is_betting_locked),
             "settlement_status": agent.settlement_status or "SETTLED",
-            "commission_rate": "30%",
+            "commission_rate": lvl_info.get("commission_rate_str", "15%"),
             "total_downline_players": len(downline_data),
             "total_volume_staked": float(total_volume or 0.0),
             "pending_commission": float(pending_comm or 0.0),
@@ -1655,6 +1655,16 @@ class SystemSettingsUpdate(BaseModel):
     agent_lvl3_target_turnover: Optional[float] = None
     agent_lvl4_target_turnover: Optional[float] = None
     agent_lvl5_target_turnover: Optional[float] = None
+
+    # 4-Tier Agent Commission & Turnover settings
+    agent_tier1_turnover: Optional[float] = None
+    agent_tier1_commission: Optional[float] = None
+    agent_tier2_turnover: Optional[float] = None
+    agent_tier2_commission: Optional[float] = None
+    agent_tier3_turnover: Optional[float] = None
+    agent_tier3_commission: Optional[float] = None
+    agent_tier4_turnover: Optional[float] = None
+    agent_tier4_commission: Optional[float] = None
 
 class ToggleAgentCreditRequest(BaseModel):
     enabled: Optional[bool] = None
@@ -3376,10 +3386,20 @@ def get_system_settings(
         "agent_lvl3_deposit": float(setting.agent_lvl3_deposit or 500000.0),
         "agent_lvl4_deposit": float(setting.agent_lvl4_deposit or 800000.0),
         "agent_lvl5_deposit": float(setting.agent_lvl5_deposit or 1000000.0),
-        "agent_lvl2_target_turnover": float(setting.agent_lvl2_target_turnover or 2000000.0),
-        "agent_lvl3_target_turnover": float(setting.agent_lvl3_target_turnover or 5000000.0),
-        "agent_lvl4_target_turnover": float(setting.agent_lvl4_target_turnover or 10000000.0),
+        "agent_lvl2_target_turnover": float(setting.agent_lvl2_target_turnover or 6000000.0),
+        "agent_lvl3_target_turnover": float(setting.agent_lvl3_target_turnover or 10000000.0),
+        "agent_lvl4_target_turnover": float(setting.agent_lvl4_target_turnover or 15000000.0),
         "agent_lvl5_target_turnover": float(setting.agent_lvl5_target_turnover or 20000000.0),
+
+        # 4-Tier Agent Commission & Turnover settings
+        "agent_tier1_turnover": float(getattr(setting, "agent_tier1_turnover", 3000000.0) or 3000000.0),
+        "agent_tier1_commission": float(getattr(setting, "agent_tier1_commission", 15.0) or 15.0),
+        "agent_tier2_turnover": float(getattr(setting, "agent_tier2_turnover", 6000000.0) or 6000000.0),
+        "agent_tier2_commission": float(getattr(setting, "agent_tier2_commission", 20.0) or 20.0),
+        "agent_tier3_turnover": float(getattr(setting, "agent_tier3_turnover", 10000000.0) or 10000000.0),
+        "agent_tier3_commission": float(getattr(setting, "agent_tier3_commission", 25.0) or 25.0),
+        "agent_tier4_turnover": float(getattr(setting, "agent_tier4_turnover", 15000000.0) or 15000000.0),
+        "agent_tier4_commission": float(getattr(setting, "agent_tier4_commission", 30.0) or 30.0),
 
         "company_balance_oct": float(setting.company_balance_oct or 4198200.0),
         "updated_at": setting.updated_at.strftime("%Y-%m-%d %H:%M:%S") if setting.updated_at else None
@@ -3482,6 +3502,16 @@ def update_system_settings(
     if req.agent_lvl4_target_turnover is not None: setting.agent_lvl4_target_turnover = float(req.agent_lvl4_target_turnover)
     if req.agent_lvl5_target_turnover is not None: setting.agent_lvl5_target_turnover = float(req.agent_lvl5_target_turnover)
 
+    # 7. 4-Tier Agent Commission & Turnover settings
+    if req.agent_tier1_turnover is not None: setting.agent_tier1_turnover = float(req.agent_tier1_turnover)
+    if req.agent_tier1_commission is not None: setting.agent_tier1_commission = float(req.agent_tier1_commission)
+    if req.agent_tier2_turnover is not None: setting.agent_tier2_turnover = float(req.agent_tier2_turnover)
+    if req.agent_tier2_commission is not None: setting.agent_tier2_commission = float(req.agent_tier2_commission)
+    if req.agent_tier3_turnover is not None: setting.agent_tier3_turnover = float(req.agent_tier3_turnover)
+    if req.agent_tier3_commission is not None: setting.agent_tier3_commission = float(req.agent_tier3_commission)
+    if req.agent_tier4_turnover is not None: setting.agent_tier4_turnover = float(req.agent_tier4_turnover)
+    if req.agent_tier4_commission is not None: setting.agent_tier4_commission = float(req.agent_tier4_commission)
+
     setting.updated_at = now_mmt()
     db.commit()
     db.refresh(setting)
@@ -3499,7 +3529,15 @@ def update_system_settings(
             "wave_phone": setting.wave_phone,
             "kpay_phone": setting.kpay_phone,
             "agent_credit_multiplier": setting.agent_credit_multiplier,
-            "is_agent_credit_enabled": bool(setting.is_agent_credit_enabled)
+            "is_agent_credit_enabled": bool(setting.is_agent_credit_enabled),
+            "agent_tier1_turnover": getattr(setting, "agent_tier1_turnover", 3000000.0),
+            "agent_tier1_commission": getattr(setting, "agent_tier1_commission", 15.0),
+            "agent_tier2_turnover": getattr(setting, "agent_tier2_turnover", 6000000.0),
+            "agent_tier2_commission": getattr(setting, "agent_tier2_commission", 20.0),
+            "agent_tier3_turnover": getattr(setting, "agent_tier3_turnover", 10000000.0),
+            "agent_tier3_commission": getattr(setting, "agent_tier3_commission", 25.0),
+            "agent_tier4_turnover": getattr(setting, "agent_tier4_turnover", 15000000.0),
+            "agent_tier4_commission": getattr(setting, "agent_tier4_commission", 30.0),
         }
     }
 

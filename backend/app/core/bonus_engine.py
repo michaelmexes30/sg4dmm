@@ -275,7 +275,7 @@ def settle_weekly_agent_commissions(db: Session = None) -> Dict[str, Any]:
                     title="⚠️ အပတ်စဉ် စာရင်းရှင်းရန် ကျန်ရှိနေပါသည် (Weekly Settlement Overdue)",
                     message=(
                         f"သင်၏ မရှင်းရသေးသော အကြွေးကျန်ငွေ {agent.used_credit:,.0f} ကျပ် ကျန်ရှိနေပါသဖြင့် "
-                        f"30% ကော်မရှင် {pending_sum:,.0f} ကျပ်ကို ထိန်းသိမ်းထားပြီး ထိုးခွင့်ယာယီပိတ်ထားပါသည် (Betting Locked)။ "
+                        f"အပတ်စဉ် ကော်မရှင် {pending_sum:,.0f} ကျပ်ကို ထိန်းသိမ်းထားပြီး ထိုးခွင့်ယာယီပိတ်ထားပါသည် (Betting Locked)။ "
                         f"Admin ထံ စာရင်းရှင်းလင်းပြီးပါက ကော်မရှင်ချက်ချင်းထုတ်ပေးပြီး ထိုးခွင့်ပြန်ဖွင့်ပေးပါမည်။"
                     ),
                     notif_type="COMMISSION_WITHHELD",
@@ -312,7 +312,7 @@ def settle_weekly_agent_commissions(db: Session = None) -> Dict[str, Any]:
                         running_balance=agent.balance,
                         reference_id=f"COMM-{settle_tuesday_str}-{agent.id}",
                         reference_type="AGENT_COMMISSION_SETTLEMENT",
-                        description=f"30% Weekly Agent Commission settled for {agent.full_name} ({agent.agent_code})",
+                        description=f"Weekly Agent Commission settled for {agent.full_name} ({agent.agent_code})",
                         logged_at_mmt=current_time,
                         date_str=today_str
                     )
@@ -320,9 +320,9 @@ def settle_weekly_agent_commissions(db: Session = None) -> Dict[str, Any]:
 
                     notif = Notification(
                         user_id=agent.id,
-                        title="💰 အပတ်စဉ် 30% ကော်မရှင် ထုတ်ပေးပြီးပါပြီ!",
+                        title="💰 အပတ်စဉ် ကော်မရှင် ထုတ်ပေးပြီးပါပြီ!",
                         message=(
-                            f"ဂုဏ်ယူပါသည်! ပြီးခဲ့သည့်တစ်ပတ်အတွက် 30% ကော်မရှင် {pending_sum:,.0f} ကျပ်အား "
+                            f"ဂုဏ်ယူပါသည်! ပြီးခဲ့သည့်တစ်ပတ်အတွက် ကော်မရှင် {pending_sum:,.0f} ကျပ်အား "
                             f"အောင်မြင်စွာ ထုတ်ပေးလိုက်ပါပြီ။ လက်ကျန်ငွေထဲသို့ ထည့်သွင်းပေးပြီးဖြစ်ပါသည်။"
                         ),
                         notif_type="COMMISSION_SETTLED",

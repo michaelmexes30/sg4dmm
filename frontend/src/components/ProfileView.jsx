@@ -341,13 +341,13 @@ export default function ProfileView({ onOpenWallet, onOpenAdmin }) {
                   </div>
                 </div>
 
-                {/* Credit Multiplier Tag or 30% Commission Tag */}
+                {/* Credit Multiplier Tag or Commission Tag */}
                 <div className="flex items-center space-x-2 bg-dark-bg/80 px-3 py-1.5 rounded-xl border border-gold-700/60">
                   <Sparkles className="w-4 h-4 text-amber-400" />
                   <span className="text-xs font-bold text-amber-300">
                     {isCreditEnabled 
                       ? `${agentData.level_info.credit_multiplier || 1.6}x Credit Benefit` 
-                      : '30% Commission Benefit'}
+                      : `${agentData?.level_info?.commission_rate_str || agentData?.commission_rate_str || '15%'} Commission Benefit`}
                   </span>
                 </div>
               </div>
@@ -423,8 +423,8 @@ export default function ProfileView({ onOpenWallet, onOpenAdmin }) {
                   </span>
                   <span className="text-[11px] text-gray-300">
                     {lang === 'mm'
-                      ? 'လုံခြုံရေးအရ Agent Credit စနစ်အား ခေတ္တဆိုင်းငံ့ထားပြီး မိမိ Wallet Balance ဖြင့်သာ တိုက်ရိုက်လောင်းကြေးထိုးခွင့် ရရှိပါမည်။ (30% ကော်မရှင် ဆက်လက်ရရှိပါသည်)'
-                      : 'Agent bets deduct from Cash Balance while Credit is suspended. You continue to earn 30% weekly commissions.'}
+                      ? `လုံခြုံရေးအရ Agent Credit စနစ်အား ခေတ္တဆိုင်းငံ့ထားပြီး မိမိ Wallet Balance ဖြင့်သာ တိုက်ရိုက်လောင်းကြေးထိုးခွင့် ရရှိပါမည်။ (${agentData?.level_info?.commission_rate_str || agentData?.commission_rate_str || '15%'} ကော်မရှင် ဆက်လက်ရရှိပါသည်)`
+                      : `Agent bets deduct from Cash Balance while Credit is suspended. You continue to earn ${agentData?.level_info?.commission_rate_str || agentData?.commission_rate_str || '15%'} weekly commissions.`}
                   </span>
                 </div>
               </div>
@@ -506,9 +506,11 @@ export default function ProfileView({ onOpenWallet, onOpenAdmin }) {
               </div>
             )}
 
-            {/* Card 4: 30% Commission Breakdown */}
+            {/* Card 4: Commission Breakdown */}
             <div className="glass-panel-gold rounded-2xl p-4 border border-gold-600/40">
-              <span className="text-[10px] text-gray-400 uppercase font-bold block">{lang === 'mm' ? 'အပတ်စဉ် 30% ကော်မရှင်' : 'Weekly 30% Commission'}</span>
+              <span className="text-[10px] text-gray-400 uppercase font-bold block">
+                {lang === 'mm' ? `အပတ်စဉ် ${agentData?.level_info?.commission_rate_str || agentData?.commission_rate_str || ''} ကော်မရှင်` : `Weekly ${agentData?.level_info?.commission_rate_str || agentData?.commission_rate_str || ''} Commission`}
+              </span>
               <p className="text-lg font-black font-mono text-gold-200 mt-1.5">
                 +{num((agentData?.pending_commission || 0).toLocaleString())} <span className="text-xs text-amber-400 font-normal">(Pending)</span>
               </p>
@@ -555,7 +557,7 @@ export default function ProfileView({ onOpenWallet, onOpenAdmin }) {
               <div className="flex items-center justify-between pb-2 border-b border-gold-900/40">
                 <h4 className="text-xs font-bold text-white flex items-center space-x-1.5">
                   <Award className="w-4 h-4 text-gold-400" />
-                  <span>{lang === 'mm' ? 'လတ်တလော 30% ကော်မရှင် မှတ်တမ်းများ' : 'Recent 30% Commission Logs'}</span>
+                  <span>{lang === 'mm' ? 'လတ်တလော ကော်မရှင် မှတ်တမ်းများ' : 'Recent Commission Logs'}</span>
                 </h4>
                 <button
                   type="button"

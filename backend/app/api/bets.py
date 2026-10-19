@@ -361,6 +361,10 @@ def place_bet_slip(
     elif current_user.referred_by_code:
         agent = db.query(User).filter(User.agent_code == current_user.referred_by_code).first()
 
+    if agent:
+        from app.core.agent_level import get_agent_commission_rate
+        comm_rate = get_agent_commission_rate(agent, db)
+
     created_slips = []
 
     # Create a BetSlip for EACH selected draw day
@@ -438,10 +442,11 @@ def place_bet_slip(
         db.add(bet_ledger)
 
     if agent and total_commission_all_slips > 0:
+        comm_pct_display = int(round(comm_rate * 100))
         agent_notif = Notification(
             user_id=agent.id,
-            title="💰 30% ကော်မရှင် စာရင်းဝင်ပါသည် (Pending)",
-            message=f"ထိုးကြေးများအတွက် 30% ကော်မရှင် +{total_commission_all_slips:,.0f} ကျပ် စာရင်းဝင်ထားပါသည်။ အပတ်စဉ် အင်္ဂါနေ့ နံနက် ၁၁:၀၀ နာရီတွင် အပြီးသတ်ရှင်းလင်းပြီး ထည့်သွင်းပေးပါမည်။",
+            title=f"💰 {comm_pct_display}% ကော်မရှင် စာရင်းဝင်ပါသည် (Pending)",
+            message=f"ထိုးကြေးများအတွက် {comm_pct_display}% ကော်မရှင် +{total_commission_all_slips:,.0f} ကျပ် စာရင်းဝင်ထားပါသည်။ အပတ်စဉ် အင်္ဂါနေ့ နံနက် ၁၁:၀၀ နာရီတွင် အပြီးသတ်ရှင်းလင်းပြီး ထည့်သွင်းပေးပါမည်။",
             notif_type="COMMISSION_PENDING",
             is_read=False
         )

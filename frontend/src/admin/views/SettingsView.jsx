@@ -579,24 +579,25 @@ export default function SettingsView({ onNotify }) {
               </span>
             </div>
 
-            {/* Level Tiers Table */}
+            {/* 4-Tier Commission & Turnover Settings Table */}
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="border-b border-slate-800 text-slate-400 text-[11px] uppercase tracking-wider">
-                    <th className="py-2.5 px-3">Level (အဆင့်)</th>
-                    <th className="py-2.5 px-3">Security Deposit (အာမခံစပေါ်ငွေ - MMK)</th>
-                    <th className="py-2.5 px-3">ရရှိမည့် Credit Limit (Deposit × {systemSettings.agent_credit_multiplier || 1.6} ဆ)</th>
-                    <th className="py-2.5 px-3">Level တက်ရန် စုစုပေါင်းထိုးကြေး (Turnover Target - MMK)</th>
+                    <th className="py-2.5 px-3">Tier (အဆင့်)</th>
+                    <th className="py-2.5 px-3">Security Deposit (စပေါ်ငွေ - MMK)</th>
+                    <th className="py-2.5 px-3">Credit Limit (Deposit × {systemSettings.agent_credit_multiplier || 1.6} ဆ)</th>
+                    <th className="py-2.5 px-3">Turnover Target (စုစုပေါင်းထိုးကြေး ပစ်မှတ်)</th>
+                    <th className="py-2.5 px-3 text-amber-300">Commission % (ကော်မရှင် ရာခိုင်နှုန်း)</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 font-mono">
                   
-                  {/* Level 1 */}
+                  {/* Tier 1 */}
                   <tr className="hover:bg-slate-900/40 transition-colors">
                     <td className="py-3 px-3">
-                      <span className="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 font-bold border border-slate-700">
-                        Level 1 (စတင်အဆင့်)
+                      <span className="px-2.5 py-1 rounded-lg bg-amber-950/40 text-amber-400 font-bold border border-amber-600/30">
+                        Tier 1 (Bronze)
                       </span>
                     </td>
                     <td className="py-3 px-3">
@@ -606,7 +607,7 @@ export default function SettingsView({ onNotify }) {
                           step="10000"
                           value={systemSettings.agent_lvl1_deposit ?? 100000}
                           onChange={(e) => setSystemSettings({ ...systemSettings, agent_lvl1_deposit: Number(e.target.value) })}
-                          className="w-32 bg-navy-950 border border-gold-500/20 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-amber-400"
+                          className="w-28 bg-navy-950 border border-gold-500/20 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-amber-400"
                         />
                         <span className="text-slate-400 text-[11px]">Ks</span>
                       </div>
@@ -614,16 +615,39 @@ export default function SettingsView({ onNotify }) {
                     <td className="py-3 px-3 text-purple-300 font-bold text-xs">
                       Ks {((systemSettings.agent_lvl1_deposit || 100000) * (systemSettings.agent_credit_multiplier || 1.6)).toLocaleString()}
                     </td>
-                    <td className="py-3 px-3 text-slate-400 italic text-[11px]">
-                      စတင်အဆင့် (Initial Level - 0 Ks)
+                    <td className="py-3 px-3">
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="number"
+                          step="100000"
+                          value={systemSettings.agent_tier1_turnover ?? 3000000}
+                          onChange={(e) => setSystemSettings({ ...systemSettings, agent_tier1_turnover: Number(e.target.value) })}
+                          className="w-32 bg-navy-950 border border-gold-500/20 rounded-lg px-2.5 py-1 text-xs text-emerald-400 font-bold focus:outline-none focus:border-amber-400"
+                        />
+                        <span className="text-slate-400 text-[11px]">Ks</span>
+                      </div>
+                    </td>
+                    <td className="py-3 px-3">
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="number"
+                          step="1"
+                          min="0"
+                          max="100"
+                          value={systemSettings.agent_tier1_commission ?? 15}
+                          onChange={(e) => setSystemSettings({ ...systemSettings, agent_tier1_commission: Number(e.target.value) })}
+                          className="w-20 bg-navy-950 border border-amber-500/40 rounded-lg px-2.5 py-1 text-xs text-amber-300 font-black text-center focus:outline-none focus:border-amber-400"
+                        />
+                        <span className="text-amber-400 font-bold text-xs">%</span>
+                      </div>
                     </td>
                   </tr>
 
-                  {/* Level 2 */}
+                  {/* Tier 2 */}
                   <tr className="hover:bg-slate-900/40 transition-colors">
                     <td className="py-3 px-3">
                       <span className="px-2.5 py-1 rounded-lg bg-sky-950/60 text-sky-400 font-bold border border-sky-500/30">
-                        Level 2 (Silver)
+                        Tier 2 (Silver)
                       </span>
                     </td>
                     <td className="py-3 px-3">
@@ -633,7 +657,7 @@ export default function SettingsView({ onNotify }) {
                           step="10000"
                           value={systemSettings.agent_lvl2_deposit ?? 300000}
                           onChange={(e) => setSystemSettings({ ...systemSettings, agent_lvl2_deposit: Number(e.target.value) })}
-                          className="w-32 bg-navy-950 border border-gold-500/20 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-amber-400"
+                          className="w-28 bg-navy-950 border border-gold-500/20 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-amber-400"
                         />
                         <span className="text-slate-400 text-[11px]">Ks</span>
                       </div>
@@ -646,20 +670,34 @@ export default function SettingsView({ onNotify }) {
                         <input
                           type="number"
                           step="100000"
-                          value={systemSettings.agent_lvl2_target_turnover ?? 2000000}
-                          onChange={(e) => setSystemSettings({ ...systemSettings, agent_lvl2_target_turnover: Number(e.target.value) })}
-                          className="w-36 bg-navy-950 border border-gold-500/20 rounded-lg px-2.5 py-1 text-xs text-emerald-400 font-bold focus:outline-none focus:border-amber-400"
+                          value={systemSettings.agent_tier2_turnover ?? 6000000}
+                          onChange={(e) => setSystemSettings({ ...systemSettings, agent_tier2_turnover: Number(e.target.value), agent_lvl2_target_turnover: Number(e.target.value) })}
+                          className="w-32 bg-navy-950 border border-gold-500/20 rounded-lg px-2.5 py-1 text-xs text-emerald-400 font-bold focus:outline-none focus:border-amber-400"
                         />
                         <span className="text-slate-400 text-[11px]">Ks</span>
                       </div>
                     </td>
+                    <td className="py-3 px-3">
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="number"
+                          step="1"
+                          min="0"
+                          max="100"
+                          value={systemSettings.agent_tier2_commission ?? 20}
+                          onChange={(e) => setSystemSettings({ ...systemSettings, agent_tier2_commission: Number(e.target.value) })}
+                          className="w-20 bg-navy-950 border border-amber-500/40 rounded-lg px-2.5 py-1 text-xs text-amber-300 font-black text-center focus:outline-none focus:border-amber-400"
+                        />
+                        <span className="text-amber-400 font-bold text-xs">%</span>
+                      </div>
+                    </td>
                   </tr>
 
-                  {/* Level 3 */}
+                  {/* Tier 3 */}
                   <tr className="hover:bg-slate-900/40 transition-colors">
                     <td className="py-3 px-3">
                       <span className="px-2.5 py-1 rounded-lg bg-amber-950/60 text-amber-400 font-bold border border-amber-500/30">
-                        Level 3 (Gold)
+                        Tier 3 (Gold)
                       </span>
                     </td>
                     <td className="py-3 px-3">
@@ -669,7 +707,7 @@ export default function SettingsView({ onNotify }) {
                           step="10000"
                           value={systemSettings.agent_lvl3_deposit ?? 500000}
                           onChange={(e) => setSystemSettings({ ...systemSettings, agent_lvl3_deposit: Number(e.target.value) })}
-                          className="w-32 bg-navy-950 border border-gold-500/20 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-amber-400"
+                          className="w-28 bg-navy-950 border border-gold-500/20 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-amber-400"
                         />
                         <span className="text-slate-400 text-[11px]">Ks</span>
                       </div>
@@ -682,20 +720,34 @@ export default function SettingsView({ onNotify }) {
                         <input
                           type="number"
                           step="100000"
-                          value={systemSettings.agent_lvl3_target_turnover ?? 5000000}
-                          onChange={(e) => setSystemSettings({ ...systemSettings, agent_lvl3_target_turnover: Number(e.target.value) })}
-                          className="w-36 bg-navy-950 border border-gold-500/20 rounded-lg px-2.5 py-1 text-xs text-emerald-400 font-bold focus:outline-none focus:border-amber-400"
+                          value={systemSettings.agent_tier3_turnover ?? 10000000}
+                          onChange={(e) => setSystemSettings({ ...systemSettings, agent_tier3_turnover: Number(e.target.value), agent_lvl3_target_turnover: Number(e.target.value) })}
+                          className="w-32 bg-navy-950 border border-gold-500/20 rounded-lg px-2.5 py-1 text-xs text-emerald-400 font-bold focus:outline-none focus:border-amber-400"
                         />
                         <span className="text-slate-400 text-[11px]">Ks</span>
                       </div>
                     </td>
+                    <td className="py-3 px-3">
+                      <div className="flex items-center gap-1.5">
+                        <input
+                          type="number"
+                          step="1"
+                          min="0"
+                          max="100"
+                          value={systemSettings.agent_tier3_commission ?? 25}
+                          onChange={(e) => setSystemSettings({ ...systemSettings, agent_tier3_commission: Number(e.target.value) })}
+                          className="w-20 bg-navy-950 border border-amber-500/40 rounded-lg px-2.5 py-1 text-xs text-amber-300 font-black text-center focus:outline-none focus:border-amber-400"
+                        />
+                        <span className="text-amber-400 font-bold text-xs">%</span>
+                      </div>
+                    </td>
                   </tr>
 
-                  {/* Level 4 */}
+                  {/* Tier 4 */}
                   <tr className="hover:bg-slate-900/40 transition-colors">
                     <td className="py-3 px-3">
                       <span className="px-2.5 py-1 rounded-lg bg-emerald-950/60 text-emerald-400 font-bold border border-emerald-500/30">
-                        Level 4 (Platinum)
+                        Tier 4 (Platinum / Master)
                       </span>
                     </td>
                     <td className="py-3 px-3">
@@ -703,62 +755,40 @@ export default function SettingsView({ onNotify }) {
                         <input
                           type="number"
                           step="10000"
-                          value={systemSettings.agent_lvl4_deposit ?? 800000}
+                          value={systemSettings.agent_lvl4_deposit ?? 1000000}
                           onChange={(e) => setSystemSettings({ ...systemSettings, agent_lvl4_deposit: Number(e.target.value) })}
-                          className="w-32 bg-navy-950 border border-gold-500/20 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-amber-400"
+                          className="w-28 bg-navy-950 border border-gold-500/20 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-amber-400"
                         />
                         <span className="text-slate-400 text-[11px]">Ks</span>
                       </div>
                     </td>
                     <td className="py-3 px-3 text-purple-300 font-bold text-xs">
-                      Ks {((systemSettings.agent_lvl4_deposit || 800000) * (systemSettings.agent_credit_multiplier || 1.6)).toLocaleString()}
+                      Ks {((systemSettings.agent_lvl4_deposit || 1000000) * (systemSettings.agent_credit_multiplier || 1.6)).toLocaleString()}
                     </td>
                     <td className="py-3 px-3">
                       <div className="flex items-center gap-1.5">
                         <input
                           type="number"
                           step="100000"
-                          value={systemSettings.agent_lvl4_target_turnover ?? 10000000}
-                          onChange={(e) => setSystemSettings({ ...systemSettings, agent_lvl4_target_turnover: Number(e.target.value) })}
-                          className="w-36 bg-navy-950 border border-gold-500/20 rounded-lg px-2.5 py-1 text-xs text-emerald-400 font-bold focus:outline-none focus:border-amber-400"
+                          value={systemSettings.agent_tier4_turnover ?? 15000000}
+                          onChange={(e) => setSystemSettings({ ...systemSettings, agent_tier4_turnover: Number(e.target.value), agent_lvl4_target_turnover: Number(e.target.value) })}
+                          className="w-32 bg-navy-950 border border-gold-500/20 rounded-lg px-2.5 py-1 text-xs text-emerald-400 font-bold focus:outline-none focus:border-amber-400"
                         />
                         <span className="text-slate-400 text-[11px]">Ks</span>
                       </div>
-                    </td>
-                  </tr>
-
-                  {/* Level 5 */}
-                  <tr className="hover:bg-slate-900/40 transition-colors">
-                    <td className="py-3 px-3">
-                      <span className="px-2.5 py-1 rounded-lg bg-purple-950/60 text-purple-300 font-bold border border-purple-500/40">
-                        Level 5 (Diamond / Master)
-                      </span>
                     </td>
                     <td className="py-3 px-3">
                       <div className="flex items-center gap-1.5">
                         <input
                           type="number"
-                          step="10000"
-                          value={systemSettings.agent_lvl5_deposit ?? 1000000}
-                          onChange={(e) => setSystemSettings({ ...systemSettings, agent_lvl5_deposit: Number(e.target.value) })}
-                          className="w-32 bg-navy-950 border border-gold-500/20 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-amber-400"
+                          step="1"
+                          min="0"
+                          max="100"
+                          value={systemSettings.agent_tier4_commission ?? 30}
+                          onChange={(e) => setSystemSettings({ ...systemSettings, agent_tier4_commission: Number(e.target.value) })}
+                          className="w-20 bg-navy-950 border border-amber-500/40 rounded-lg px-2.5 py-1 text-xs text-amber-300 font-black text-center focus:outline-none focus:border-amber-400"
                         />
-                        <span className="text-slate-400 text-[11px]">Ks</span>
-                      </div>
-                    </td>
-                    <td className="py-3 px-3 text-purple-300 font-bold text-xs">
-                      Ks {((systemSettings.agent_lvl5_deposit || 1000000) * (systemSettings.agent_credit_multiplier || 1.6)).toLocaleString()}
-                    </td>
-                    <td className="py-3 px-3">
-                      <div className="flex items-center gap-1.5">
-                        <input
-                          type="number"
-                          step="100000"
-                          value={systemSettings.agent_lvl5_target_turnover ?? 20000000}
-                          onChange={(e) => setSystemSettings({ ...systemSettings, agent_lvl5_target_turnover: Number(e.target.value) })}
-                          className="w-36 bg-navy-950 border border-gold-500/20 rounded-lg px-2.5 py-1 text-xs text-emerald-400 font-bold focus:outline-none focus:border-amber-400"
-                        />
-                        <span className="text-slate-400 text-[11px]">Ks</span>
+                        <span className="text-amber-400 font-bold text-xs">%</span>
                       </div>
                     </td>
                   </tr>
@@ -771,9 +801,9 @@ export default function SettingsView({ onNotify }) {
             <div className="p-3.5 rounded-xl bg-navy-950 border border-amber-500/20 flex items-start gap-2.5 text-xs text-slate-300">
               <Sparkles className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
               <div className="space-y-1">
-                <span className="font-bold text-amber-300 block">Level တက်ရောက်ခြင်း လုပ်ဆောင်ချက် စည်းမျဉ်း-</span>
+                <span className="font-bold text-amber-300 block">Tier အဆင့်ဆင့် ကော်မရှင် သတ်မှတ်ချက် စည်းမျဉ်း-</span>
                 <p className="text-[11px] text-slate-400 leading-relaxed">
-                  Agent ကိုယ်တိုင် ထိုးသော ထိုးကြေး (Self-Bets) နှင့် Agent လက်အောက်ရှိ Downline ကစားသူများ ထိုးသော ထိုးကြေး (Downline Bets) ပေါင်းလဒ် (Combined Turnover) ပြည့်မီပါက စနစ်မှ Level အလိုအလျောက် တိုးမြှင့်ပေးပြီး သတ်မှတ်ထားသော စပေါ်ငွေနှင့် Credit (X) ဆ ကို အလိုအလျောက် ပြင်ဆင်သတ်မှတ်ပေးမည်ဖြစ်ပါသည်။
+                  Agent ကိုယ်တိုင် ထိုးသော ထိုးကြေး (Self-Bets) နှင့် Agent လက်အောက်ရှိ Downline ကစားသူများ ထိုးသော ထိုးကြေး (Downline Bets) ပေါင်းလဒ် (Combined Turnover) ပြည့်မီပါက စနစ်မှ Tier အလိုအလျောက် တိုးမြှင့်ပေးပြီး သက်ဆိုင်ရာ ကော်မရှင်ရာခိုင်နှုန်း (Tier 1: 15%, Tier 2: 20%, Tier 3: 25%, Tier 4: 30%) အား အလိုအလျောက် တွက်ချက်စာရင်းသွင်းပေးမည်ဖြစ်ပါသည်။
                 </p>
               </div>
             </div>

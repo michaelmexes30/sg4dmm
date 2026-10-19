@@ -50,7 +50,31 @@ def seed_admin_and_system_data():
             existing.role = su["role"]
             existing.is_suspended = su["is_suspended"]
 
-    # 2. System Settings from Screenshot 15
+    # 2. System Settings with 4-Tier Agent Commission
+    try:
+        from sqlalchemy import inspect, text
+        inspector = inspect(db.bind)
+        cols = [c['name'] for c in inspector.get_columns('system_settings')]
+        new_cols = [
+            ("agent_tier1_turnover", "FLOAT DEFAULT 3000000.0"),
+            ("agent_tier1_commission", "FLOAT DEFAULT 15.0"),
+            ("agent_tier2_turnover", "FLOAT DEFAULT 6000000.0"),
+            ("agent_tier2_commission", "FLOAT DEFAULT 20.0"),
+            ("agent_tier3_turnover", "FLOAT DEFAULT 10000000.0"),
+            ("agent_tier3_commission", "FLOAT DEFAULT 25.0"),
+            ("agent_tier4_turnover", "FLOAT DEFAULT 15000000.0"),
+            ("agent_tier4_commission", "FLOAT DEFAULT 30.0"),
+        ]
+        for col_name, col_type in new_cols:
+            if col_name not in cols:
+                try:
+                    db.execute(text(f"ALTER TABLE system_settings ADD COLUMN {col_name} {col_type}"))
+                    db.commit()
+                except Exception as ex:
+                    print(f"Notice adding {col_name}: {ex}")
+    except Exception as e:
+        print(f"System settings inspection notice: {e}")
+
     setting = db.query(SystemSetting).first()
     if not setting:
         setting = SystemSetting(
@@ -68,7 +92,18 @@ def seed_admin_and_system_data():
             max_amount_per_slip=100000.0,
             max_amount_per_number=11000.0,
             default_bet_amount=100.0,
-            company_balance_oct=4198200.0
+            company_balance_oct=4198200.0,
+            agent_tier1_turnover=3000000.0,
+            agent_tier1_commission=15.0,
+            agent_tier2_turnover=6000000.0,
+            agent_tier2_commission=20.0,
+            agent_tier3_turnover=10000000.0,
+            agent_tier3_commission=25.0,
+            agent_tier4_turnover=15000000.0,
+            agent_tier4_commission=30.0,
+            agent_lvl2_target_turnover=6000000.0,
+            agent_lvl3_target_turnover=10000000.0,
+            agent_lvl4_target_turnover=15000000.0
         )
         db.add(setting)
     else:
@@ -77,6 +112,18 @@ def seed_admin_and_system_data():
         setting.kpay_name = "Daw Myo Thiri Khin"
         setting.wave_phone = "09894169717"
         setting.wave_name = "Ye Win Htut"
+        # Update 4-Tier Commission & Turnover Settings
+        setting.agent_tier1_turnover = 3000000.0
+        setting.agent_tier1_commission = 15.0
+        setting.agent_tier2_turnover = 6000000.0
+        setting.agent_tier2_commission = 20.0
+        setting.agent_tier3_turnover = 10000000.0
+        setting.agent_tier3_commission = 25.0
+        setting.agent_tier4_turnover = 15000000.0
+        setting.agent_tier4_commission = 30.0
+        setting.agent_lvl2_target_turnover = 6000000.0
+        setting.agent_lvl3_target_turnover = 10000000.0
+        setting.agent_lvl4_target_turnover = 15000000.0
 
     # 3. Application Releases from Screenshot 14
     app_releases = [
