@@ -67,7 +67,8 @@ def notify_finance_alert(
     notes: str = ""
 ) -> bool:
     """
-    Sends real-time Telegram alert to the designated Finance Telegram Group
+    Sends real-time Telegram alert to the designated Finance Telegram Group.
+    """
     is_deposit = (tx_type.upper() == "DEPOSIT")
     # For Deposits: Alert for high-value >= 50,000 MMK
     # For Withdrawals: Alert for ALL withdrawal requests (>= 1,000 MMK) so Admin can transfer funds immediately!
