@@ -2261,8 +2261,24 @@ def accept_withdrawal(
         is_read=False,
         created_at=now
     )
-    db.add(notif)
     db.commit()
+
+    if tx.amount >= 50000.0:
+        try:
+            from app.core.telegram_bot import notify_finance_alert
+            notify_finance_alert(
+                db=db,
+                tx_type="WITHDRAWAL",
+                amount=tx.amount,
+                user_phone=user.phone,
+                user_name=user.nickname or user.full_name or user.username,
+                gateway=tx.gateway,
+                transaction_id=tx.transaction_id,
+                status="COMPLETED",
+                notes=f"Admin {tx.reviewed_by} မှ ငွေလွှဲပေးပြီးပါပြီ{ref_msg}"
+            )
+        except Exception as ex:
+            pass
 
     return {"status": "success", "message": "Withdrawal accepted and user notified", "action_by": tx.reviewed_by, "reference": ref_str}
 
@@ -2319,6 +2335,24 @@ def reject_withdrawal(
         db.add(notif)
 
     db.commit()
+
+    if tx.amount >= 50000.0 and user:
+        try:
+            from app.core.telegram_bot import notify_finance_alert
+            notify_finance_alert(
+                db=db,
+                tx_type="WITHDRAWAL",
+                amount=tx.amount,
+                user_phone=user.phone,
+                user_name=user.nickname or user.full_name or user.username,
+                gateway=tx.gateway,
+                transaction_id=tx.transaction_id,
+                status="REJECTED",
+                notes=f"Admin {tx.reviewed_by} မှ ပယ်ချခဲ့သည်: {rejection_reason}"
+            )
+        except Exception as ex:
+            pass
+
     return {
         "status": "success", 
         "message": f"Withdrawal rejected and {tx.amount:,.0f} MMK refunded to user wallet",
