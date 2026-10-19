@@ -78,6 +78,7 @@ class Settings(BaseModel):
     # Telegram Bot Settings for Sign Up & Forgot Password OTP
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "8983323210:AAHrHimAeBEv9C8VrWpo0qWyF_dLPnedGFc")
     TELEGRAM_BOT_USERNAME: str = os.getenv("TELEGRAM_BOT_USERNAME", "SG4DMyanmarBot")
+    TELEGRAM_FINANCE_GROUP_ID: str = os.getenv("TELEGRAM_FINANCE_GROUP_ID", "")
 
     # Cloud & Deployment URL Settings
     RENDER_EXTERNAL_URL: str = os.getenv("RENDER_EXTERNAL_URL", "https://sg4dmm.onrender.com")

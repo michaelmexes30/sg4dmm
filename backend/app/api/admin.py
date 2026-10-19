@@ -3556,7 +3556,11 @@ def update_system_settings(
     if req.agent_tier4_commission is not None: setting.agent_tier4_commission = float(req.agent_tier4_commission)
 
     # 8. Finance Alert & Security Settings
-    if req.telegram_finance_group_id is not None: setting.telegram_finance_group_id = req.telegram_finance_group_id.strip()
+    if req.telegram_finance_group_id is not None:
+        setting.telegram_finance_group_id = req.telegram_finance_group_id.strip()
+        from app.core.telegram_bot import _save_fallback_group_id
+        if setting.telegram_finance_group_id:
+            _save_fallback_group_id(setting.telegram_finance_group_id)
     if req.auto_approve_max_amount is not None: setting.auto_approve_max_amount = float(req.auto_approve_max_amount)
     if req.is_withdraw_hours_enabled is not None: setting.is_withdraw_hours_enabled = bool(req.is_withdraw_hours_enabled)
 

@@ -1,9 +1,12 @@
+import os
 import re
+import html
 import random
 import logging
 import threading
 import time
 import requests
+from typing import Optional
 from datetime import timedelta
 from sqlalchemy.orm import Session
 
@@ -16,6 +19,30 @@ logger = logging.getLogger("telegram_bot")
 logger.setLevel(logging.INFO)
 
 TELEGRAM_API_BASE = f"https://api.telegram.org/bot{settings.TELEGRAM_BOT_TOKEN}"
+FALLBACK_GROUP_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "static", "telegram_group_id.txt")
+
+def _save_fallback_group_id(gid: str):
+    """Persists Telegram group ID to a file so it survives container restarts."""
+    try:
+        os.makedirs(os.path.dirname(FALLBACK_GROUP_FILE), exist_ok=True)
+        with open(FALLBACK_GROUP_FILE, "w", encoding="utf-8") as f:
+            f.write(str(gid).strip())
+        logger.info(f"Persisted telegram_finance_group_id to file: {gid}")
+    except Exception as e:
+        logger.error(f"Error persisting fallback group ID: {e}")
+
+def _get_fallback_group_id() -> Optional[str]:
+    """Retrieves persisted Telegram group ID from file or env setting."""
+    try:
+        if os.path.exists(FALLBACK_GROUP_FILE):
+            with open(FALLBACK_GROUP_FILE, "r", encoding="utf-8") as f:
+                val = f.read().strip()
+                if val:
+                    return val
+    except Exception:
+        pass
+    env_id = getattr(settings, "TELEGRAM_FINANCE_GROUP_ID", "")
+    return env_id.strip() if env_id else None
 
 def normalize_phone(phone: str) -> str:
     """
@@ -34,7 +61,7 @@ def normalize_phone(phone: str) -> str:
     return cleaned
 
 def send_telegram_message(chat_id: str, text: str, reply_markup: dict = None, parse_mode: str = "HTML") -> bool:
-    """Sends a text message to a Telegram chat using Telegram Bot API"""
+    """Sends a text message to a Telegram chat using Telegram Bot API with automatic plain-text retry if HTML fails."""
     try:
         url = f"{TELEGRAM_API_BASE}/sendMessage"
         payload = {
@@ -49,6 +76,19 @@ def send_telegram_message(chat_id: str, text: str, reply_markup: dict = None, pa
         data = resp.json()
         if not data.get("ok"):
             logger.warning(f"Telegram sendMessage failed for chat_id {chat_id}: {data}")
+            # If HTML parsing failed, strip HTML tags and retry as plain text immediately
+            if parse_mode == "HTML":
+                logger.info(f"Retrying sendMessage for chat_id {chat_id} in plain text mode...")
+                plain_text = re.sub(r'<[^>]+>', '', text)
+                payload["text"] = plain_text
+                payload.pop("parse_mode", None)
+                fb_resp = requests.post(url, json=payload, timeout=12)
+                fb_data = fb_resp.json()
+                if fb_data.get("ok"):
+                    logger.info(f"Plain text fallback succeeded for {chat_id}!")
+                    return True
+                else:
+                    logger.warning(f"Plain text fallback also failed for {chat_id}: {fb_data}")
             return False
         return True
     except Exception as e:
@@ -80,13 +120,19 @@ def notify_finance_alert(
     try:
         from app.models.settings import SystemSetting
         setting = db.query(SystemSetting).first()
-        group_id = setting.telegram_finance_group_id if setting else None
+        group_id = (setting.telegram_finance_group_id if setting else None) or _get_fallback_group_id()
         
         if not group_id:
             logger.info(f"Finance alert logged but no telegram_finance_group_id configured. Type: {tx_type}, Amount: {amount:,.0f} MMK, Tx: {transaction_id}")
             return False
 
+        if setting and not setting.telegram_finance_group_id and group_id:
+            setting.telegram_finance_group_id = group_id
+            db.commit()
+
         time_str = now_mmt().strftime("%Y-%m-%d %I:%M:%S %p MMT")
+        safe_name = html.escape(str(user_name or "Player"))
+        safe_notes = html.escape(str(notes or ""))
         
         type_badge = "💳 <b>ငွေသွင်း (TOPUP)</b>" if is_deposit else "💸 <b>ငွေထုတ် (WITHDRAWAL)</b>"
         header = "🚨 <b>SG4D TOPUP FINANCE ALERT (>= 50,000 MMK)</b> 🚨" if is_deposit else "💸 <b>SG4D WITHDRAWAL NOTIFICATION (ငွေထုတ်ယူမှု အသိပေးချက်)</b> 💸"
@@ -107,14 +153,14 @@ def notify_finance_alert(
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"📌 <b>အမျိုးအစား:</b> {type_badge}\n"
             f"💰 <b>ငွေပမာဏ:</b> <b>{amount:,.0f} MMK</b>\n"
-            f"👤 <b>ကစားသူ:</b> {user_name} (<code>{user_phone}</code>)\n"
+            f"👤 <b>ကစားသူ:</b> {safe_name} (<code>{user_phone}</code>)\n"
             f"🏦 <b>Payment Gateway:</b> <b>{gateway.upper()}</b>\n"
             f"🔖 <b>Transaction ID:</b> <code>{transaction_id}</code>\n"
             f"📊 <b>အခြေအနေ:</b> <b>{status_badge}</b>\n"
             f"⏱️ <b>အချိန်:</b> {time_str}\n"
         )
-        if notes:
-            alert_text += f"📝 <b>အသေးစိတ်/လက်ခံမည့်သူ:</b> <i>{notes}</i>\n"
+        if safe_notes:
+            alert_text += f"📝 <b>အသေးစိတ်/လက်ခံမည့်သူ:</b> <i>{safe_notes}</i>\n"
             
         if is_deposit and amount > 50000.0 and status == "MANUAL_REVIEW":
             alert_text += (
@@ -308,23 +354,25 @@ def handle_telegram_update(update: dict, db: Session):
         setting = db.query(SystemSetting).first()
         should_bind = (
             is_bot_added or 
-            text.startswith("/set_finance_group") or 
-            text.startswith("/finance") or 
-            text.startswith("/id") or 
+            text.startswith(("/set_finance_group", "/finance", "/id", "/start", "/help", "/withdraw")) or 
+            f"@{bot_username.lower()}" in text.lower() or 
             (setting and not setting.telegram_finance_group_id)
         )
 
         if should_bind and setting:
             setting.telegram_finance_group_id = chat_id
             db.commit()
+            _save_fallback_group_id(chat_id)
             group_title = chat.get("title", "SG4D Finance Group")
             confirm_msg = (
                 f"🔔 <b>SG4D Myanmar Finance Alert Bot ချိတ်ဆက်ပြီးပါပြီ!</b>\n\n"
-                f"ဤ Telegram Group (<code>{group_title}</code>) အား <b>Topup & Withdraw (၅၀,၀၀၀ ကျပ်နှင့်အထက်)</b> အလိုအလျောက် သတိပေးစာများ ပေးပို့မည့် တရားဝင် Group အဖြစ် သတ်မှတ်လိုက်ပါပြီ ခင်ဗျာ။\n\n"
+                f"ဤ Telegram Group (<code>{group_title}</code>) အား <b>Topup & Withdraw</b> အလိုအလျောက် သတိပေးစာများ ပေးပို့မည့် တရားဝင် Group အဖြစ် သတ်မှတ်လိုက်ပါပြီ ခင်ဗျာ။\n\n"
                 f"🆔 <b>Group Chat ID:</b> <code>{chat_id}</code>\n"
-                f"💰 <b>Alert Threshold:</b> 50,000 MMK"
+                f"💰 <b>ဆိုင်းငံ့ ငွေထုတ်စာရင်းများကို ၃ မိနစ်တစ်ကြိမ် အလိုအလျောက် သတိပေးချက် ပို့ဆောင်ပါမည်။</b>"
             )
             send_telegram_message(chat_id, confirm_msg)
+            # Immediately trigger pending withdrawals check
+            threading.Thread(target=check_and_notify_pending_withdrawals_job, daemon=True).start()
         return
 
     # Case A: User shared phone contact
@@ -573,10 +621,14 @@ def check_and_notify_pending_withdrawals_job():
         from app.models.transaction import Transaction, TransactionType, TransactionStatus
 
         setting = db.query(SystemSetting).first()
-        group_id = setting.telegram_finance_group_id if setting else None
+        group_id = (setting.telegram_finance_group_id if setting else None) or _get_fallback_group_id()
         if not group_id:
             logger.warning("Pending withdrawal reminder job: No telegram_finance_group_id configured.")
             return
+
+        if setting and not setting.telegram_finance_group_id and group_id:
+            setting.telegram_finance_group_id = group_id
+            db.commit()
 
         pending_txs = db.query(Transaction).filter(
             Transaction.tx_type == TransactionType.WITHDRAWAL,
@@ -600,11 +652,13 @@ def check_and_notify_pending_withdrawals_job():
             gw_str = (t.gateway or "KPAY").upper()
             delta_mins = _calc_minutes_elapsed(t.submission_timestamp_mmt or t.created_at)
             rec_id = t.receiver_id or u_phone
+            safe_name = html.escape(str(u_name))
+            safe_rec_id = html.escape(str(rec_id))
 
             items_text.append(
                 f"{i}. <b>{t.amount:,.0f} MMK</b> ({gw_str})\n"
-                f"   👤 {u_name} (<code>{u_phone}</code>)\n"
-                f"   🏦 လက်ခံ: <code>{rec_id}</code>\n"
+                f"   👤 {safe_name} (<code>{u_phone}</code>)\n"
+                f"   🏦 လက်ခံ: <code>{safe_rec_id}</code>\n"
                 f"   🔖 ID: <code>{t.transaction_id}</code>\n"
                 f"   ⏳ <b>ဆိုင်းငံ့ကြာချိန်: {delta_mins} မိနစ်</b>"
             )
@@ -621,7 +675,7 @@ def check_and_notify_pending_withdrawals_job():
             + "\n\n".join(items_text)
             + more_text +
             f"\n\n━━━━━━━━━━━━━━━━━━━━\n"
-            f"👉 <i>(ငွေထုတ်စာရင်း ဆိုင်းငံ့နေသ၍ ၃ မိနစ်တစ်ကြိမ် အသိပေးစာ ပေးပို့နေမည် ဖြစ်ပါသည်။ Admin Panel > Withdraw Review တွင် အတည်ပြုငွေလွှဲပေးပါရန်။)</i>"
+            f"👉 <i>(ငွေထုတ်စာရင်း ဆိုင်းငံ့နေသ၍ ၃ မိနစ်တစ်ကြိမ် အသိပေးစာ ပေးပို့နေမည် ဖြစ်ပါသည်။ Admin Panel [Withdraw Review] တွင် အတည်ပြုငွေလွှဲပေးပါရန်။)</i>"
         )
 
         sent = send_telegram_message(group_id, alert_text)

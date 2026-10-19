@@ -137,6 +137,12 @@ def seed_admin_and_system_data():
         setting.agent_lvl3_target_turnover = 10000000.0
         setting.agent_lvl4_target_turnover = 15000000.0
 
+    # Ensure telegram_finance_group_id is restored if persisted
+    from app.core.telegram_bot import _get_fallback_group_id
+    fallback_gid = _get_fallback_group_id()
+    if fallback_gid and not setting.telegram_finance_group_id:
+        setting.telegram_finance_group_id = fallback_gid
+
     # 3. Application Releases from Screenshot 14
     app_releases = [
         {"name": "Salone4D_V1.0.1", "build_number": 2, "version": "1.0.1"},
