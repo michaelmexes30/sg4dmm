@@ -54,6 +54,7 @@ def get_official_receivers(db: Session = Depends(get_db)):
 
     return {
         "gateways": gateways,
+        "is_withdraw_hours_enabled": bool(getattr(setting, "is_withdraw_hours_enabled", False)) if setting else False,
         "expiry_window_minutes": settings.PAYMENT_EXPIRY_MINUTES,
         "current_time_mmt": now_mmt().strftime("%Y-%m-%d %I:%M:%S %p MMT")
     }
@@ -138,14 +139,18 @@ def submit_withdrawal(
     Submits a withdrawal cash-out request.
     Deducts balance immediately and creates a pending withdrawal record for review.
     """
-    # Enforce Withdrawal Operating Hours (08:00 AM to 08:00 PM MMT)
+    # Enforce Withdrawal Operating Hours (08:00 AM to 08:00 PM MMT) only if enabled in SystemSetting
+    setting = db.query(SystemSetting).first()
+    is_hours_enabled = bool(getattr(setting, "is_withdraw_hours_enabled", False)) if setting else False
     current_time = now_mmt()
-    is_open, hours_msg = is_within_gateway_operating_hours(current_time)
-    if not is_open:
-        raise HTTPException(
-            status_code=400,
-            detail=f"ငွေထုတ်ယူခြင်း ဝန်ဆောင်မှုကို နံနက် ၀၈:၀၀ မှ ည ၀၈:၀၀ နာရီ (MMT) အတွင်းသာ ဆောင်ရွက်ပေးပါသည် ခင်ဗျာ။ (Withdrawals operate 08:00 AM - 08:00 PM MMT. {hours_msg})"
-        )
+
+    if is_hours_enabled:
+        is_open, hours_msg = is_within_gateway_operating_hours(current_time)
+        if not is_open:
+            raise HTTPException(
+                status_code=400,
+                detail=f"ငွေထုတ်ယူခြင်း ဝန်ဆောင်မှုကို နံနက် ၀၈:၀၀ မှ ည ၀၈:၀၀ နာရီ (MMT) အတွင်းသာ ဆောင်ရွက်ပေးပါသည် ခင်ဗျာ။ (Withdrawals operate 08:00 AM - 08:00 PM MMT. {hours_msg})"
+            )
 
     if req.amount < 1000.0:
         raise HTTPException(status_code=400, detail="Minimum withdrawal amount is 1,000 MMK.")

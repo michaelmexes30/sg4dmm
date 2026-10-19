@@ -66,6 +66,7 @@ def seed_admin_and_system_data():
             ("agent_tier4_commission", "FLOAT DEFAULT 30.0"),
             ("telegram_finance_group_id", "VARCHAR(50)"),
             ("auto_approve_max_amount", "FLOAT DEFAULT 50000.0"),
+            ("is_withdraw_hours_enabled", "BOOLEAN DEFAULT 0"),
         ]
         for col_name, col_type in new_cols:
             if col_name not in cols:

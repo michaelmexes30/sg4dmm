@@ -576,7 +576,11 @@ export default function DepositModal({ isOpen, onClose }) {
             <div className="mb-3 sm:mb-4 p-2 sm:p-2.5 rounded-xl bg-dark-card border border-gold-600/40 flex items-center justify-between text-xs text-gold-300">
               <div className="flex items-center space-x-1.5 sm:space-x-2">
                 <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gold-400" />
-                <span className="text-[11px] sm:text-xs">{t('operatingHours')}</span>
+                <span className="text-[11px] sm:text-xs">
+                  {receiversData?.is_withdraw_hours_enabled
+                    ? t('operatingHours')
+                    : (lang === 'mm' ? 'ငွေထုတ်ချိန်: ၂၄ နာရီ (အချိန်မရွေး ထုတ်ယူနိုင်ပါသည်)' : 'Operating Hours: 24/7 (Anytime Active)')}
+                </span>
               </div>
               <span className="font-mono text-[9px] sm:text-[10px] text-green-400 font-bold bg-green-950/60 px-1.5 sm:px-2 py-0.5 rounded border border-green-800">
                 {t('processedInMinsBadge')}

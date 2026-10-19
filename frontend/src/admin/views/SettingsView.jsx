@@ -54,7 +54,8 @@ export default function SettingsView({ onNotify }) {
     agent_lvl4_target_turnover: 10000000,
     agent_lvl5_target_turnover: 20000000,
     telegram_finance_group_id: '',
-    auto_approve_max_amount: 50000
+    auto_approve_max_amount: 50000,
+    is_withdraw_hours_enabled: false
   });
 
   // Application Releases state (Screenshot 13)
@@ -125,7 +126,8 @@ export default function SettingsView({ onNotify }) {
         weekly_bonus_rate: Number(systemSettings.reward_percentage),
         commission_rate: Number(systemSettings.commission_rate || 30),
         telegram_finance_group_id: (systemSettings.telegram_finance_group_id || '').trim(),
-        auto_approve_max_amount: Number(systemSettings.auto_approve_max_amount ?? 50000)
+        auto_approve_max_amount: Number(systemSettings.auto_approve_max_amount ?? 50000),
+        is_withdraw_hours_enabled: Boolean(systemSettings.is_withdraw_hours_enabled)
       };
       await apiClient.updateAdminSystemSettings(payload);
       if (onNotify) onNotify('System settings & Telegram Finance Alerts updated successfully!', 'success');
@@ -511,6 +513,33 @@ export default function SettingsView({ onNotify }) {
                   onChange={(e) => setSystemSettings({ ...systemSettings, reward_percentage: Number(e.target.value) })}
                   className="w-full bg-navy-950 border border-gold-500/20 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-gold-400 font-mono"
                 />
+              </div>
+
+              {/* Withdrawal Operating Hours Toggle (08:00 AM - 08:00 PM MMT) */}
+              <div className="p-3.5 rounded-xl bg-navy-950 border border-amber-500/30 sm:col-span-2 md:col-span-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm">
+                <div className="space-y-1">
+                  <span className="text-xs font-bold text-white flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-amber-400" />
+                    <span>Withdrawal Operating Hours (ငွေထုတ်ချိန် သတ်မှတ်ချက် - နံနက် ၀၈:၀၀ မှ ည ၀၈:၀၀ နာရီ MMT)</span>
+                  </span>
+                  <p className="text-[11px] text-slate-400">
+                    {systemSettings.is_withdraw_hours_enabled
+                      ? '🟢 လက်ရှိ ဖွင့်ထားသည်: နံနက် ၀၈:၀၀ မှ ည ၀၈:၀၀ နာရီအတွင်းသာ ကစားသမားများ ငွေထုတ်ခွင့် တောင်းဆိုနိုင်ပါသည်။ (အခြားအချိန်များတွင် ပိတ်ထားမည်)'
+                      : '⚪ လက်ရှိ ပိတ်ထားသည် (24/7 အချိန်မရွေး): ကစားသမားများ ၂၄ နာရီ အချိန်မရွေး လွတ်လပ်စွာ ငွေထုတ်ခွင့် တောင်းဆိုနိုင်ပါသည်။'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSystemSettings({ ...systemSettings, is_withdraw_hours_enabled: !systemSettings.is_withdraw_hours_enabled })}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
+                    systemSettings.is_withdraw_hours_enabled
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/50 hover:bg-emerald-500/30 shadow-md'
+                      : 'bg-slate-800 text-slate-300 border border-slate-600 hover:bg-slate-700'
+                  }`}
+                >
+                  <span className={`w-2.5 h-2.5 rounded-full ${systemSettings.is_withdraw_hours_enabled ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
+                  <span>{systemSettings.is_withdraw_hours_enabled ? 'ဖွင့်ထားသည် (8 AM - 8 PM ကန့်သတ်)' : 'ပိတ်ထားသည် (24/7 အချိန်မရွေး)'}</span>
+                </button>
               </div>
             </div>
           </div>

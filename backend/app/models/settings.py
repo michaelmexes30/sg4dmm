@@ -67,6 +67,10 @@ class SystemSetting(Base):
     telegram_finance_group_id = Column(String(50), nullable=True) # e.g. -100... Telegram Group Chat ID for >= 50k alerts
     auto_approve_max_amount = Column(Float, default=50000.0)      # Max amount to auto-approve; above this requires manual review
 
+    # Withdrawal Operating Hours Toggle (08:00 AM - 08:00 PM MMT)
+    # False = 24/7 withdrawals allowed (Operating hours disabled); True = Enforce 08:00 AM - 08:00 PM MMT
+    is_withdraw_hours_enabled = Column(Boolean, default=False)
+
     updated_at = Column(DateTime, default=now_mmt, onupdate=now_mmt)
 
 class ApplicationRelease(Base):

@@ -1669,6 +1669,7 @@ class SystemSettingsUpdate(BaseModel):
     # Finance Alert & Security Settings
     telegram_finance_group_id: Optional[str] = None
     auto_approve_max_amount: Optional[float] = None
+    is_withdraw_hours_enabled: Optional[bool] = None
 
 class ToggleAgentCreditRequest(BaseModel):
     enabled: Optional[bool] = None
@@ -2266,18 +2267,18 @@ def accept_withdrawal(
     try:
         from app.core.telegram_bot import notify_finance_alert
         notify_finance_alert(
-                db=db,
-                tx_type="WITHDRAWAL",
-                amount=tx.amount,
-                user_phone=user.phone,
-                user_name=user.nickname or user.full_name or user.username,
-                gateway=tx.gateway,
-                transaction_id=tx.transaction_id,
-                status="COMPLETED",
-                notes=f"Admin {tx.reviewed_by} မှ ငွေလွှဲပေးပြီးပါပြီ{ref_msg}"
-            )
-        except Exception as ex:
-            pass
+            db=db,
+            tx_type="WITHDRAWAL",
+            amount=tx.amount,
+            user_phone=user.phone,
+            user_name=user.nickname or user.full_name or user.username,
+            gateway=tx.gateway,
+            transaction_id=tx.transaction_id,
+            status="COMPLETED",
+            notes=f"Admin {tx.reviewed_by} မှ ငွေလွှဲပေးပြီးပါပြီ{ref_msg}"
+        )
+    except Exception as ex:
+        pass
 
     return {"status": "success", "message": "Withdrawal accepted and user notified", "action_by": tx.reviewed_by, "reference": ref_str}
 
@@ -3441,6 +3442,7 @@ def get_system_settings(
         # Finance Alert & Security Settings
         "telegram_finance_group_id": setting.telegram_finance_group_id or "",
         "auto_approve_max_amount": float(getattr(setting, "auto_approve_max_amount", 50000.0) or 50000.0),
+        "is_withdraw_hours_enabled": bool(getattr(setting, "is_withdraw_hours_enabled", False)),
 
         "company_balance_oct": float(setting.company_balance_oct or 4198200.0),
         "updated_at": setting.updated_at.strftime("%Y-%m-%d %H:%M:%S") if setting.updated_at else None
@@ -3556,6 +3558,7 @@ def update_system_settings(
     # 8. Finance Alert & Security Settings
     if req.telegram_finance_group_id is not None: setting.telegram_finance_group_id = req.telegram_finance_group_id.strip()
     if req.auto_approve_max_amount is not None: setting.auto_approve_max_amount = float(req.auto_approve_max_amount)
+    if req.is_withdraw_hours_enabled is not None: setting.is_withdraw_hours_enabled = bool(req.is_withdraw_hours_enabled)
 
     setting.updated_at = now_mmt()
     db.commit()
