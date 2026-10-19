@@ -15,7 +15,7 @@ from app.core.bonus_engine import calculate_and_distribute_weekly_bonus
 from app.core.notifications import send_cutoff_reminder_job
 from app.core.singapore_pools_scraper import poll_singapore_pools_job
 from app.core.timezone_utils import now_mmt, format_mmt
-from app.core.telegram_bot import start_telegram_bot_background
+from app.core.telegram_bot import start_telegram_bot_background, check_and_notify_pending_withdrawals_job
 
 # Import API Routers
 from app.api.auth import router as auth_router
@@ -91,14 +91,24 @@ async def lifespan(app: FastAPI):
         replace_existing=True
     )
 
+    # 6. Check and notify pending withdrawal reviews every 3 minutes
+    scheduler.add_job(
+        check_and_notify_pending_withdrawals_job,
+        "interval",
+        minutes=3,
+        id="pending_withdrawals_telegram_reminder_job",
+        replace_existing=True
+    )
+
     scheduler.start()
     print("APScheduler started: Active schedules:")
     print("  - Nightly 02:00 AM MMT 3-month Data Archiving")
     print("  - Every Monday 11:00 AM MMT 10% Weekly Bonus Settlement")
     print("  - Wed/Sat/Sun 03:30 PM MMT 4:30 PM Cutoff Reminders")
     print("  - Wed/Sat/Sun 06:00 PM MMT Singapore Pools Results Polling (Query until result out)")
+    print("  - Recurring 3-min Telegram Pending Withdrawal Reminders")
     
-    # 6. Start Telegram Bot Background Listener for Sign Up / Forgot Password OTP
+    # 7. Start Telegram Bot Background Listener for Sign Up / Forgot Password OTP
     start_telegram_bot_background()
     print(f"Telegram Bot poller initialized for @{settings.TELEGRAM_BOT_USERNAME}")
     

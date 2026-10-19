@@ -545,3 +545,63 @@ def start_telegram_bot_background():
     thread.start()
     logger.info("Telegram Bot background poller thread started.")
     return thread
+
+def check_and_notify_pending_withdrawals_job():
+    """
+    Recurring Background Job:
+    Checks for any pending withdrawal review requests (status == MANUAL_REVIEW).
+    As long as any pending withdrawals exist, sends a reminder alert to the Telegram Finance Group every 3 minutes.
+    """
+    db = SessionLocal()
+    try:
+        from app.models.settings import SystemSetting
+        from app.models.transaction import Transaction, TransactionType, TransactionStatus
+
+        setting = db.query(SystemSetting).first()
+        group_id = setting.telegram_finance_group_id if setting else None
+        if not group_id:
+            return
+
+        pending_txs = db.query(Transaction).filter(
+            Transaction.tx_type == TransactionType.WITHDRAWAL,
+            Transaction.status == TransactionStatus.MANUAL_REVIEW
+        ).order_by(Transaction.id.asc()).all()
+
+        if not pending_txs:
+            return  # No pending withdrawals, silence
+
+        count = len(pending_txs)
+        total_amount = sum(float(t.amount or 0.0) for t in pending_txs)
+        time_str = now_mmt().strftime("%I:%M:%S %p MMT")
+
+        items_text = []
+        for i, t in enumerate(pending_txs[:6], 1):
+            u_phone = t.user.phone if t.user else "Unknown"
+            u_name = t.user.nickname or t.user.full_name or t.user.username or "Player"
+            delta_mins = max(0, int((now_mmt() - (t.submission_timestamp_mmt or now_mmt())).total_seconds() / 60))
+            items_text.append(
+                f"{i}. <b>{t.amount:,.0f} MMK</b> ({t.gateway.upper()}) ➔ {u_name} (<code>{u_phone}</code>) "
+                f"<i>[ဆိုင်းငံ့: {delta_mins} mins]</i>"
+            )
+
+        more_text = f"\n... နှင့် အခြား <b>{count - 6}</b> စောင် ကျန်ရှိနေပါသည်" if count > 6 else ""
+
+        alert_text = (
+            f"⏰ <b>[PENDING WITHDRAWAL REMINDER - သတိပေးချက်]</b> ⏰\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"⚠️ <b>ငွေလွှဲပေးရန် စောင့်ဆိုင်းနေသော ငွေထုတ်စာရင်း ({count}) စောင် ရှိနေပါသည်!</b>\n"
+            f"💰 <b>ဆိုင်းငံ့ စုစုပေါင်း:</b> <b>{total_amount:,.0f} MMK</b>\n"
+            f"⏱️ <b>စစ်ဆေးချိန်:</b> {time_str}\n\n"
+            f"📋 <b>ဆိုင်းငံ့ စာရင်းများ:</b>\n"
+            + "\n".join(items_text)
+            + more_text +
+            f"\n━━━━━━━━━━━━━━━━━━━━\n"
+            f"👉 <i>(ငွေလွှဲမပြီးမချင်း ၃ မိနစ်တစ်ကြိမ် အသိပေးပါမည်။ ကျေးဇူးပြု၍ Admin Panel တွင် စိစစ်ငွေလွှဲပေးပါရန်။)</i>"
+        )
+
+        send_telegram_message(group_id, alert_text)
+        logger.info(f"Sent 3-min pending withdrawal reminder for {count} pending requests.")
+    except Exception as e:
+        logger.error(f"Error in check_and_notify_pending_withdrawals_job: {e}", exc_info=True)
+    finally:
+        db.close()
