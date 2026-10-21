@@ -110,11 +110,8 @@ def notify_finance_alert(
     Sends real-time Telegram alert to the designated Finance Telegram Group.
     """
     is_deposit = (tx_type.upper() == "DEPOSIT")
-    # For Deposits: Alert for high-value >= 50,000 MMK
-    # For Withdrawals: Alert for ALL withdrawal requests (>= 1,000 MMK) so Admin can transfer funds immediately!
-    if is_deposit and amount < 50000.0:
-        return False
-    if not is_deposit and amount < 1000.0:
+    # 100% Manual Review Policy: Alert for ALL requests (>= 1,000 MMK) so Admin can check bank app & approve immediately
+    if amount < 1000.0:
         return False
 
     try:
@@ -135,12 +132,12 @@ def notify_finance_alert(
         safe_notes = html.escape(str(notes or ""))
         
         type_badge = "💳 <b>ငွေသွင်း (TOPUP)</b>" if is_deposit else "💸 <b>ငွေထုတ် (WITHDRAWAL)</b>"
-        header = "🚨 <b>SG4D TOPUP FINANCE ALERT (>= 50,000 MMK)</b> 🚨" if is_deposit else "💸 <b>SG4D WITHDRAWAL NOTIFICATION (ငွေထုတ်ယူမှု အသိပေးချက်)</b> 💸"
+        header = "💳 <b>SG4D TOPUP NOTIFICATION (ငွေသွင်း အသိပေးချက်)</b> 💳" if is_deposit else "💸 <b>SG4D WITHDRAWAL NOTIFICATION (ငွေထုတ်ယူမှု အသိပေးချက်)</b> 💸"
         
         if status in ["AUTO_APPROVED", "COMPLETED"]:
             status_badge = "✅ အောင်မြင် (COMPLETED)"
         elif status == "MANUAL_REVIEW":
-            status_badge = "⏳ ငွေလွှဲပေးရန် စောင့်ဆိုင်းဆဲ (PENDING TRANSFER)" if not is_deposit else "⏳ စစ်ဆေးရန် (MANUAL REVIEW REQUIRED)"
+            status_badge = "⏳ စစ်ဆေးအတည်ပြုရန် (PENDING APPROVAL)" if is_deposit else "⏳ ငွေလွှဲပေးရန် စောင့်ဆိုင်းဆဲ (PENDING TRANSFER)"
         elif status == "FLAGGED_EXPIRED":
             status_badge = "⚠️ ၁၅ မိနစ်ကျော်လွန် (EXPIRED REVIEW)"
         elif status == "REJECTED":
@@ -162,10 +159,10 @@ def notify_finance_alert(
         if safe_notes:
             alert_text += f"📝 <b>အသေးစိတ်/လက်ခံမည့်သူ:</b> <i>{safe_notes}</i>\n"
             
-        if is_deposit and amount > 50000.0 and status == "MANUAL_REVIEW":
+        if is_deposit and status == "MANUAL_REVIEW":
             alert_text += (
                 f"━━━━━━━━━━━━━━━━━━━━\n"
-                f"⚠️ <b>အရေးကြီး သတိပေးချက်:</b> ငွေပမာဏ ၅၀,၀၀၀ ကျပ်ထက် များပြားသဖြင့် AI/Fake Slip အန္တရာယ်မှ ကာကွယ်ရန် Auto-Approve မလုပ်ဘဲ Admin စစ်ဆေးရန် စာရင်းသို့ ပို့ထားပါသည်။ KPay / WavePay လက်ခံအကောင့်ထဲ ငွေတကယ်ဝင်/မဝင် စစ်ဆေးပြီးမှ Admin Dashboard တွင် Approve ပေးပါရန်။\n"
+                f"🛡️ <b>လုံခြုံရေး သတိပေးချက်:</b> AI ပြေစာအတု လိမ်လည်မှုများမှ ၁၀၀% ကာကွယ်ရန် Auto-Approve ပိတ်ထားပါသည်။ KPay / WavePay လက်ခံအကောင့်ထဲ ငွေတကယ်ဝင်/မဝင် စစ်ဆေးပြီးမှ Admin Dashboard [Deposit View] တွင် Approve ပေးပါရန်။\n"
             )
         alert_text += f"━━━━━━━━━━━━━━━━━━━━"
 

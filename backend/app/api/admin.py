@@ -497,13 +497,13 @@ def resolve_transaction(
     now = now_mmt()
     today_str = now.strftime("%Y-%m-%d")
 
+    user = db.query(User).filter(User.id == tx.user_id).first()
     if action == "approve":
         tx.status = TransactionStatus.COMPLETED
         tx.reviewed_by = admin_user.nickname or admin_user.username or admin_user.phone or "Admin"
         tx.reviewed_at = now
         tx.verification_notes = f"{tx.verification_notes} | Manually approved: {review_notes or ''}"
 
-        user = db.query(User).filter(User.id == tx.user_id).first()
         if user:
             user.balance += tx.amount
             ledger = FinancialLedger(
@@ -517,11 +517,82 @@ def resolve_transaction(
                 date_str=today_str
             )
             db.add(ledger)
+
+            notif = Notification(
+                user_id=user.id,
+                title="💳 ငွေသွင်းမှု အောင်မြင်ပါသည် (Deposit Approved)",
+                message=f"သင့်ငွေသွင်းမှု {tx.amount:,.0f} MMK ({tx.gateway.upper()}) အား Admin မှ စိစစ်အတည်ပြုပြီး လက်ကျန်ငွေထဲ ထည့်သွင်းပေးလိုက်ပါပြီ။ လက်ကျန်ငွေ: {user.balance:,.0f} MMK။",
+                category="Deposit",
+                notif_type="TRANSACTION",
+                is_read=False,
+                created_at=now
+            )
+            db.add(notif)
+
+            daily_summary = db.query(DailyLedgerSummary).filter(DailyLedgerSummary.date_str == today_str).first()
+            if not daily_summary:
+                daily_summary = DailyLedgerSummary(
+                    date_str=today_str,
+                    total_deposits=tx.amount,
+                    net_profit=tx.amount,
+                    total_transactions_count=1,
+                    updated_at_mmt=now
+                )
+                db.add(daily_summary)
+            else:
+                daily_summary.total_deposits += tx.amount
+                daily_summary.net_profit += tx.amount
+                daily_summary.total_transactions_count += 1
+                daily_summary.updated_at_mmt = now
+
+        try:
+            from app.core.telegram_bot import notify_finance_alert
+            notify_finance_alert(
+                db=db,
+                tx_type="DEPOSIT",
+                amount=tx.amount,
+                user_phone=user.phone if user else "Unknown",
+                user_name=user.nickname or user.full_name or user.username if user else "Player",
+                gateway=tx.gateway,
+                transaction_id=tx.transaction_id,
+                status="COMPLETED",
+                notes=f"Approved by {tx.reviewed_by} | {review_notes or ''}"
+            )
+        except Exception:
+            pass
     else:
         tx.status = TransactionStatus.REJECTED
         tx.reviewed_by = admin_user.nickname or admin_user.username or admin_user.phone or "Admin"
         tx.reviewed_at = now
         tx.verification_notes = f"{tx.verification_notes} | Manually rejected: {review_notes or ''}"
+
+        if user:
+            notif = Notification(
+                user_id=user.id,
+                title="❌ ငွေသွင်းမှု ပယ်ချခံရပါသည် (Deposit Rejected)",
+                message=f"သင့်ငွေသွင်းမှု {tx.amount:,.0f} MMK ({tx.gateway.upper()}) အား ပယ်ချလိုက်ပါသည်။ အကြောင်းရင်း: {review_notes or 'ငွေလွှဲအချက်အလက် မကိုက်ညီပါ။'}",
+                category="Deposit",
+                notif_type="TRANSACTION",
+                is_read=False,
+                created_at=now
+            )
+            db.add(notif)
+
+        try:
+            from app.core.telegram_bot import notify_finance_alert
+            notify_finance_alert(
+                db=db,
+                tx_type="DEPOSIT",
+                amount=tx.amount,
+                user_phone=user.phone if user else "Unknown",
+                user_name=user.nickname or user.full_name or user.username if user else "Player",
+                gateway=tx.gateway,
+                transaction_id=tx.transaction_id,
+                status="REJECTED",
+                notes=f"Rejected by {tx.reviewed_by} | {review_notes or ''}"
+            )
+        except Exception:
+            pass
 
     db.commit()
     return {"status": "success", "tx_id": tx.id, "new_status": tx.status}

@@ -848,10 +848,10 @@ export default function SettingsView({ onNotify }) {
               <div>
                 <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
                   <Send className="w-5 h-5 text-sky-400" />
-                  <span>Telegram Finance Alerts & Auto-Approve Security (ငွေကြေး အသိပေးချက်နှင့် လုံခြုံရေး စနစ်)</span>
+                  <span>Telegram Finance Alerts & 100% Manual Review Security (ငွေကြေး အသိပေးချက်နှင့် လုံခြုံရေး စနစ်)</span>
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Withdraw တင်သမျှအားလုံး (၁,၀၀၀ ကျပ်မှစ၍) ချက်ချင်းထုတ်ပေးနိုင်ရန် နှင့် Topup ၅၀,၀၀၀ ကျပ်အထက် ရှိပါက Telegram Group သို့ အချိန်နှင့်တပြေးညီ အလိုအလျောက် သတိပေးစာ ပေးပို့ခြင်း
+                  🛡️ AI ပြေစာအတု လိမ်လည်မှုများမှ ၁၀၀% ကာကွယ်ရန် Auto-Approve အား ပိတ်ထားပြီး၊ ငွေသွင်း (Topup) နှင့် ငွေထုတ် (Withdraw) တင်သမျှအားလုံး (၁,၀၀၀ ကျပ်မှစ၍) Telegram Group သို့ ချက်ချင်း သတိပေးစာ ပေးပို့ကာ Admin မှ စစ်ဆေးအတည်ပြုပေးခြင်း
                 </p>
               </div>
 
@@ -900,9 +900,9 @@ export default function SettingsView({ onNotify }) {
                   <span className="text-xs text-slate-400 font-bold">Ks</span>
                 </div>
                 <div className="p-2.5 rounded-lg bg-navy-900/80 border border-amber-500/10 text-[11px] text-slate-400 space-y-1">
-                  <p className="text-amber-200 font-semibold">🛡️ Fake/AI-Slip ကာကွယ်မှု စည်းမျဉ်း-</p>
+                  <p className="text-amber-200 font-semibold">🛡️ 100% Manual Review သတ်မှတ်ချက်-</p>
                   <p>
-                    ငွေပမာဏ <b>{Number(systemSettings.auto_approve_max_amount ?? 50000).toLocaleString()} ကျပ်</b> ထက် များသော ငွေသွင်းမှုများကို AI ပြေစာအတု လိမ်လည်မှုများမှ ကာကွယ်ရန် Auto-Approve မလုပ်ဘဲ Admin ဘက်မှ KPay/WavePay အကောင့်ထဲ စစ်ဆေးပြီးမှ အတည်ပြုပေးရန် Manual Review သို့ ပို့ဆောင်ပါမည်။
+                    လက်ရှိတွင် AI ပြေစာအတုများ အန္တရာယ်မှ လုံးဝကင်းဝေးစေရန် Auto-Approve အား ပိတ်ထားပြီးဖြစ်ပါသည်။ ငွေသွင်းမှုအားလုံး Admin စစ်ဆေးအတည်ပြုပြီးမှသာ Player Balance ထဲ ရောက်ရှိပါမည်။
                   </p>
                 </div>
               </div>

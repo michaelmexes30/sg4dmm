@@ -148,7 +148,7 @@ export default function DepositView({ onNotify }) {
             </span>
           </h2>
           <p className="text-xs text-slate-400 mt-1">
-            Smart verification within 15-minute window: Auto-Approved for instant wallet credits, manual review for expired or flagged slips.
+            🛡️ 100% Manual Review Enforcement: All deposit requests require Admin bank app verification to eliminate AI-edited/fake slip risks.
           </p>
         </div>
 
@@ -175,16 +175,16 @@ export default function DepositView({ onNotify }) {
 
         <div className="p-5 rounded-2xl bg-gradient-to-br from-navy-900 via-navy-900 to-navy-950 border border-emerald-500/30 shadow-xl gold-border-glow">
           <div className="flex items-center justify-between">
-            <p className="text-[11px] uppercase font-bold tracking-wider text-emerald-300">Auto-Approved (Instant)</p>
+            <p className="text-[11px] uppercase font-bold tracking-wider text-emerald-300">Approved & Credited</p>
             <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-[10px] font-bold">
-              15-Min Window
+              Verified
             </span>
           </div>
           <h3 className="text-2xl font-black text-white font-mono mt-1">
-            {autoApprovedCount} <span className="text-sm font-sans text-emerald-400 font-semibold">Transactions</span>
+            {deposits.filter(d => ['COMPLETED', 'AUTO_APPROVED'].includes(d.status)).length} <span className="text-sm font-sans text-emerald-400 font-semibold">Transactions</span>
           </h3>
           <span className="text-[11px] text-slate-400 mt-2 block">
-            Instant wallet crediting & ledger logging
+            Approved by Admin & credited to wallet
           </span>
         </div>
 
@@ -203,13 +203,12 @@ export default function DepositView({ onNotify }) {
       <div className="flex flex-wrap items-center justify-between gap-4 bg-navy-900/90 border border-gold-500/20 p-4 rounded-2xl shadow-xl">
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 max-w-full">
           {[
+            { id: 'MANUAL_REVIEW', label: '⏳ Pending Review' },
             { id: 'ALL', label: 'All Deposits' },
-            { id: 'AUTO_APPROVED', label: 'Auto-Approved' },
-            { id: 'MANUAL_REVIEW', label: 'Manual Review' },
-            { id: 'FLAGGED_EXPIRED', label: 'Flagged Expired' },
-            { id: 'COMPLETED', label: 'Completed' },
-            { id: 'REJECTED', label: 'Rejected' },
-            { id: 'REVERTED', label: 'Reverted (ပြန်ဖျက်ထား)' }
+            { id: 'COMPLETED', label: '✅ Completed (Approved)' },
+            { id: 'FLAGGED_EXPIRED', label: '⚠️ Flagged Expired' },
+            { id: 'REJECTED', label: '❌ Rejected' },
+            { id: 'REVERTED', label: '↩️ Reverted (ပြန်ဖျက်ထား)' }
           ].map((tab) => (
             <button
               key={tab.id}

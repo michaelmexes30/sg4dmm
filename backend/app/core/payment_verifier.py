@@ -292,8 +292,9 @@ def verify_and_process_deposit(
             status = TransactionStatus.MANUAL_REVIEW
             verification_notes.append(f"ACTION: Flagged for Manual Review (Amount {amount:,.0f} MMK > Safety Limit {max_auto_amount:,.0f} MMK - Admin verification required). {ocr_msg}")
         else:
-            status = TransactionStatus.AUTO_APPROVED
-            verification_notes.append(f"ACTION: Auto-Verified & Instant Credit Approved! {ocr_msg}")
+            # 100% Manual Review Policy: Zero Auto-Approve to eliminate AI-slip / Photoshop tampering risks
+            status = TransactionStatus.MANUAL_REVIEW
+            verification_notes.append(f"ACTION: Verified Slip Details. Flagged for Admin Manual Review (100% Manual Review Policy). {ocr_msg}")
 
         # Create transaction record
         tx_record = Transaction(
@@ -319,49 +320,18 @@ def verify_and_process_deposit(
         db.add(tx_record)
         db.flush()
 
-        # If AUTO_APPROVED, credit wallet and record in Financial Ledger
-        if status == TransactionStatus.AUTO_APPROVED:
-            user.balance += amount
-            
-            today_str = submission_time.strftime("%Y-%m-%d")
-            ledger_entry = FinancialLedger(
-                entry_type=LedgerEntryType.DEPOSIT,
-                amount=amount,
-                running_balance=user.balance,
-                reference_id=clean_tx,
-                reference_type="TRANSACTION",
-                description=f"Auto-verified Deposit via {gateway.upper()} ({amount:,.0f} MMK)",
-                logged_at_mmt=submission_time,
-                date_str=today_str
-            )
-            db.add(ledger_entry)
-
-            # Send in-app notification
+        # In-App Notification: Notify user that deposit request is submitted and pending admin review
+        if status == TransactionStatus.MANUAL_REVIEW:
             notif = Notification(
                 user_id=user.id,
-                title="💳 Deposit Approved & Credited!",
-                message=f"Your deposit of {amount:,.0f} MMK via {gateway.upper()} has been auto-verified and credited. New balance: {user.balance:,.0f} MMK.",
-                notif_type="DEPOSIT_APPROVED",
-                is_read=False
+                title="⏳ ငွေသွင်းလွှာ တင်သွင်းပြီးပါပြီ (Pending Review)",
+                message=f"သင့်ငွေသွင်းမှု {amount:,.0f} MMK ({gateway.upper()}) ကို စနစ်မှ လက်ခံထားပြီး Admin မှ ဘဏ်အကောင့်ထဲ ငွေလက်ခံရရှိမှု စစ်ဆေးအတည်ပြုပြီးပါက လက်ကျန်ငွေထဲ ထည့်သွင်းပေးပါမည်။ / Deposit submitted and pending admin review.",
+                category="Deposit",
+                notif_type="TRANSACTION",
+                is_read=False,
+                created_at=submission_time
             )
             db.add(notif)
-
-            # Update Daily Summary
-            daily_summary = db.query(DailyLedgerSummary).filter(DailyLedgerSummary.date_str == today_str).first()
-            if not daily_summary:
-                daily_summary = DailyLedgerSummary(
-                    date_str=today_str,
-                    total_deposits=amount,
-                    net_profit=amount,
-                    total_transactions_count=1,
-                    updated_at_mmt=submission_time
-                )
-                db.add(daily_summary)
-            else:
-                daily_summary.total_deposits += amount
-                daily_summary.net_profit += amount
-                daily_summary.total_transactions_count += 1
-                daily_summary.updated_at_mmt = submission_time
 
         db.commit()
         db.refresh(tx_record)
@@ -384,21 +354,15 @@ def verify_and_process_deposit(
         except Exception as ex:
             logger.error(f"Error triggering telegram deposit finance alert: {ex}")
 
-        if status == TransactionStatus.AUTO_APPROVED:
-            is_success = True
-            msg = f"ငွေသွင်း အောင်မြင်ပါသည်! သင့်အကောင့်ထဲသို့ {amount:,.0f} ကျပ် ချက်ချင်း အလိုအလျောက် ဖြည့်သွင်းပြီးပါပြီ ခင်ဗျာ။"
-        elif status == TransactionStatus.REJECTED:
+        if status == TransactionStatus.REJECTED:
             is_success = False
             msg = f"ငွေသွင်းလွှာ ပယ်ချခံရပါသည်: {ocr_msg or 'လက်ခံသူအမည် သို့မဟုတ် ငွေလွှဲအချက်အလက် မကိုက်ညီပါ။'}"
         elif status == TransactionStatus.FLAGGED_EXPIRED:
             is_success = False
-            msg = f"ငွေသွင်းလွှာသည် သတ်မှတ်ချိန် (၁၅ မိနစ်) ကျော်လွန်နေပါသည် ({delta_minutes:.1f} မိနစ် ကွာခြား)။ အလိုအလျောက်အတည်ပြုခြင်းကို ရပ်ဆိုင်းထားပြီး Admin စစ်ဆေးရန် စာရင်းသို့ ရောက်ရှိနေပါသည်။"
-        elif amount > max_auto_amount and ocr_valid:
-            is_success = False
-            msg = f"ငွေသွင်းလွှာ အချက်အလက်များ မှန်ကန်ပါသည်။ သို့သော် ငွေပမာဏ {amount:,.0f} ကျပ်သည် လုံခြုံရေး သတ်မှတ်ချက် ({max_auto_amount:,.0f} ကျပ်) ထက် များပြားပါသဖြင့် Admin မှ ဘဏ်အကောင့်ထဲ စစ်ဆေးပြီး မကြာမီ အတည်ပြုပေးပါမည် ခင်ဗျာ။"
+            msg = f"ငွေသွင်းလွှာသည် သတ်မှတ်ချိန် (၁၅ မိနစ်) ကျော်လွန်နေပါသည် ({delta_minutes:.1f} မိနစ် ကွာခြား)။ Admin စစ်ဆေးရန် စာရင်းသို့ ရောက်ရှိနေပါသည်။"
         else:
-            is_success = False
-            msg = f"ငွေသွင်းလွှာကို Admin စစ်ဆေးရန် စာရင်းသို့ ပို့ထားပါသည်: {ocr_msg or 'စစ်ဆေးဆဲ'}"
+            is_success = True
+            msg = f"ငွေသွင်းတောင်းဆိုမှု ({amount:,.0f} MMK - {gateway.upper()}) အား လက်ခံရရှိပြီး ဆိုင်းငံ့ (Pending) စာရင်းသွင်းထားပါသည်။ Admin မှ KPay/WavePay အကောင့်ထဲ ငွေလက်ခံရရှိမှု စစ်ဆေးပြီးပါက မကြာမီ သင့် Balance ထဲသို့ ထည့်သွင်းပေးပါမည် ခင်ဗျာ။"
 
         return {
             "success": is_success,
