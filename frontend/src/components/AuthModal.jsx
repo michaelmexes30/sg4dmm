@@ -320,16 +320,19 @@ export default function AuthModal({ isOpen, onClose, allowClose = true }) {
             <>
               <div>
                 <label className="block text-xs font-semibold text-gray-300 mb-1.5">
-                  {t('phoneLabel')}
+                  {t('userIdOrPhoneLabel') || t('phoneLabel')}
                 </label>
                 <div className="relative">
-                  <Phone className="w-4 h-4 text-gray-500 absolute left-3.5 top-3" />
+                  <User className="w-4 h-4 text-gray-500 absolute left-3.5 top-3" />
                   <input
-                    type="tel"
+                    type="text"
+                    inputMode="text"
+                    autoCapitalize="none"
+                    autoCorrect="off"
                     required
                     value={identifier}
                     onChange={(e) => setIdentifier(e.target.value)}
-                    placeholder="09888888888"
+                    placeholder={t('userIdOrPhonePlaceholder') || "09888888888 / username"}
                     className="w-full bg-dark-bg border border-gold-900 rounded-xl pl-10 pr-3.5 py-2.5 text-xs text-white font-mono focus:border-gold-400 focus:outline-none"
                   />
                 </div>

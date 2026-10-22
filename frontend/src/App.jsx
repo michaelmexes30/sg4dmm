@@ -8,6 +8,7 @@ import BetHistory from './components/BetHistory';
 import ProfileView from './components/ProfileView';
 import AdminLedger from './components/AdminLedger';
 import AdminPortal from './admin/AdminPortal';
+import AdminLogin from './admin/AdminLogin';
 import AuthModal from './components/AuthModal';
 import { useAuth } from './context/AuthContext';
 import { useLanguage } from './context/LanguageContext';
@@ -93,6 +94,24 @@ export default function App() {
 
   // Application starts with Login Page if user is not logged in
   if (!user) {
+    if (activeTab === 'admin' || (typeof window !== 'undefined' && (
+      window.location.pathname.startsWith('/backend') ||
+      window.location.pathname.startsWith('/admin') ||
+      window.location.hash === '#admin'
+    ))) {
+      return (
+        <AdminLogin
+          onLoginSuccess={() => setActiveTab('admin')}
+          onGoToPlayerApp={() => {
+            setActiveTab('betting');
+            if (window.history && window.history.pushState) {
+              window.history.pushState({}, '', '/');
+            }
+          }}
+        />
+      );
+    }
+
     return (
       <div className="min-h-screen bg-dark-bg text-gray-100 flex flex-col font-['Outfit','Padauk',sans-serif]">
         <AuthModal
