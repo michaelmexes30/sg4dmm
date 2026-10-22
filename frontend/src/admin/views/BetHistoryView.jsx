@@ -46,6 +46,7 @@ export default function BetHistoryView({ onNotify }) {
   const [number, setNumber] = useState('');
   const [status, setStatus] = useState('');
   const [voucher, setVoucher] = useState('');
+  const [isEditedFilter, setIsEditedFilter] = useState('');
 
   // Slip detail modal
   const [selectedSlip, setSelectedSlip] = useState(null);
@@ -63,7 +64,7 @@ export default function BetHistoryView({ onNotify }) {
 
   useEffect(() => {
     loadBets();
-  }, [page, pageSize]);
+  }, [page, pageSize, isEditedFilter]);
 
   const loadBets = async () => {
     try {
@@ -79,6 +80,7 @@ export default function BetHistoryView({ onNotify }) {
       if (number.trim()) params.number = number.trim();
       if (status.trim()) params.status = status.trim();
       if (voucher.trim()) params.voucher = voucher.trim();
+      if (isEditedFilter) params.is_edited = isEditedFilter;
 
       const res = await apiClient.getAdmin4DBets(params);
       
@@ -106,6 +108,7 @@ export default function BetHistoryView({ onNotify }) {
     setNumber('');
     setStatus('');
     setVoucher('');
+    setIsEditedFilter('');
     setPage(1);
     setTimeout(() => {
       loadBets();
@@ -242,14 +245,43 @@ export default function BetHistoryView({ onNotify }) {
 
       {/* 2. Advanced Multi-Field Audit Filter Bar */}
       <div className="bg-navy-900/90 border border-gold-500/20 rounded-2xl p-5 shadow-xl">
-        <div className="flex items-center gap-2 mb-4">
-          <Filter className="w-4 h-4 text-gold-400" />
-          <h3 className="text-xs font-bold text-white uppercase tracking-wider font-serif">
-            Filter & Search Bet Slips
-          </h3>
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <Filter className="w-4 h-4 text-gold-400" />
+            <h3 className="text-xs font-bold text-white uppercase tracking-wider font-serif">
+              Filter & Search Bet Slips
+            </h3>
+          </div>
+
+          {/* Quick Filter Tabs */}
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => { setIsEditedFilter(''); setPage(1); }}
+              className={`px-3 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
+                !isEditedFilter 
+                  ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-950 font-black' 
+                  : 'bg-navy-950/80 text-slate-400 hover:text-white border border-gold-500/10'
+              }`}
+            >
+              All Bets ({total.toLocaleString()})
+            </button>
+            <button
+              type="button"
+              onClick={() => { setIsEditedFilter('true'); setPage(1); }}
+              className={`px-3 py-1 rounded-xl text-[11px] font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+                isEditedFilter === 'true' 
+                  ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-950 font-black' 
+                  : 'bg-navy-950/80 text-cyan-400 hover:text-cyan-300 border border-cyan-500/30'
+              }`}
+            >
+              <Edit className="w-3.5 h-3.5" />
+              <span>✏️ Edited Only (ပြင်ဆင်ထားသော ဂဏန်းများသာ)</span>
+            </button>
+          </div>
         </div>
 
-        <form onSubmit={handleSearch} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <form onSubmit={handleSearch} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
           {/* Game Date */}
           <div>
             <label className="block text-[10px] text-slate-400 font-semibold mb-1 flex items-center gap-1">
@@ -323,6 +355,24 @@ export default function BetHistoryView({ onNotify }) {
               <option value="PENDING">Pending (မထွက်သေး)</option>
               <option value="WON">Won (ပေါက်မဲ)</option>
               <option value="LOST">Lost (မပေါက်မဲ)</option>
+              <option value="EDITED">✏️ Edited (ပြင်ဆင်ထားသော)</option>
+            </select>
+          </div>
+
+          {/* Edited Status Filter */}
+          <div>
+            <label className="block text-[10px] text-slate-400 font-semibold mb-1 flex items-center gap-1">
+              <Edit className="w-3 h-3 text-cyan-400" />
+              <span>Edited Status</span>
+            </label>
+            <select
+              value={isEditedFilter}
+              onChange={(e) => { setIsEditedFilter(e.target.value); setPage(1); }}
+              className="w-full bg-navy-950 border border-gold-500/20 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-cyan-400"
+            >
+              <option value="">All Slips (အားလုံး)</option>
+              <option value="true">✏️ Edited Only (ပြင်ဆင်ထားသော)</option>
+              <option value="false">Original Only (မူရင်းများသာ)</option>
             </select>
           </div>
 
@@ -342,7 +392,7 @@ export default function BetHistoryView({ onNotify }) {
           </div>
 
           {/* Search / Reset Buttons */}
-          <div className="sm:col-span-2 md:col-span-3 lg:col-span-6 flex items-center justify-end gap-2 pt-2 border-t border-gold-500/10">
+          <div className="sm:col-span-2 md:col-span-3 lg:col-span-7 flex items-center justify-end gap-2 pt-2 border-t border-gold-500/10">
             <button
               type="button"
               onClick={handleReset}

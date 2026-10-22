@@ -2070,6 +2070,7 @@ def get_4d_bets_history(
     status_filter: Optional[str] = None,
     status: Optional[str] = None,
     voucher: Optional[str] = None,
+    is_edited: Optional[str] = None,
     admin_user: User = Depends(get_current_admin),
     db: Session = Depends(get_db)
 ):
@@ -2112,6 +2113,26 @@ def get_4d_bets_history(
                 LotteryDraw.status == DrawStatus.OPEN,
                 LotteryDraw.first_prize == None
             )
+    # Edited number filter support
+    edit_filter = (is_edited or "").strip().lower()
+    if not edit_filter and target_status and target_status.upper() in ["EDITED", "EDIT"]:
+        edit_filter = "true"
+
+    if edit_filter in ["true", "1", "edited", "yes"]:
+        query = query.filter(
+            BetItem.edit_logs_json.isnot(None),
+            BetItem.edit_logs_json != "[]",
+            BetItem.edit_logs_json != ""
+        )
+    elif edit_filter in ["false", "0", "original", "no"]:
+        query = query.filter(
+            or_(
+                BetItem.edit_logs_json.is_(None),
+                BetItem.edit_logs_json == "[]",
+                BetItem.edit_logs_json == ""
+            )
+        )
+
     if voucher:
         query = query.filter(BetSlip.slip_code.contains(voucher))
 
@@ -2191,6 +2212,11 @@ def get_4d_bets_history(
 
             is_editable, editable_reason = check_is_bet_editable(d, bs)
             edit_history = bi.edit_logs if hasattr(bi, 'edit_logs') else []
+
+            if edit_filter in ["true", "1", "edited", "yes"] and len(edit_history) == 0:
+                continue
+            if edit_filter in ["false", "0", "original", "no"] and len(edit_history) > 0:
+                continue
 
             results.append({
                 "id": f"{bi.id}_{idx}",
@@ -2297,38 +2323,35 @@ def edit_bet_number(
         return {"status": "unchanged", "message": f"ထိုးဂဏန်းသည် {clean_num} အတိုင်း တူညီနေပါသည်။"}
 
     # 3. Update BetItem number & combinations
-    from app.core.bet_calculator import calculate_stake
-    norm_type = (bi.bet_type or "ordinary").lower()
-    
-    # Safely compute unit big / small amount
     combo_cnt = max(1, bi.combination_count or 1)
     unit_big = int(bi.big_amount if (bi.big_amount and bi.big_amount > 0) else ((bi.item_stake or 0) / combo_cnt))
     unit_small = int(bi.small_amount if (bi.small_amount and bi.small_amount > 0) else 0)
 
-    if norm_type in ["box", "r", "ibox", "permutation"]:
-        calc = calculate_stake(number=clean_num, bet_type="r", big_amount=unit_big, small_amount=unit_small)
-        bi.number = clean_num
-        bi.combinations_json = json.dumps(calc["combinations"])
-        bi.combination_count = calc["combination_count"]
-        bi.big_amount = float(unit_big)
-        bi.small_amount = float(unit_small)
-        bi.item_stake = float(calc["total_stake"])
-    elif norm_type in ["roll", "s"]:
-        calc = calculate_stake(number=clean_num, bet_type="roll", big_amount=unit_big, small_amount=unit_small)
-        bi.number = clean_num
-        bi.combinations_json = json.dumps(calc["combinations"])
-        bi.combination_count = calc["combination_count"]
-        bi.big_amount = float(unit_big)
-        bi.small_amount = float(unit_small)
-        bi.item_stake = float(calc["total_stake"])
-    else:
-        # Ordinary 4D
+    # When modifying a bet item from the table:
+    # If the bet item represents a single combination (combination_count <= 1),
+    # update this specific number without expanding it into multiple combinations or duplicating permutations!
+    if bi.combination_count <= 1:
         bi.number = clean_num
         bi.combinations_json = json.dumps([clean_num])
         bi.combination_count = 1
         bi.big_amount = float(unit_big)
         bi.small_amount = float(unit_small)
         bi.item_stake = float(unit_big + unit_small)
+    else:
+        # Multi-combination item: replace the combination at combo_index
+        try:
+            combos = json.loads(bi.combinations_json) if bi.combinations_json else [bi.number]
+        except Exception:
+            combos = [bi.number]
+        target_idx = payload.combo_index if payload.combo_index is not None and 0 <= payload.combo_index < len(combos) else 0
+        combos[target_idx] = clean_num
+        if target_idx == 0:
+            bi.number = clean_num
+        bi.combinations_json = json.dumps(combos)
+        bi.combination_count = len(combos)
+        bi.big_amount = float(unit_big)
+        bi.small_amount = float(unit_small)
+        bi.item_stake = float((unit_big + unit_small) * len(combos))
 
     # Recalculate slip total stake
     all_slip_items = db.query(BetItem).filter(BetItem.slip_id == bs.id).all()

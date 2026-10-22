@@ -51,6 +51,13 @@ async def lifespan(app: FastAPI):
                 conn.execute(text("ALTER TABLE bet_items ADD COLUMN edit_logs_json TEXT DEFAULT '[]'"))
             except Exception:
                 pass
+
+            try:
+                # Fix any previous duplicate-expanded bet item 11137
+                conn.execute(text("""UPDATE bet_items SET combination_count = 1, combinations_json = '["4440"]', item_stake = 1000.0 WHERE id = 11137 AND number = "4440" AND combination_count > 1"""))
+                conn.execute(text("UPDATE bet_slips SET total_stake = (SELECT SUM(item_stake) FROM bet_items WHERE slip_id = bet_slips.id) WHERE slip_code = 'SLIP-20261022-46DB76'"))
+            except Exception:
+                pass
     except Exception as ddl_ex:
         print(f"Lifespan schema update notice: {ddl_ex}")
 
