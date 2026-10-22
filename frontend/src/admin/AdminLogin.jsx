@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
-import { Shield, Lock, User, Eye, EyeOff, ArrowLeft, ShieldCheck, KeyRound, AlertTriangle, Sparkles } from 'lucide-react';
+import { Shield, Lock, User, Eye, EyeOff, ArrowLeft, ShieldAlert, KeyRound, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
-import logoImg from '../assets/logo.png';
 
 export default function AdminLogin({ onLoginSuccess, onGoToPlayerApp }) {
   const { login, logout } = useAuth();
@@ -19,11 +18,11 @@ export default function AdminLogin({ onLoginSuccess, onGoToPlayerApp }) {
 
     const cleanId = identifier.trim();
     if (!cleanId) {
-      setErrorMsg(lang === 'mm' ? 'စီမံခန့်ခွဲသူ Username သို့မဟုတ် ဖုန်းနံပါတ် ရိုက်ထည့်ပါ' : 'Please enter your Admin username or phone');
+      setErrorMsg(lang === 'mm' ? 'စီမံခန့်ခွဲသူ Username ရိုက်ထည့်ပါ' : 'Please enter Admin username');
       return;
     }
     if (!password) {
-      setErrorMsg(lang === 'mm' ? 'လုံခြုံရေး စကားဝှက် ရိုက်ထည့်ပါ' : 'Please enter your password');
+      setErrorMsg(lang === 'mm' ? 'လုံခြုံရေး စကားဝှက် ရိုက်ထည့်ပါ' : 'Please enter Admin password');
       return;
     }
 
@@ -36,8 +35,8 @@ export default function AdminLogin({ onLoginSuccess, onGoToPlayerApp }) {
         logout();
         setErrorMsg(
           lang === 'mm' 
-            ? 'ဝင်ရောက်ခွင့်မရှိပါ: ဤ Portal သည် Chief Administrator များသာ ဝင်ရောက်နိုင်ပါသည် (Access Denied: Admin role required).' 
-            : 'Access Denied: This portal is strictly restricted to Chief Administrators only.'
+            ? 'ဝင်ရောက်ခွင့် မရှိပါ: ဤ Portal သည် စနစ်စီမံခန့်ခွဲသူ (ADMIN) များသာ ဝင်ရောက်ခွင့်ရှိပါသည် (Access Denied: Admin privileges required).' 
+            : 'Access Denied: This console is strictly restricted to System Administrators only.'
         );
         return;
       }
@@ -49,7 +48,7 @@ export default function AdminLogin({ onLoginSuccess, onGoToPlayerApp }) {
       console.error('Admin login failed:', err);
       setErrorMsg(
         err.message || 
-        (lang === 'mm' ? 'Username သို့မဟုတ် Password မှားယွင်းနေပါသည်' : 'Invalid username or password')
+        (lang === 'mm' ? 'Username သို့မဟုတ် Password မှားယွင်းနေပါသည်' : 'Invalid Admin credentials')
       );
     } finally {
       setLoading(false);
@@ -57,38 +56,43 @@ export default function AdminLogin({ onLoginSuccess, onGoToPlayerApp }) {
   };
 
   return (
-    <div className="min-h-screen bg-[#040814] text-slate-100 flex flex-col justify-center items-center p-4 sm:p-6 font-['Outfit','Padauk',sans-serif] relative overflow-hidden">
+    <div className="min-h-screen bg-[#070b14] text-slate-100 flex flex-col justify-center items-center p-4 sm:p-6 font-['Outfit','Padauk',sans-serif] relative overflow-hidden select-none">
       
-      {/* Executive Background Decorative Glows */}
-      <div className="absolute top-1/4 -left-40 w-96 h-96 bg-sky-600/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-1/4 -right-40 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute inset-0 bg-[radial-gradient(#1e293b_1px,transparent_1px)] [background-size:24px_24px] opacity-30 pointer-events-none" />
+      {/* Enterprise Cyber Tech Grid & Background Glows (Completely distinct from frontend Gold theme) */}
+      <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b18_1px,transparent_1px),linear-gradient(to_bottom,#1e293b18_1px,transparent_1px)] bg-[size:32px_32px] pointer-events-none" />
+      <div className="absolute top-1/4 -left-48 w-96 h-96 bg-blue-600/10 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-1/4 -right-48 w-96 h-96 bg-indigo-600/15 rounded-full blur-[140px] pointer-events-none" />
 
-      {/* Main Admin Login Card */}
-      <div className="relative w-full max-w-md bg-gradient-to-b from-navy-900 via-navy-950 to-[#060c1d] border border-gold-500/40 rounded-3xl p-6 sm:p-8 shadow-2xl shadow-black/80 space-y-6">
+      {/* Main Admin Console Container */}
+      <div className="relative w-full max-w-md bg-[#0d1322] border border-slate-700/60 rounded-3xl p-6 sm:p-8 shadow-2xl shadow-black/90 space-y-6">
         
-        {/* Top Header & Security Badge */}
-        <div className="text-center space-y-3">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-sky-500/10 border border-sky-500/30 text-sky-300 text-[10px] font-bold tracking-wider uppercase">
-            <Shield className="w-3.5 h-3.5 text-sky-400" />
-            <span>Restricted Access • Admin Console</span>
+        {/* Top Accent Gradient Bar */}
+        <div className="absolute top-0 inset-x-0 h-1.5 bg-gradient-to-r from-blue-500 via-indigo-500 to-cyan-400 rounded-t-3xl" />
+
+        {/* Console Header */}
+        <div className="text-center space-y-3 pt-2">
+          
+          {/* Security Status Pill */}
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-900 border border-slate-700 text-[11px] font-semibold text-slate-300">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="font-mono text-emerald-400 tracking-wider">SECURE CONSOLE</span>
+            <span className="text-slate-500">•</span>
+            <span className="text-slate-400">ADMIN GATEWAY</span>
           </div>
 
-          <div className="relative w-20 h-20 mx-auto rounded-2xl bg-navy-950/90 border border-gold-500/80 p-2.5 flex items-center justify-center shadow-lg shadow-gold-500/20">
-            <img src={logoImg} alt="Logo" className="w-full h-full object-contain filter drop-shadow" />
-            <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-emerald-500 border-2 border-navy-950 flex items-center justify-center text-navy-950">
-              <ShieldCheck className="w-3.5 h-3.5 text-navy-950 stroke-[3]" />
-            </div>
+          {/* Central Enterprise Icon */}
+          <div className="w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-blue-600/20 to-indigo-600/10 border border-blue-500/40 p-3.5 flex items-center justify-center shadow-lg shadow-blue-500/10">
+            <Shield className="w-9 h-9 text-blue-400" />
           </div>
 
           <div>
-            <h1 className="text-xl sm:text-2xl font-black text-white tracking-wide font-serif">
-              SG4D Myanmar
+            <h1 className="text-2xl font-black text-white tracking-wide font-sans">
+              SG4D BACKOFFICE
             </h1>
-            <p className="text-xs font-bold text-transparent bg-gradient-to-r from-amber-300 via-gold-400 to-amber-200 bg-clip-text mt-0.5">
-              Chief Executive Administration Portal
+            <p className="text-xs font-semibold text-blue-400 uppercase tracking-widest mt-1">
+              Central Management System
             </p>
-            <p className="text-[11px] text-slate-400 mt-1">
+            <p className="text-[11px] text-slate-400 mt-1 font-sans">
               ဗဟိုစီမံခန့်ခွဲမှု စနစ် (Authorized Personnel Only)
             </p>
           </div>
@@ -98,112 +102,118 @@ export default function AdminLogin({ onLoginSuccess, onGoToPlayerApp }) {
         {errorMsg && (
           <div className="p-3.5 rounded-2xl bg-rose-950/80 border border-rose-500/50 text-rose-200 text-xs flex items-start gap-2.5 shadow-lg animate-shake">
             <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              <p className="font-bold text-rose-300">ဝင်ရောက်မှု အမှားအယွင်း</p>
-              <p className="text-[11px] leading-relaxed">{errorMsg}</p>
-            </div>
+            <div className="flex-1 font-medium leading-relaxed">{errorMsg}</div>
           </div>
         )}
 
-        {/* Login Form */}
+        {/* Admin Login Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
           
-          {/* Admin Username / ID Field (Allows letters, text, numbers on Mobile) */}
-          <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-slate-300 flex items-center gap-1.5">
-              <User className="w-3.5 h-3.5 text-amber-400" />
-              <span>စီမံခန့်ခွဲသူ အကောင့်အမည် (Admin Username / Phone)</span>
+          {/* Administrator Username / Phone */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
+              <span>စီမံခန့်ခွဲသူ Username (Admin ID)</span>
+              <span className="text-[10px] text-blue-400 font-mono">REQUIRED</span>
             </label>
             <div className="relative">
+              <User className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
               <input
                 type="text"
                 inputMode="text"
                 autoCapitalize="none"
                 autoCorrect="off"
-                spellCheck="false"
                 autoComplete="username"
                 required
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
-                placeholder="e.g. mglikko, admin, mgnitoot"
-                className="w-full bg-navy-950/90 border border-gold-500/30 rounded-xl px-4 py-3 text-xs sm:text-sm text-white placeholder-slate-500 font-mono focus:outline-none focus:border-gold-400 focus:ring-1 focus:ring-gold-400 transition-all"
+                placeholder="Admin username သို့မဟုတ် ဖုန်းနံပါတ်"
+                className="w-full bg-[#080d18] border border-slate-700 rounded-xl pl-10 pr-3.5 py-3 text-xs text-white placeholder-slate-600 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none font-sans transition-all"
               />
             </div>
-            <p className="text-[10px] text-slate-500">
-              * ဖုန်းကီးဘုတ်တွင် စာလုံး/နံပါတ် (Letters & Numbers) အားလုံး ရိုက်နှိပ်နိုင်ပါသည်
-            </p>
           </div>
 
-          {/* Password Field */}
-          <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-slate-300 flex items-center gap-1.5">
-              <Lock className="w-3.5 h-3.5 text-amber-400" />
+          {/* Master Password */}
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
               <span>လုံခြုံရေး စကားဝှက် (Password)</span>
+              <span className="text-[10px] text-blue-400 font-mono">PROTECTED</span>
             </label>
             <div className="relative">
+              <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-3.5" />
               <input
                 type={showPassword ? 'text' : 'password'}
                 autoComplete="current-password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full bg-navy-950/90 border border-gold-500/30 rounded-xl pl-4 pr-11 py-3 text-xs sm:text-sm text-white placeholder-slate-500 font-mono focus:outline-none focus:border-gold-400 focus:ring-1 focus:ring-gold-400 transition-all"
+                placeholder="••••••••••••"
+                className="w-full bg-[#080d18] border border-slate-700 rounded-xl pl-10 pr-10 py-3 text-xs text-white placeholder-slate-600 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none font-sans tracking-wider transition-all"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3.5 top-3 text-slate-400 hover:text-slate-200 transition-colors p-0.5 cursor-pointer"
-                title={showPassword ? "Hide password" : "Show password"}
+                className="absolute right-3.5 top-3.5 text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
+                tabIndex={-1}
               >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4 text-slate-400" />}
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
           </div>
 
-          {/* Sign In Submit Button */}
+          {/* Submit Button */}
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 via-gold-400 to-amber-500 hover:from-amber-400 hover:to-gold-300 text-navy-950 font-black text-xs sm:text-sm uppercase tracking-wider shadow-lg shadow-gold-500/20 hover:shadow-gold-500/30 transition-all duration-200 cursor-pointer disabled:opacity-60 flex items-center justify-center gap-2 mt-2"
+            className="w-full mt-2 py-3.5 px-4 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 active:scale-[0.99] text-white font-bold text-xs tracking-wider uppercase transition-all shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? (
               <>
-                <div className="w-4 h-4 border-2 border-navy-950/40 border-t-navy-950 rounded-full animate-spin" />
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                 <span>စစ်ဆေးနေပါသည်...</span>
               </>
             ) : (
               <>
                 <KeyRound className="w-4 h-4" />
-                <span>လုံခြုံစွာ ဝင်ရောက်မည် (Admin Sign In)</span>
+                <span>စီမံခန့်ခွဲမှု စနစ်သို့ ဝင်ရောက်မည် (Sign In)</span>
               </>
             )}
           </button>
         </form>
 
-        {/* Security Notice & Return Link */}
-        <div className="pt-4 border-t border-navy-800/80 space-y-3 text-center">
-          <div className="p-2.5 rounded-xl bg-navy-950/60 border border-slate-800 text-[11px] text-slate-400 flex items-center justify-center gap-1.5">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-            <span>256-Bit SSL Encrypted Admin Infrastructure</span>
+        {/* Security Warning Notice */}
+        <div className="pt-2 space-y-3 text-center border-t border-slate-800">
+          <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 text-[11px] text-slate-400 flex items-start gap-2 text-left">
+            <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+            <p className="leading-relaxed">
+              <strong className="text-slate-200">သတိပေးချက်:</strong> ဤနေရာသည် စနစ်စီမံခန့်ခွဲသူ (Admin) များ သီးသန့်ဖြစ်ပါသည်။ ခွင့်ပြုချက်မရှိဘဲ ဝင်ရောက်ရန် ကြိုးစားမှုများကို စနစ်မှ အလိုအလျောက် မှတ်တမ်းတင်ထားပါမည်။
+            </p>
           </div>
 
-          <button
-            type="button"
-            onClick={onGoToPlayerApp || (() => { window.location.href = '/'; })}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-gold-300 transition-colors cursor-pointer"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>ကစားသမား ဝက်ဘ်ဆိုဒ်သို့ ပြန်သွားမည် (Back to Player Website)</span>
-          </button>
+          {/* Back to Member Website Link */}
+          <div>
+            <button
+              type="button"
+              onClick={onGoToPlayerApp || (() => { window.location.href = '/'; })}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-400 hover:text-blue-400 transition-colors cursor-pointer py-1"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>ကစားသမား ဝက်ဘ်ဆိုဒ်သို့ ပြန်သွားမည် (Back to Player Portal)</span>
+            </button>
+          </div>
         </div>
 
       </div>
 
-      {/* Footer Branding */}
-      <p className="text-[11px] text-slate-600 mt-6 text-center font-mono">
-        SG4D Myanmar Golden Peacock Platform © 2026 • Executive Portal v2.1.0
-      </p>
+      {/* Corporate Console Footer */}
+      <div className="mt-6 text-center space-y-1">
+        <p className="text-[11px] text-slate-500 font-mono">
+          SG4D Enterprise Backoffice Core v2.4.0 • Node SG-SIN-01
+        </p>
+        <p className="text-[10px] text-slate-600">
+          End-to-End SSL Encrypted Administrative Infrastructure
+        </p>
+      </div>
+
     </div>
   );
 }

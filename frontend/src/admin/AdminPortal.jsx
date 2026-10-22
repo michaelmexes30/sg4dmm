@@ -187,9 +187,9 @@ export default function AdminPortal({ onBackToApp }) {
   }
 
   return (
-    <div className="min-h-screen bg-navy-950 text-slate-100 flex flex-col font-sans selection:bg-gold-500 selection:text-black">
+    <div className="min-h-screen bg-[#070b14] text-slate-100 flex flex-col font-sans selection:bg-blue-600 selection:text-white">
       {/* Top Header Bar (Legacy Luxury Navy & Gold) */}
-      <header className="sticky top-0 z-40 bg-navy-900/95 border-b border-gold-500/20 backdrop-blur-md px-4 sm:px-6 h-16 flex items-center justify-between shadow-xl">
+      <header className="sticky top-0 z-40 bg-[#0b1120]/95 border-b border-slate-800 backdrop-blur-md px-4 sm:px-6 h-16 flex items-center justify-between shadow-xl">
         <div className="flex items-center gap-3">
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -200,7 +200,7 @@ export default function AdminPortal({ onBackToApp }) {
 
           {/* Brand Logo & Title with Cinzel Serif and Gold Gradient */}
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl gold-border bg-black/60 p-1 flex items-center justify-center shadow-lg">
+            <div className="w-9 h-9 rounded-xl bg-blue-600/10 border border-blue-500/40 p-1.5 flex items-center justify-center shadow-lg">
               <img 
                 src={logoImg} 
                 alt="Logo" 
@@ -209,10 +209,10 @@ export default function AdminPortal({ onBackToApp }) {
               />
             </div>
             <div>
-              <h1 className="font-cinzel text-sm sm:text-base font-bold gold-gradient-text tracking-wide leading-none">
+              <h1 className="font-sans text-sm sm:text-base font-black text-white tracking-wide leading-none">
                 SG4D MYANMAR
               </h1>
-              <p className="text-[9px] uppercase tracking-widest text-gold-400 font-semibold leading-none mt-1">
+              <p className="text-[9px] uppercase tracking-widest text-blue-400 font-bold leading-none mt-1">
                 Salone4D Agent Edition
               </p>
             </div>
@@ -220,9 +220,9 @@ export default function AdminPortal({ onBackToApp }) {
         </div>
 
         {/* Center: Live Company Balance (Net Profit Formula) */}
-        <div className="hidden md:flex items-center gap-2 bg-navy-950 border border-gold-500/30 px-4 py-1.5 rounded-xl shadow-inner gold-border-glow">
+        <div className="hidden md:flex items-center gap-2 bg-slate-900 border border-slate-800 px-4 py-1.5 rounded-xl shadow-inner">
           <span className="text-[11px] text-slate-400 font-semibold">Company Balance ({balanceMonth}) =</span>
-          <span className={`text-xs sm:text-sm font-black font-mono ${companyBalance >= 0 ? 'text-gold-400' : 'text-rose-400'}`}>
+          <span className={`text-xs sm:text-sm font-black font-mono ${companyBalance >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
             {companyBalance < 0 
               ? `-Ks ${Math.abs(companyBalance).toLocaleString()}` 
               : `Ks ${companyBalance.toLocaleString()}`}
@@ -232,10 +232,10 @@ export default function AdminPortal({ onBackToApp }) {
         {/* Right Tools (Admin User profile, Logout) */}
         <div className="flex items-center gap-2 sm:gap-3">
 
-          <div className="hidden sm:flex items-center gap-2 bg-navy-800 px-3 py-1 rounded-xl border border-gold-500/20 text-xs">
+          <div className="hidden sm:flex items-center gap-2 bg-slate-800 px-3 py-1 rounded-xl border border-slate-700 text-xs">
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
             <span className="font-bold text-white">{user?.nickname || user?.username || 'Michael'}</span>
-            <span className="text-[10px] bg-gold-500/20 text-gold-300 font-mono px-1.5 py-0.5 rounded border border-gold-500/30">
+            <span className="text-[10px] bg-blue-500/20 text-blue-300 font-mono px-1.5 py-0.5 rounded border border-blue-500/30">
               {user?.role || 'ADMIN'}
             </span>
           </div>
@@ -254,7 +254,7 @@ export default function AdminPortal({ onBackToApp }) {
       <div className="flex-1 flex overflow-hidden">
         {/* Left Sidebar Navigation (Matching exact 16-screenshot hierarchy) */}
         <aside
-          className={`fixed inset-y-0 left-0 z-30 w-64 bg-navy-900 border-r border-gold-500/20 pt-16 lg:pt-0 flex flex-col transition-transform duration-200 lg:static lg:translate-x-0 ${
+          className={`fixed inset-y-0 left-0 z-30 w-64 bg-[#0b1120] border-r border-slate-800 pt-16 lg:pt-0 flex flex-col transition-transform duration-200 lg:static lg:translate-x-0 ${
             mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
           }`}
         >
@@ -265,8 +265,8 @@ export default function AdminPortal({ onBackToApp }) {
               onClick={() => handleSelectMenu('dashboard')}
               className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-all ${
                 activeMenu === 'dashboard'
-                  ? 'bg-amber-500 text-slate-950 font-black shadow-md'
-                  : 'text-slate-300 hover:bg-navy-800 hover:text-white'
+                  ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-600/30'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
               }`}
             >
               <LayoutDashboard className="w-4 h-4" />
@@ -277,10 +277,10 @@ export default function AdminPortal({ onBackToApp }) {
             <div>
               <button
                 onClick={() => toggleGroup('4d')}
-                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-navy-800 transition-colors"
+                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 transition-colors"
               >
                 <div className="flex items-center gap-3">
-                  <Dice5 className="w-4 h-4 text-gold-400" />
+                  <Dice5 className="w-4 h-4 text-blue-400" />
                   <span>4D</span>
                 </div>
                 {expandedGroups['4d'] ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
@@ -291,7 +291,7 @@ export default function AdminPortal({ onBackToApp }) {
                   <button
                     onClick={() => handleSelectMenu('4d-game')}
                     className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                      activeMenu === '4d-game' ? 'bg-amber-500/20 text-gold-300 font-bold' : 'text-slate-400 hover:text-white'
+                      activeMenu === '4d-game' ? 'bg-blue-600/20 text-blue-300 font-bold border border-blue-500/30' : 'text-slate-400 hover:text-white'
                     }`}
                   >
                     Game (Live & Closed)
@@ -299,7 +299,7 @@ export default function AdminPortal({ onBackToApp }) {
                   <button
                     onClick={() => handleSelectMenu('4d-past-games')}
                     className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                      activeMenu === '4d-past-games' ? 'bg-amber-500/20 text-gold-300 font-bold' : 'text-slate-400 hover:text-white'
+                      activeMenu === '4d-past-games' ? 'bg-blue-600/20 text-blue-300 font-bold border border-blue-500/30' : 'text-slate-400 hover:text-white'
                     }`}
                   >
                     Past Games
@@ -307,7 +307,7 @@ export default function AdminPortal({ onBackToApp }) {
                   <button
                     onClick={() => handleSelectMenu('4d-bet-history')}
                     className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                      activeMenu === '4d-bet-history' ? 'bg-amber-500/20 text-gold-300 font-bold' : 'text-slate-400 hover:text-white'
+                      activeMenu === '4d-bet-history' ? 'bg-blue-600/20 text-blue-300 font-bold border border-blue-500/30' : 'text-slate-400 hover:text-white'
                     }`}
                   >
                     Bet History
@@ -320,7 +320,7 @@ export default function AdminPortal({ onBackToApp }) {
             <div>
               <button
                 onClick={() => toggleGroup('balance')}
-                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-navy-800 transition-colors"
+                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 transition-colors"
               >
                 <div className="flex items-center gap-3">
                   <Wallet className="w-4 h-4 text-emerald-400" />
@@ -334,7 +334,7 @@ export default function AdminPortal({ onBackToApp }) {
                   <button
                     onClick={() => handleSelectMenu('top-up')}
                     className={`w-full text-left px-3 py-2 rounded-lg transition-colors flex items-center justify-between ${
-                      activeMenu === 'top-up' ? 'bg-amber-500/20 text-gold-300 font-bold' : 'text-slate-400 hover:text-white'
+                      activeMenu === 'top-up' ? 'bg-blue-600/20 text-blue-300 font-bold border border-blue-500/30' : 'text-slate-400 hover:text-white'
                     }`}
                   >
                     <span>Deposit & Top Up</span>
@@ -345,7 +345,7 @@ export default function AdminPortal({ onBackToApp }) {
                   <button
                     onClick={() => handleSelectMenu('withdraw')}
                     className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                      activeMenu === 'withdraw' ? 'bg-amber-500/20 text-gold-300 font-bold' : 'text-slate-400 hover:text-white'
+                      activeMenu === 'withdraw' ? 'bg-blue-600/20 text-blue-300 font-bold border border-blue-500/30' : 'text-slate-400 hover:text-white'
                     }`}
                   >
                     Withdraw Review
@@ -358,7 +358,7 @@ export default function AdminPortal({ onBackToApp }) {
             <div>
               <button
                 onClick={() => toggleGroup('members')}
-                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-navy-800 transition-colors"
+                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 transition-colors"
               >
                 <div className="flex items-center gap-3">
                   <Users className="w-4 h-4 text-purple-400" />
@@ -372,7 +372,7 @@ export default function AdminPortal({ onBackToApp }) {
                   <button
                     onClick={() => handleSelectMenu('system-users')}
                     className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                      activeMenu === 'system-users' ? 'bg-amber-500/20 text-gold-300 font-bold' : 'text-slate-400 hover:text-white'
+                      activeMenu === 'system-users' ? 'bg-blue-600/20 text-blue-300 font-bold border border-blue-500/30' : 'text-slate-400 hover:text-white'
                     }`}
                   >
                     System Users
@@ -380,7 +380,7 @@ export default function AdminPortal({ onBackToApp }) {
                   <button
                     onClick={() => handleSelectMenu('app-users')}
                     className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                      activeMenu === 'app-users' ? 'bg-amber-500/20 text-gold-300 font-bold' : 'text-slate-400 hover:text-white'
+                      activeMenu === 'app-users' ? 'bg-blue-600/20 text-blue-300 font-bold border border-blue-500/30' : 'text-slate-400 hover:text-white'
                     }`}
                   >
                     App Players
@@ -388,16 +388,16 @@ export default function AdminPortal({ onBackToApp }) {
                   <button
                     onClick={() => handleSelectMenu('agent-commissions')}
                     className={`w-full text-left px-3 py-2 rounded-lg transition-colors flex items-center justify-between ${
-                      activeMenu === 'agent-commissions' ? 'bg-amber-500/20 text-gold-300 font-bold' : 'text-slate-400 hover:text-white'
+                      activeMenu === 'agent-commissions' ? 'bg-blue-600/20 text-blue-300 font-bold border border-blue-500/30' : 'text-slate-400 hover:text-white'
                     }`}
                   >
                     <span>30% Agent Commission</span>
-                    <span className="text-[10px] text-gold-400 font-mono font-bold">30%</span>
+                    <span className="text-[10px] text-blue-400 font-mono font-bold">30%</span>
                   </button>
                   <button
                     onClick={() => handleSelectMenu('fake-users')}
                     className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                      activeMenu === 'fake-users' ? 'bg-amber-500/20 text-gold-300 font-bold' : 'text-slate-400 hover:text-white'
+                      activeMenu === 'fake-users' ? 'bg-blue-600/20 text-blue-300 font-bold border border-blue-500/30' : 'text-slate-400 hover:text-white'
                     }`}
                   >
                     Simulated Profiles
@@ -410,7 +410,7 @@ export default function AdminPortal({ onBackToApp }) {
             <div>
               <button
                 onClick={() => toggleGroup('reports')}
-                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-navy-800 transition-colors"
+                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 transition-colors"
               >
                 <div className="flex items-center gap-3">
                   <BarChart3 className="w-4 h-4 text-rose-400" />
@@ -424,7 +424,7 @@ export default function AdminPortal({ onBackToApp }) {
                   <button
                     onClick={() => handleSelectMenu('reports-financial')}
                     className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                      activeMenu === 'reports-financial' ? 'bg-amber-500/20 text-gold-300 font-bold' : 'text-slate-400 hover:text-white'
+                      activeMenu === 'reports-financial' ? 'bg-blue-600/20 text-blue-300 font-bold border border-blue-500/30' : 'text-slate-400 hover:text-white'
                     }`}
                   >
                     Financial Ledger
@@ -432,7 +432,7 @@ export default function AdminPortal({ onBackToApp }) {
                   <button
                     onClick={() => handleSelectMenu('weekly-bonuses')}
                     className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                      activeMenu === 'weekly-bonuses' ? 'bg-amber-500/20 text-gold-300 font-bold' : 'text-slate-400 hover:text-white'
+                      activeMenu === 'weekly-bonuses' ? 'bg-blue-600/20 text-blue-300 font-bold border border-blue-500/30' : 'text-slate-400 hover:text-white'
                     }`}
                   >
                     Weekly Bonuses
@@ -445,7 +445,7 @@ export default function AdminPortal({ onBackToApp }) {
             <div>
               <button
                 onClick={() => toggleGroup('settings')}
-                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-navy-800 transition-colors"
+                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 transition-colors"
               >
                 <div className="flex items-center gap-3">
                   <Settings className="w-4 h-4 text-slate-400" />
@@ -459,7 +459,7 @@ export default function AdminPortal({ onBackToApp }) {
                   <button
                     onClick={() => handleSelectMenu('settings')}
                     className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                      activeMenu === 'settings' ? 'bg-amber-500/20 text-gold-300 font-bold' : 'text-slate-400 hover:text-white'
+                      activeMenu === 'settings' ? 'bg-blue-600/20 text-blue-300 font-bold border border-blue-500/30' : 'text-slate-400 hover:text-white'
                     }`}
                   >
                     System & App Settings
@@ -471,7 +471,7 @@ export default function AdminPortal({ onBackToApp }) {
           </div>
 
           {/* Red Logout Button at Bottom of Sidebar (Matching Screenshots) */}
-          <div className="p-3 border-t border-gold-500/20">
+          <div className="p-3 border-t border-slate-800">
             <button
               onClick={logout}
               className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-rose-600/20 hover:bg-rose-600 text-rose-400 hover:text-white text-xs font-bold transition-all cursor-pointer"
@@ -483,7 +483,7 @@ export default function AdminPortal({ onBackToApp }) {
         </aside>
 
         {/* Right Content Area */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-navy-950">
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8 bg-[#070b14]">
           
           {/* Notification Toast */}
           {notification && (

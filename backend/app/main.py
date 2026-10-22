@@ -207,16 +207,26 @@ def serve_legacy_admin():
 @app.get("/backend/login")
 @app.get("/backend/{full_path:path}")
 def serve_backend_admin(full_path: str = ""):
+    headers = {
+        "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
+        "Pragma": "no-cache",
+        "Expires": "0"
+    }
     if os.path.exists(frontend_index):
-        return FileResponse(frontend_index)
-    return FileResponse(os.path.join(static_dir, "admin_dashboard.html"))
+        return FileResponse(frontend_index, headers=headers)
+    return FileResponse(os.path.join(static_dir, "admin_dashboard.html"), headers=headers)
 
 @app.get("/admin")
 @app.get("/admin/{full_path:path}")
 def serve_admin(full_path: str = ""):
+    headers = {
+        "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
+        "Pragma": "no-cache",
+        "Expires": "0"
+    }
     if os.path.exists(frontend_index):
-        return FileResponse(frontend_index)
-    return FileResponse(os.path.join(static_dir, "admin_dashboard.html"))
+        return FileResponse(frontend_index, headers=headers)
+    return FileResponse(os.path.join(static_dir, "admin_dashboard.html"), headers=headers)
 
 
 

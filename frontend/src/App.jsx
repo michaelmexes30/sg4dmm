@@ -18,11 +18,23 @@ import { Award, ReceiptText, LineChart, Sparkles, PlusCircle, User, ShieldCheck 
 export default function App() {
   const { user, loading: authLoading, isAuthModalOpen, setIsAuthModalOpen } = useAuth();
   const { t } = useLanguage();
+  const isAdminRoute = () => {
+    if (typeof window === 'undefined') return false;
+    const path = (window.location.pathname || '').toLowerCase();
+    const hash = (window.location.hash || '').toLowerCase();
+    return (
+      path.includes('backend') ||
+      path.includes('admin') ||
+      hash.includes('backend') ||
+      hash.includes('admin')
+    );
+  };
   const [activeTab, setActiveTab] = useState(() => {
     if (typeof window !== 'undefined' && (
-      window.location.pathname.startsWith('/backend') ||
-      window.location.pathname.startsWith('/admin') || 
-      window.location.hash === '#admin'
+      window.location.pathname.toLowerCase().includes('backend') ||
+      window.location.pathname.toLowerCase().includes('admin') || 
+      window.location.hash.toLowerCase().includes('admin') ||
+      window.location.hash.toLowerCase().includes('backend')
     )) {
       return 'admin';
     }
@@ -43,6 +55,21 @@ export default function App() {
   useEffect(() => {
     loadDraws();
   }, []);
+
+  useEffect(() => {
+    const handleUrlChange = () => {
+      if (isAdminRoute()) {
+        setActiveTab('admin');
+      }
+    };
+    window.addEventListener('popstate', handleUrlChange);
+    window.addEventListener('hashchange', handleUrlChange);
+    return () => {
+      window.removeEventListener('popstate', handleUrlChange);
+      window.removeEventListener('hashchange', handleUrlChange);
+    };
+  }, []);
+
 
   const loadDraws = async () => {
     try {
@@ -92,13 +119,10 @@ export default function App() {
     );
   }
 
-  // Application starts with Login Page if user is not logged in
-  if (!user) {
-    if (activeTab === 'admin' || (typeof window !== 'undefined' && (
-      window.location.pathname.startsWith('/backend') ||
-      window.location.pathname.startsWith('/admin') ||
-      window.location.hash === '#admin'
-    ))) {
+  // 1. STRICT ADMIN ROUTING: If URL or tab is for backend/admin
+  if (activeTab === 'admin' || isAdminRoute()) {
+    // If not logged in, or logged in as a normal player: ALWAYS show dedicated Admin Login Console
+    if (!user || user.role !== 'ADMIN') {
       return (
         <AdminLogin
           onLoginSuccess={() => setActiveTab('admin')}
@@ -112,6 +136,21 @@ export default function App() {
       );
     }
 
+    // Authenticated as ADMIN: Render Executive Backoffice Portal
+    return (
+      <AdminPortal
+        onBackToApp={() => {
+          setActiveTab('betting');
+          if (window.history && window.history.pushState) {
+            window.history.pushState({}, '', '/');
+          }
+        }}
+      />
+    );
+  }
+
+  // 2. PLAYER ROUTING: Regular players who are not logged in see Player Login
+  if (!user) {
     return (
       <div className="min-h-screen bg-dark-bg text-gray-100 flex flex-col font-['Outfit','Padauk',sans-serif]">
         <AuthModal
@@ -121,11 +160,6 @@ export default function App() {
         />
       </div>
     );
-  }
-
-  // Admin Portal View (Matching 16-screenshot backend operations)
-  if (activeTab === 'admin') {
-    return <AdminPortal onBackToApp={() => setActiveTab('betting')} />;
   }
 
   return (
