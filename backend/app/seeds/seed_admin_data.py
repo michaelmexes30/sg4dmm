@@ -84,6 +84,15 @@ def seed_admin_and_system_data():
                 db.commit()
             except Exception as ex:
                 print(f"Notice adding slip_hash to transactions: {ex}")
+
+        # Check bet_items table for edit_logs_json
+        try:
+            bi_cols = [c['name'] for c in inspector.get_columns('bet_items')]
+            if 'edit_logs_json' not in bi_cols:
+                db.execute(text("ALTER TABLE bet_items ADD COLUMN edit_logs_json TEXT DEFAULT '[]'"))
+                db.commit()
+        except Exception as ex:
+            print(f"Notice adding edit_logs_json to bet_items: {ex}")
     except Exception as e:
         print(f"System settings inspection notice: {e}")
 

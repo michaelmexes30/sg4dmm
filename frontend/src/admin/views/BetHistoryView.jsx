@@ -23,7 +23,12 @@ import {
   Calendar,
   Phone,
   User,
-  Hash
+  Hash,
+  Edit,
+  Lock,
+  AlertTriangle,
+  History,
+  X
 } from 'lucide-react';
 import { apiClient } from '../../api/client';
 
@@ -45,6 +50,16 @@ export default function BetHistoryView({ onNotify }) {
   // Slip detail modal
   const [selectedSlip, setSelectedSlip] = useState(null);
   const [copiedVoucher, setCopiedVoucher] = useState(null);
+
+  // Edit Bet Number Modal State
+  const [editingBet, setEditingBet] = useState(null);
+  const [newNumber, setNewNumber] = useState('');
+  const [editNote, setEditNote] = useState('');
+  const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
+  const [editError, setEditError] = useState('');
+
+  // Audit Logs Modal State
+  const [viewingAuditLogs, setViewingAuditLogs] = useState(null);
 
   useEffect(() => {
     loadBets();
@@ -103,6 +118,43 @@ export default function BetHistoryView({ onNotify }) {
     setCopiedVoucher(code);
     if (onNotify) onNotify(`Voucher ${code} copied to clipboard`, 'success');
     setTimeout(() => setCopiedVoucher(null), 2000);
+  };
+
+  const handleOpenEdit = (bet) => {
+    setEditingBet(bet);
+    setNewNumber(bet.number || '');
+    setEditNote('');
+    setEditError('');
+  };
+
+  const handleSaveEdit = async (e) => {
+    e.preventDefault();
+    setEditError('');
+    const clean = newNumber.trim();
+    if (!clean || clean.length !== 4 || !/^\d{4}$/.test(clean)) {
+      setEditError('ထိုးဂဏန်းသည် ဂဏန်း ၄ လုံး (0000 မှ 9999) ဖြစ်ရပါမည်');
+      return;
+    }
+
+    try {
+      setIsSubmittingEdit(true);
+      const res = await apiClient.editAdminBetNumber(editingBet.item_id, {
+        new_number: clean,
+        combo_index: editingBet.combo_index || 0,
+        note: editNote.trim()
+      });
+
+      if (onNotify) {
+        onNotify(res.message || `ဂဏန်းအား ${clean} သို့ အောင်မြင်စွာ ပြောင်းလဲပြီးပါပြီ`, 'success');
+      }
+      setEditingBet(null);
+      loadBets();
+    } catch (err) {
+      console.error('Failed to edit bet number:', err);
+      setEditError(err.message || 'ထိုးဂဏန်း ပြောင်းလဲခြင်း မအောင်မြင်ပါ');
+    } finally {
+      setIsSubmittingEdit(false);
+    }
   };
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -410,9 +462,22 @@ export default function BetHistoryView({ onNotify }) {
                         {phoneDisplay}
                       </td>
                       <td className="py-3 px-4 text-center">
-                        <span className="inline-block px-2.5 py-1 rounded-lg bg-navy-950 border border-gold-500/30 font-mono font-black text-gold-300 text-sm tracking-widest shadow-sm">
-                          {numberDisplay}
-                        </span>
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="inline-block px-2.5 py-1 rounded-lg bg-navy-950 border border-gold-500/30 font-mono font-black text-gold-300 text-sm tracking-widest shadow-sm">
+                            {numberDisplay}
+                          </span>
+                          {bet.is_edited && (
+                            <button
+                              type="button"
+                              onClick={() => setViewingAuditLogs(bet)}
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/30 transition-all cursor-pointer shadow-sm"
+                              title="Click to view modification audit log"
+                            >
+                              <Clock className="w-2.5 h-2.5" />
+                              <span>EDITED</span>
+                            </button>
+                          )}
+                        </div>
                       </td>
                       <td className="py-3 px-4 text-center">
                         {String(bet.bet_type || bet.input || '').toUpperCase() === 'R' || String(bet.bet_type || '').toLowerCase() === 'box' ? (
@@ -468,15 +533,38 @@ export default function BetHistoryView({ onNotify }) {
                       <td className="py-3 px-4 text-center">
                         {getStatusBadge(bet.status)}
                       </td>
-                      <td className="py-3 px-4 text-center">
-                        <button
-                          onClick={() => setSelectedSlip(bet)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-navy-800 hover:bg-gold-500/20 text-gold-300 text-[11px] font-bold border border-gold-500/30 transition-all cursor-pointer"
-                          title="View Ticket Slip"
-                        >
-                          <FileText className="w-3.5 h-3.5" />
-                          <span>Slip</span>
-                        </button>
+                      <td className="py-3 px-4 text-center whitespace-nowrap">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedSlip(bet)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-navy-800 hover:bg-gold-500/20 text-gold-300 text-[11px] font-bold border border-gold-500/30 transition-all cursor-pointer"
+                            title="View Ticket Slip"
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                            <span>Slip</span>
+                          </button>
+
+                          {bet.is_editable ? (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEdit(bet)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white text-[11px] font-bold border border-blue-500/40 transition-all cursor-pointer shadow-sm"
+                              title="Edit 4D Number (Editable until 5:45 PM MMT / 6:00 PM 1st Wed)"
+                            >
+                              <Edit className="w-3.5 h-3.5" />
+                              <span>Edit</span>
+                            </button>
+                          ) : (
+                            <span
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-800/60 text-slate-500 text-[10px] font-semibold border border-slate-700/60 cursor-not-allowed"
+                              title={bet.editable_reason || "Locked (Settlement cutoff passed)"}
+                            >
+                              <Lock className="w-3 h-3" />
+                              <span>Locked</span>
+                            </span>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -646,6 +734,22 @@ export default function BetHistoryView({ onNotify }) {
               </p>
             </div>
 
+            {/* Modification Audit Trail on Slip */}
+            {selectedSlip.edit_history && selectedSlip.edit_history.length > 0 && (
+              <div className="p-3 rounded-xl bg-cyan-950/40 border border-cyan-500/40 text-xs space-y-1.5">
+                <div className="flex items-center gap-1.5 font-bold text-cyan-300 text-[11px]">
+                  <History className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>MODIFICATION AUDIT TRAIL (ပြင်ဆင်မှု မှတ်တမ်း)</span>
+                </div>
+                {selectedSlip.edit_history.map((log, lIdx) => (
+                  <div key={lIdx} className="text-[11px] text-slate-300 font-mono flex items-center justify-between border-t border-cyan-900/40 pt-1">
+                    <span>Admin <strong>{log.admin_name}</strong>: {log.old_number} → <strong className="text-emerald-400">{log.new_number}</strong></span>
+                    <span className="text-slate-400 text-[10px]">{log.changed_at}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Modal Actions */}
             <div className="flex items-center justify-between pt-3 border-t border-gold-500/20">
               <button
@@ -666,6 +770,216 @@ export default function BetHistoryView({ onNotify }) {
           </div>
         </div>
       )}
+      {/* 6. Edit 4D Number Modal */}
+      {editingBet && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-[#0d1322] border border-blue-500/50 w-full max-w-md rounded-2xl p-6 shadow-2xl shadow-black/90 space-y-5 relative">
+            <button
+              onClick={() => { setEditingBet(null); setEditError(''); }}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Modal Header */}
+            <div className="flex items-center gap-3 pb-3 border-b border-slate-800">
+              <div className="w-10 h-10 rounded-xl bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-blue-400">
+                <Edit className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white font-sans">
+                  ထိုးဂဏန်း ပြင်ဆင်ခြင်း (Edit 4D Number)
+                </h3>
+                <p className="text-[11px] text-slate-400 font-mono">
+                  Ticket #{editingBet.voucher_code || editingBet.voucher || editingBet.slip_code}
+                </p>
+              </div>
+            </div>
+
+            {/* Bet Summary Info */}
+            <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 text-xs space-y-2">
+              <div className="flex justify-between items-center text-slate-300">
+                <span className="text-slate-400">ကစားသမား (Player):</span>
+                <span className="font-semibold text-white">
+                  {editingBet.nickname || editingBet.nick_name || 'Player'} ({editingBet.phone || editingBet.user})
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-slate-300">
+                <span className="text-slate-400">ပွဲစဉ်ရက်စွဲ (Game Date):</span>
+                <span className="font-mono text-slate-200">{editingBet.draw_date || editingBet.game}</span>
+              </div>
+              <div className="flex justify-between items-center text-slate-300">
+                <span className="text-slate-400">လတ်တလော ထိုးဂဏန်း (Current 4D):</span>
+                <span className="font-mono text-base font-black text-amber-400 bg-slate-950 px-2.5 py-0.5 rounded border border-amber-500/30">
+                  {editingBet.number || '----'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-slate-300">
+                <span className="text-slate-400">ထိုးကြေးပမာဏ (Stake):</span>
+                <span className="font-mono font-bold text-emerald-400">{Number(editingBet.stake_amount || editingBet.amount || 0).toLocaleString()} MMK</span>
+              </div>
+            </div>
+
+            {/* Time rule notice */}
+            <div className="p-3 rounded-xl bg-blue-950/40 border border-blue-500/30 text-[11px] text-blue-300 flex items-start gap-2">
+              <Clock className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
+              <p className="leading-relaxed">
+                <strong>သတိပြုရန်:</strong> ထိုးဂဏန်းအား ညနေ ၅:၄၅ နာရီ (လ၏ ပထမ ဗုဒ္ဓဟူးနေ့ဖြစ်ပါက ၆:၀၀ နာရီ) ထီပေါက်စဉ် မထွက်မီအထိသာ ပြင်ဆင်ခွင့်ရှိပါသည်။ ပြင်ဆင်မှု မှတ်တမ်းအား စနစ်မှ တိကျစွာ မှတ်တမ်းတင်ထားပါမည်။
+              </p>
+            </div>
+
+            {/* Error Message */}
+            {editError && (
+              <div className="p-3 rounded-xl bg-rose-950/80 border border-rose-500/50 text-rose-200 text-xs flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>{editError}</span>
+              </div>
+            )}
+
+            {/* Form */}
+            <form onSubmit={handleSaveEdit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
+                  <span>ပြောင်းလဲမည့် 4D နံပါတ်အသစ် (New 4D Number)</span>
+                  <span className="text-[10px] text-blue-400 font-mono">4 DIGITS</span>
+                </label>
+                <input
+                  type="text"
+                  maxLength={4}
+                  required
+                  autoFocus
+                  inputMode="numeric"
+                  value={newNumber}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, '').slice(0, 4);
+                    setNewNumber(val);
+                  }}
+                  placeholder="e.g. 9425"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-xl font-mono font-bold text-center text-white tracking-widest focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  ပြင်ဆင်ရသည့် အကြောင်းပြချက် (Reason / Note - Optional)
+                </label>
+                <input
+                  type="text"
+                  value={editNote}
+                  onChange={(e) => setEditNote(e.target.value)}
+                  placeholder="e.g. Player requested correction before draw"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none"
+                />
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => { setEditingBet(null); setEditError(''); }}
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-colors cursor-pointer"
+                >
+                  မလုပ်တော့ပါ (Cancel)
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingEdit || newNumber.length !== 4}
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold transition-all shadow-lg shadow-blue-600/30 flex items-center gap-1.5 cursor-pointer"
+                >
+                  {isSubmittingEdit ? (
+                    <>
+                      <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>သိမ်းဆည်းနေပါသည်...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>ဂဏန်း အတည်ပြု ပြောင်းလဲမည်</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 7. Audit Trail Logs Modal */}
+      {viewingAuditLogs && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-[#0d1322] border border-cyan-500/40 w-full max-w-lg rounded-2xl p-6 shadow-2xl space-y-4 relative">
+            <button
+              onClick={() => setViewingAuditLogs(null)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-center gap-3 pb-3 border-b border-slate-800">
+              <div className="w-10 h-10 rounded-xl bg-cyan-600/20 border border-cyan-500/40 flex items-center justify-center text-cyan-400">
+                <History className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white font-sans">
+                  ပြင်ဆင်မှု မှတ်တမ်း (Bet Modification Audit Log)
+                </h3>
+                <p className="text-[11px] text-slate-400 font-mono">
+                  Ticket #{viewingAuditLogs.voucher_code || viewingAuditLogs.voucher || viewingAuditLogs.slip_code}
+                </p>
+              </div>
+            </div>
+
+            {/* List of modifications */}
+            <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+              {(!viewingAuditLogs.edit_history || viewingAuditLogs.edit_history.length === 0) ? (
+                <p className="text-xs text-slate-400 py-6 text-center">ပြင်ဆင်ထားသော မှတ်တမ်း မရှိသေးပါခင်ဗျာ။</p>
+              ) : (
+                viewingAuditLogs.edit_history.map((log, lIdx) => (
+                  <div key={lIdx} className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 space-y-1.5 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-200 flex items-center gap-1.5">
+                        <User className="w-3.5 h-3.5 text-blue-400" />
+                        Admin: <strong className="text-blue-300">{log.admin_name}</strong>
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-mono flex items-center gap-1">
+                        <Clock className="w-3 h-3 text-slate-500" />
+                        {log.changed_at}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-1">
+                      <span className="text-slate-400">ဂဏန်းပြောင်းလဲမှု:</span>
+                      <span className="font-mono font-bold text-rose-400 line-through bg-slate-950 px-2 py-0.5 rounded border border-rose-500/20">
+                        {log.old_number}
+                      </span>
+                      <span className="text-slate-500 font-bold">→</span>
+                      <span className="font-mono font-black text-emerald-400 bg-slate-950 px-2 py-0.5 rounded border border-emerald-500/30">
+                        {log.new_number}
+                      </span>
+                    </div>
+
+                    {log.note && (
+                      <p className="text-[11px] text-slate-400 italic pt-0.5">
+                        အကြောင်းပြချက်: "{log.note}"
+                      </p>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-slate-800">
+              <button
+                onClick={() => setViewingAuditLogs(null)}
+                className="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold transition-colors cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

@@ -322,6 +322,18 @@ export const apiClient = {
     return this.request(`/admin/4d/bets?${q}`);
   },
 
+  editAdminBetNumber(itemId, data) {
+    return this.request(`/admin/bets/${itemId}/edit-number`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    });
+  },
+
+  getAdminBetEditLogs(params = {}) {
+    const q = new URLSearchParams(params).toString();
+    return this.request(`/admin/bets/edit-logs?${q}`);
+  },
+
   getAdminTopUps(params = {}) {
     const q = new URLSearchParams(params).toString();
     return this.request(`/admin/top-ups?${q}`);

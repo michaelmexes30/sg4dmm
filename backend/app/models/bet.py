@@ -65,6 +65,7 @@ class BetItem(Base):
     item_payout = Column(Float, default=0.0)
     is_won = Column(Integer, default=0)
     win_details_json = Column(Text, default="[]")
+    edit_logs_json = Column(Text, default="[]")
 
     slip = relationship("BetSlip", back_populates="items")
 
@@ -79,6 +80,13 @@ class BetItem(Base):
     def win_details(self):
         try:
             return json.loads(self.win_details_json)
+        except Exception:
+            return []
+
+    @property
+    def edit_logs(self):
+        try:
+            return json.loads(self.edit_logs_json or "[]")
         except Exception:
             return []
 
@@ -99,3 +107,25 @@ class BetArchive(Base):
     items_data_json = Column(Text)
     bet_created_at = Column(DateTime)
     archived_at = Column(DateTime, default=now_mmt)
+
+class BetEditLog(Base):
+    """Audit log tracking every modification made to bet numbers by administrators"""
+    __tablename__ = "bet_edit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    slip_id = Column(Integer, ForeignKey("bet_slips.id"), nullable=False, index=True)
+    bet_item_id = Column(Integer, ForeignKey("bet_items.id"), nullable=False, index=True)
+    
+    old_number = Column(String(10), nullable=False)
+    new_number = Column(String(10), nullable=False)
+    
+    admin_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    admin_name = Column(String(100), nullable=False)
+    note = Column(String(255), nullable=True)
+    
+    created_at = Column(DateTime, default=now_mmt, index=True)
+
+    slip = relationship("BetSlip")
+    bet_item = relationship("BetItem")
+    admin = relationship("User")
+

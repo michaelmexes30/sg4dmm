@@ -10,7 +10,7 @@ from sqlalchemy import func, or_, and_, desc
 from app.database import get_db
 from app.models.user import User, UserRole, AgentCommissionLog, Notification, AgentLevelLog
 from app.models.transaction import Transaction, TransactionStatus, TransactionType
-from app.models.bet import BetSlip, BetItem, BetArchive, BetSlipStatus
+from app.models.bet import BetSlip, BetItem, BetArchive, BetSlipStatus, BetEditLog
 from app.models.lottery import LotteryDraw, DrawStatus
 from app.models.transaction import TransactionArchive
 from app.models.ledger import FinancialLedger, LedgerEntryType, DailyLedgerSummary
@@ -2023,6 +2023,40 @@ def get_number_audit(
     }
 
 # ----------------- 2. 4D Bet History Table (Screenshot 2) -----------------
+
+def check_is_bet_editable(draw, slip):
+    """
+    Checks if a bet number is editable:
+    - Must not be already settled or won/lost.
+    - Bet cutoff is 4:30 PM MMT.
+    - Editable until 5:45 PM MMT (or 6:00 PM MMT if 1st Wednesday of the month).
+    - Results out and payment settled at 6:00 PM MMT.
+    """
+    if slip.status in [BetSlipStatus.WON, BetSlipStatus.LOST] or draw.status == DrawStatus.SETTLED or draw.first_prize is not None:
+        return False, "ထီပေါက်စဉ် ထွက်ပြီး/ရှင်းတမ်းထုတ်ပြီး ဖြစ်၍ ပြင်ဆင်ခွင့် ပိတ်ထားပါသည် (Already settled)."
+
+    curr_mmt = now_mmt()
+    try:
+        draw_dt = datetime.strptime(str(draw.draw_date).strip()[:10], "%Y-%m-%d").date()
+    except Exception:
+        draw_dt = None
+
+    if draw_dt:
+        if curr_mmt.date() > draw_dt:
+            return False, "ယခုပွဲစဉ်သည် ကျင်းပပြီးစီးသွားပြီဖြစ်ပါသည် (Draw date has passed)."
+        elif curr_mmt.date() == draw_dt:
+            is_first_wed = (draw_dt.weekday() == 2 and draw_dt.day <= 7)
+            # Editable until 5:45 PM MMT (or 6:00 PM MMT if 1st Wednesday)
+            cutoff_hour = 18 if is_first_wed else 17
+            cutoff_minute = 0 if is_first_wed else 45
+            cutoff_time_str = "06:00 PM MMT" if is_first_wed else "05:45 PM MMT"
+
+            if curr_mmt.hour > cutoff_hour or (curr_mmt.hour == cutoff_hour and curr_mmt.minute >= cutoff_minute):
+                return False, f"ညနေ {cutoff_time_str} ပြင်ဆင်ခွင့် သတ်မှတ်ချိန် ကျော်လွန်သွားသဖြင့် ပြင်ဆင်ခွင့် ပိတ်ထားပါသည် (Editable until {cutoff_time_str} only)."
+
+    return True, "Editable"
+
+
 @router.get("/4d/bets")
 def get_4d_bets_history(
     page: int = 1,
@@ -2155,10 +2189,14 @@ def get_4d_bets_history(
             else:
                 status_label = "Pending"
 
+            is_editable, editable_reason = check_is_bet_editable(d, bs)
+            edit_history = bi.edit_logs if hasattr(bi, 'edit_logs') else []
+
             results.append({
                 "id": f"{bi.id}_{idx}",
                 "item_id": bi.id,
                 "slip_id": bs.id,
+                "combo_index": idx,
                 "game": d.draw_date,
                 "draw_date": d.draw_date,
                 "draw_number": d.draw_number,
@@ -2167,6 +2205,7 @@ def get_4d_bets_history(
                 "user": u.phone,
                 "phone": u.phone,
                 "number": combo,
+                "base_number": bi.number,
                 "bet_type": display_type,
                 "input": display_type,
                 "big_amount": unit_stake,
@@ -2182,7 +2221,11 @@ def get_4d_bets_history(
                 "voucher": bs.slip_code,
                 "voucher_code": bs.slip_code,
                 "slip_code": bs.slip_code,
-                "created_at": bs.created_at.strftime("%d/%m/%Y %H:%M:%S") if bs.created_at else ""
+                "created_at": bs.created_at.strftime("%d/%m/%Y %H:%M:%S") if bs.created_at else "",
+                "is_edited": len(edit_history) > 0,
+                "edit_history": edit_history,
+                "is_editable": is_editable,
+                "editable_reason": editable_reason
             })
 
     return {
@@ -2193,6 +2236,179 @@ def get_4d_bets_history(
         "limit": actual_limit,
         "page_size": actual_limit
     }
+
+
+class EditBetNumberSchema(BaseModel):
+    new_number: str
+    combo_index: Optional[int] = 0
+    note: Optional[str] = None
+
+@router.put("/bets/{item_id}/edit-number")
+def edit_bet_number(
+    item_id: int,
+    payload: EditBetNumberSchema,
+    admin_user: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Allows Admin to edit a bet's 4D number prior to draw settlement at 6:00 PM MMT (or 6:15 PM MMT on 1st Wednesday).
+    Records an immutable audit log tracking:
+    - Admin username / ID
+    - Old 4D Number -> New 4D Number
+    - Exact MMT timestamp
+    - Optional note / reason
+    Updates both backend and player frontend in realtime.
+    """
+    clean_num = payload.new_number.strip()
+    if not clean_num.isdigit() or len(clean_num) != 4:
+        raise HTTPException(
+            status_code=400,
+            detail="ထိုးဂဏန်းသည် ဂဏန်း ၄ လုံး (ဥပမာ: 1234, 0000 - 9999) ဖြစ်ရပါမည် ခင်ဗျာ။"
+        )
+
+    bi = db.query(BetItem).filter(BetItem.id == item_id).first()
+    if not bi:
+        raise HTTPException(status_code=404, detail=f"Bet Item #{item_id} not found.")
+
+    bs = db.query(BetSlip).filter(BetSlip.id == bi.slip_id).first()
+    if not bs:
+        raise HTTPException(status_code=404, detail="Bet Slip not found.")
+
+    d = db.query(LotteryDraw).filter(LotteryDraw.id == bs.draw_id).first()
+    if not d:
+        raise HTTPException(status_code=404, detail="Lottery draw not found.")
+
+    # 1. Check time & settlement eligibility
+    is_editable, reason = check_is_bet_editable(d, bs)
+    if not is_editable:
+        raise HTTPException(status_code=400, detail=reason)
+
+    # 2. Check if new number is closed for this draw
+    if clean_num in (d.closed_numbers or []):
+        raise HTTPException(
+            status_code=400,
+            detail=f"ဂဏန်း '{clean_num}' သည် {d.draw_date} ပွဲစဉ်အတွက် ထိုးကြေးပိတ်ထားသော Closed Number ဖြစ်ပါသဖြင့် ပြောင်းလဲ၍မရပါခင်ဗျာ။"
+        )
+
+    old_number = bi.number
+    
+    # If the number is identical
+    if old_number == clean_num and bi.combination_count <= 1:
+        return {"status": "unchanged", "message": f"ထိုးဂဏန်းသည် {clean_num} အတိုင်း တူညီနေပါသည်။"}
+
+    # 3. Update BetItem number & combinations
+    from app.core.lottery_engine import calculate_stake
+    norm_type = (bi.bet_type or "ordinary").lower()
+    if norm_type in ["box", "r", "ibox", "permutation"]:
+        calc = calculate_stake(number=clean_num, bet_type="r", big_amount=bi.big_amount, small_amount=0)
+        bi.number = clean_num
+        bi.combinations_json = json.dumps(calc["combinations"])
+        bi.combination_count = calc["combination_count"]
+        bi.item_stake = calc["total_stake"]
+    elif norm_type in ["roll", "s"]:
+        calc = calculate_stake(number=clean_num, bet_type="roll", big_amount=bi.big_amount, small_amount=0)
+        bi.number = clean_num
+        bi.combinations_json = json.dumps(calc["combinations"])
+        bi.combination_count = calc["combination_count"]
+        bi.item_stake = calc["total_stake"]
+    else:
+        # Ordinary 4D
+        bi.number = clean_num
+        bi.combinations_json = json.dumps([clean_num])
+        bi.combination_count = 1
+
+    # Recalculate slip total stake
+    all_slip_items = db.query(BetItem).filter(BetItem.slip_id == bs.id).all()
+    bs.total_stake = sum(item.item_stake for item in all_slip_items)
+
+    # 4. Audit Log
+    admin_name = admin_user.nickname or admin_user.username or admin_user.full_name or "Admin"
+    now_ts = now_mmt()
+    log_entry = {
+        "admin_id": admin_user.id,
+        "admin_name": admin_name,
+        "old_number": old_number,
+        "new_number": clean_num,
+        "changed_at": now_ts.strftime("%d/%m/%Y %I:%M:%S %p"),
+        "note": payload.note or "Admin manual modification"
+    }
+
+    existing_logs = []
+    if hasattr(bi, "edit_logs_json") and bi.edit_logs_json:
+        try:
+            existing_logs = json.loads(bi.edit_logs_json)
+        except Exception:
+            existing_logs = []
+    existing_logs.append(log_entry)
+    bi.edit_logs_json = json.dumps(existing_logs)
+
+    # Also persist to BetEditLog table
+    db_log = BetEditLog(
+        slip_id=bs.id,
+        bet_item_id=bi.id,
+        old_number=old_number,
+        new_number=clean_num,
+        admin_id=admin_user.id,
+        admin_name=admin_name,
+        note=payload.note or "Admin manual modification",
+        created_at=now_ts
+    )
+    db.add(db_log)
+
+    db.commit()
+    db.refresh(bi)
+    db.refresh(bs)
+
+    return {
+        "status": "success",
+        "message": f"ထိုးဂဏန်းအား '{old_number}' မှ '{clean_num}' သို့ အောင်မြင်စွာ ပြောင်းလဲပြီးပါပြီ။",
+        "item_id": bi.id,
+        "slip_id": bs.id,
+        "old_number": old_number,
+        "new_number": clean_num,
+        "admin_name": admin_name,
+        "changed_at": log_entry["changed_at"],
+        "edit_history": existing_logs
+    }
+
+@router.get("/bets/edit-logs")
+def get_all_bet_edit_logs(
+    page: int = 1,
+    limit: int = 50,
+    slip_code: Optional[str] = None,
+    admin_user: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """Returns the full audit trail of all bet number modifications made by admins."""
+    query = db.query(BetEditLog, BetSlip, User).join(BetSlip, BetEditLog.slip_id == BetSlip.id).join(User, BetEditLog.admin_id == User.id)
+    if slip_code:
+        query = query.filter(BetSlip.slip_code.contains(slip_code))
+    
+    total = query.count()
+    logs = query.order_by(BetEditLog.id.desc()).offset((page - 1) * limit).limit(limit).all()
+
+    results = []
+    for log, slip, admin in logs:
+        results.append({
+            "id": log.id,
+            "slip_id": log.slip_id,
+            "slip_code": slip.slip_code,
+            "bet_item_id": log.bet_item_id,
+            "old_number": log.old_number,
+            "new_number": log.new_number,
+            "admin_id": log.admin_id,
+            "admin_name": log.admin_name,
+            "note": log.note,
+            "created_at": log.created_at.strftime("%d/%m/%Y %I:%M:%S %p") if log.created_at else ""
+        })
+
+    return {
+        "results": results,
+        "total": total,
+        "page": page,
+        "limit": limit
+    }
+
 
 
 
