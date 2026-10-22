@@ -2297,29 +2297,42 @@ def edit_bet_number(
         return {"status": "unchanged", "message": f"ထိုးဂဏန်းသည် {clean_num} အတိုင်း တူညီနေပါသည်။"}
 
     # 3. Update BetItem number & combinations
-    from app.core.lottery_engine import calculate_stake
+    from app.core.bet_calculator import calculate_stake
     norm_type = (bi.bet_type or "ordinary").lower()
+    
+    # Safely compute unit big / small amount
+    combo_cnt = max(1, bi.combination_count or 1)
+    unit_big = int(bi.big_amount if (bi.big_amount and bi.big_amount > 0) else ((bi.item_stake or 0) / combo_cnt))
+    unit_small = int(bi.small_amount if (bi.small_amount and bi.small_amount > 0) else 0)
+
     if norm_type in ["box", "r", "ibox", "permutation"]:
-        calc = calculate_stake(number=clean_num, bet_type="r", big_amount=bi.big_amount, small_amount=0)
+        calc = calculate_stake(number=clean_num, bet_type="r", big_amount=unit_big, small_amount=unit_small)
         bi.number = clean_num
         bi.combinations_json = json.dumps(calc["combinations"])
         bi.combination_count = calc["combination_count"]
-        bi.item_stake = calc["total_stake"]
+        bi.big_amount = float(unit_big)
+        bi.small_amount = float(unit_small)
+        bi.item_stake = float(calc["total_stake"])
     elif norm_type in ["roll", "s"]:
-        calc = calculate_stake(number=clean_num, bet_type="roll", big_amount=bi.big_amount, small_amount=0)
+        calc = calculate_stake(number=clean_num, bet_type="roll", big_amount=unit_big, small_amount=unit_small)
         bi.number = clean_num
         bi.combinations_json = json.dumps(calc["combinations"])
         bi.combination_count = calc["combination_count"]
-        bi.item_stake = calc["total_stake"]
+        bi.big_amount = float(unit_big)
+        bi.small_amount = float(unit_small)
+        bi.item_stake = float(calc["total_stake"])
     else:
         # Ordinary 4D
         bi.number = clean_num
         bi.combinations_json = json.dumps([clean_num])
         bi.combination_count = 1
+        bi.big_amount = float(unit_big)
+        bi.small_amount = float(unit_small)
+        bi.item_stake = float(unit_big + unit_small)
 
     # Recalculate slip total stake
     all_slip_items = db.query(BetItem).filter(BetItem.slip_id == bs.id).all()
-    bs.total_stake = sum(item.item_stake for item in all_slip_items)
+    bs.total_stake = sum(float(item.item_stake or 0.0) for item in all_slip_items)
 
     # 4. Audit Log
     admin_name = admin_user.nickname or admin_user.username or admin_user.full_name or "Admin"

@@ -52,7 +52,14 @@ export const apiClient = {
 
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
-      const errorMsg = data.detail || data.message || 'Request failed';
+      let errorMsg = 'Request failed';
+      if (typeof data.detail === 'string') {
+        errorMsg = data.detail;
+      } else if (Array.isArray(data.detail) && data.detail.length > 0) {
+        errorMsg = data.detail.map(d => d.msg || JSON.stringify(d)).join('; ');
+      } else if (data.message) {
+        errorMsg = data.message;
+      }
       throw new Error(errorMsg);
     }
     return data;
