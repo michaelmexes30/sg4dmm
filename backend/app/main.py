@@ -31,6 +31,29 @@ scheduler = BackgroundScheduler(timezone=pytz.timezone(settings.TIMEZONE_MMT))
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: Ensure DB schema and seeds
+    from sqlalchemy import text
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS bet_edit_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    slip_id INTEGER NOT NULL,
+                    bet_item_id INTEGER NOT NULL,
+                    old_number VARCHAR(10) NOT NULL,
+                    new_number VARCHAR(10) NOT NULL,
+                    admin_id INTEGER NOT NULL,
+                    admin_name VARCHAR(100) NOT NULL,
+                    note VARCHAR(255),
+                    created_at DATETIME
+                )
+            """))
+            try:
+                conn.execute(text("ALTER TABLE bet_items ADD COLUMN edit_logs_json TEXT DEFAULT '[]'"))
+            except Exception:
+                pass
+    except Exception as ddl_ex:
+        print(f"Lifespan schema update notice: {ddl_ex}")
+
     Base.metadata.create_all(bind=engine)
     seed_database()
     try:

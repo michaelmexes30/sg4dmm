@@ -2347,30 +2347,67 @@ def edit_bet_number(
     }
 
     existing_logs = []
-    if hasattr(bi, "edit_logs_json") and bi.edit_logs_json:
-        try:
+    try:
+        if getattr(bi, "edit_logs_json", None):
             existing_logs = json.loads(bi.edit_logs_json)
-        except Exception:
-            existing_logs = []
+    except Exception:
+        existing_logs = []
     existing_logs.append(log_entry)
-    bi.edit_logs_json = json.dumps(existing_logs)
 
-    # Also persist to BetEditLog table
-    db_log = BetEditLog(
-        slip_id=bs.id,
-        bet_item_id=bi.id,
-        old_number=old_number,
-        new_number=clean_num,
-        admin_id=admin_user.id,
-        admin_name=admin_name,
-        note=payload.note or "Admin manual modification",
-        created_at=now_ts
-    )
-    db.add(db_log)
+    try:
+        bi.edit_logs_json = json.dumps(existing_logs)
+    except Exception:
+        pass
 
-    db.commit()
-    db.refresh(bi)
-    db.refresh(bs)
+    # Ensure bet_edit_logs table exists and persist
+    from app.database import engine
+    from sqlalchemy import text
+    try:
+        with engine.begin() as conn:
+            conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS bet_edit_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    slip_id INTEGER NOT NULL,
+                    bet_item_id INTEGER NOT NULL,
+                    old_number VARCHAR(10) NOT NULL,
+                    new_number VARCHAR(10) NOT NULL,
+                    admin_id INTEGER NOT NULL,
+                    admin_name VARCHAR(100) NOT NULL,
+                    note VARCHAR(255),
+                    created_at DATETIME
+                )
+            """))
+            try:
+                conn.execute(text("ALTER TABLE bet_items ADD COLUMN edit_logs_json TEXT DEFAULT '[]'"))
+            except Exception:
+                pass
+    except Exception as ddl_err:
+        print(f"Notice ensuring bet_edit_logs schema: {ddl_err}")
+
+    try:
+        db_log = BetEditLog(
+            slip_id=bs.id,
+            bet_item_id=bi.id,
+            old_number=old_number,
+            new_number=clean_num,
+            admin_id=admin_user.id,
+            admin_name=admin_name,
+            note=payload.note or "Admin manual modification",
+            created_at=now_ts
+        )
+        db.add(db_log)
+    except Exception as log_err:
+        print(f"Notice adding db_log: {log_err}")
+
+    try:
+        db.commit()
+        db.refresh(bi)
+        db.refresh(bs)
+    except Exception as commit_err:
+        db.rollback()
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Database update failed: {str(commit_err)}")
 
     return {
         "status": "success",
