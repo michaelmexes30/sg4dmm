@@ -30,6 +30,10 @@ import { apiClient } from '../api/client';
 // Views
 import Game4DView from './views/Game4DView';
 import BetHistoryView from './views/BetHistoryView';
+import Game2DView from './views/Game2DView';
+import BetHistory2DView from './views/BetHistory2DView';
+import Game3DView from './views/Game3DView';
+import BetHistory3DView from './views/BetHistory3DView';
 import WithdrawView from './views/WithdrawView';
 import SystemUsersView from './views/SystemUsersView';
 import AppUsersView from './views/AppUsersView';
@@ -91,6 +95,8 @@ export default function AdminPortal({ onBackToApp }) {
   // Expanded submenus
   const [expandedGroups, setExpandedGroups] = useState({
     '4d': true,
+    '2d': true,
+    '3d': true,
     'balance': true,
     'members': true,
     'reports': true,
@@ -316,6 +322,96 @@ export default function AdminPortal({ onBackToApp }) {
               )}
             </div>
 
+            {/* 2.1. 2D (Game, Past Games, Bet History) */}
+            <div>
+              <button
+                onClick={() => toggleGroup('2d')}
+                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="w-5 h-5 rounded-lg bg-amber-500/20 text-amber-300 text-[10px] font-black flex items-center justify-center border border-amber-500/40">
+                    2D
+                  </span>
+                  <span>Thai 2D</span>
+                </div>
+                {expandedGroups['2d'] ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+              </button>
+
+              {expandedGroups['2d'] && (
+                <div className="pl-9 pr-1 py-1 space-y-1">
+                  <button
+                    onClick={() => handleSelectMenu('2d-game')}
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                      activeMenu === '2d-game' ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Game (Live & Closed)
+                  </button>
+                  <button
+                    onClick={() => handleSelectMenu('2d-past-games')}
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                      activeMenu === '2d-past-games' ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Past Games
+                  </button>
+                  <button
+                    onClick={() => handleSelectMenu('2d-bet-history')}
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                      activeMenu === '2d-bet-history' ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Bet History
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* 2.2. 3D (Game, Past Games, Bet History) */}
+            <div>
+              <button
+                onClick={() => toggleGroup('3d')}
+                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="w-5 h-5 rounded-lg bg-purple-500/20 text-purple-300 text-[10px] font-black flex items-center justify-center border border-purple-500/40">
+                    3D
+                  </span>
+                  <span>Thai 3D</span>
+                </div>
+                {expandedGroups['3d'] ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+              </button>
+
+              {expandedGroups['3d'] && (
+                <div className="pl-9 pr-1 py-1 space-y-1">
+                  <button
+                    onClick={() => handleSelectMenu('3d-game')}
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                      activeMenu === '3d-game' ? 'bg-purple-600/20 text-purple-300 font-bold border border-purple-500/30' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Game (Live & Closed)
+                  </button>
+                  <button
+                    onClick={() => handleSelectMenu('3d-past-games')}
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                      activeMenu === '3d-past-games' ? 'bg-purple-600/20 text-purple-300 font-bold border border-purple-500/30' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Past Games
+                  </button>
+                  <button
+                    onClick={() => handleSelectMenu('3d-bet-history')}
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                      activeMenu === '3d-bet-history' ? 'bg-purple-600/20 text-purple-300 font-bold border border-purple-500/30' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Bet History
+                  </button>
+                </div>
+              )}
+            </div>
+
             {/* 3. Balance (Deposit & Top Up, Withdraw Review) */}
             <div>
               <button
@@ -519,6 +615,30 @@ export default function AdminPortal({ onBackToApp }) {
 
             {activeMenu === '4d-bet-history' && (
               <BetHistoryView onNotify={showNotification} />
+            )}
+
+            {activeMenu === '2d-game' && (
+              <Game2DView onNotify={showNotification} mode="live" />
+            )}
+
+            {activeMenu === '2d-past-games' && (
+              <Game2DView onNotify={showNotification} mode="past" />
+            )}
+
+            {activeMenu === '2d-bet-history' && (
+              <BetHistory2DView onNotify={showNotification} />
+            )}
+
+            {activeMenu === '3d-game' && (
+              <Game3DView onNotify={showNotification} mode="live" />
+            )}
+
+            {activeMenu === '3d-past-games' && (
+              <Game3DView onNotify={showNotification} mode="past" />
+            )}
+
+            {activeMenu === '3d-bet-history' && (
+              <BetHistory3DView onNotify={showNotification} />
             )}
 
             {activeMenu === 'top-up' && (

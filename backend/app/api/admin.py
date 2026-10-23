@@ -11,7 +11,7 @@ from app.database import get_db
 from app.models.user import User, UserRole, AgentCommissionLog, Notification, AgentLevelLog
 from app.models.transaction import Transaction, TransactionStatus, TransactionType
 from app.models.bet import BetSlip, BetItem, BetArchive, BetSlipStatus, BetEditLog
-from app.models.lottery import LotteryDraw, DrawStatus
+from app.models.lottery import LotteryDraw, DrawStatus, TwoDDraw, ThreeDDraw
 from app.models.transaction import TransactionArchive
 from app.models.ledger import FinancialLedger, LedgerEntryType, DailyLedgerSummary
 from app.models.bonus import WeeklyBonus
@@ -4128,3 +4128,692 @@ def create_admin_notification(
     return {"status": "success", "id": n.id, "title": n.title}
 
 
+
+
+# =========================================================================
+# 7. THAI 2D LOTTERY ADMIN CONTROLLERS & GAME MONITOR
+# =========================================================================
+
+def ensure_twod_draws_exist(db: Session):
+    today_str = now_mmt().strftime("%Y-%m-%d")
+    morning = db.query(TwoDDraw).filter(TwoDDraw.draw_date == today_str, TwoDDraw.session == "morning").first()
+    if not morning:
+        morning = TwoDDraw(
+            draw_date=today_str,
+            session="morning",
+            draw_time_mmt="12:01 PM MMT",
+            cutoff_time_mmt="11:30 AM MMT",
+            status="OPEN"
+        )
+        db.add(morning)
+    evening = db.query(TwoDDraw).filter(TwoDDraw.draw_date == today_str, TwoDDraw.session == "evening").first()
+    if not evening:
+        evening = TwoDDraw(
+            draw_date=today_str,
+            session="evening",
+            draw_time_mmt="04:30 PM MMT",
+            cutoff_time_mmt="04:00 PM MMT",
+            status="OPEN"
+        )
+        db.add(evening)
+
+    past_cnt = db.query(TwoDDraw).filter(TwoDDraw.status == "SETTLED").count()
+    if past_cnt == 0:
+        db.add(TwoDDraw(
+            draw_date="2026-10-22", session="evening", draw_time_mmt="04:30 PM MMT",
+            cutoff_time_mmt="04:00 PM MMT", status="SETTLED", set_index="1,385.42",
+            set_value="45,210.85", winning_number="25", total_staked=4850000.0, total_payout=4122500.0,
+            settled_at=now_mmt() - timedelta(days=1)
+        ))
+        db.add(TwoDDraw(
+            draw_date="2026-10-22", session="morning", draw_time_mmt="12:01 PM MMT",
+            cutoff_time_mmt="11:30 AM MMT", status="SETTLED", set_index="1,382.16",
+            set_value="21,340.59", winning_number="69", total_staked=3920000.0, total_payout=3332000.0,
+            settled_at=now_mmt() - timedelta(days=1)
+        ))
+        db.add(TwoDDraw(
+            draw_date="2026-10-21", session="evening", draw_time_mmt="04:30 PM MMT",
+            cutoff_time_mmt="04:00 PM MMT", status="SETTLED", set_index="1,379.80",
+            set_value="52,190.73", winning_number="03", total_staked=5120000.0, total_payout=4352000.0,
+            settled_at=now_mmt() - timedelta(days=2)
+        ))
+    db.commit()
+
+@router.get("/2d/game")
+def get_2d_game_monitor(
+    draw_id: Optional[int] = None,
+    mode: Optional[str] = "live",
+    admin_user: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    ensure_twod_draws_exist(db)
+    setting = db.query(SystemSetting).first()
+    payout_multiplier = float(getattr(setting, "twod_payout_multiplier", 85.0) or 85.0)
+    risk_cap = float(getattr(setting, "twod_max_risk_per_number", 100000.0) or 100000.0)
+
+    if mode == "past":
+        past_draws = db.query(TwoDDraw).filter(TwoDDraw.status == "SETTLED").order_by(TwoDDraw.id.desc()).limit(15).all()
+        return {
+            "mode": "past",
+            "past_draws": [
+                {
+                    "id": d.id,
+                    "draw_date": d.draw_date,
+                    "session": d.session,
+                    "session_label": "Morning (12:01 PM)" if d.session == "morning" else "Evening (04:30 PM)",
+                    "draw_time_mmt": d.draw_time_mmt,
+                    "set_index": d.set_index,
+                    "set_value": d.set_value,
+                    "winning_number": d.winning_number,
+                    "total_staked": d.total_staked,
+                    "total_payout": d.total_payout,
+                    "profit": d.total_staked - d.total_payout,
+                    "status": d.status
+                } for d in past_draws
+            ]
+        }
+
+    open_draws = db.query(TwoDDraw).filter(TwoDDraw.status == "OPEN").order_by(TwoDDraw.id.asc()).all()
+    selected_draw = None
+    if draw_id:
+        selected_draw = db.query(TwoDDraw).filter(TwoDDraw.id == draw_id).first()
+    if not selected_draw and open_draws:
+        selected_draw = open_draws[0]
+
+    numbers_map = {}
+    for i in range(100):
+        num_str = f"{i:02d}"
+        numbers_map[num_str] = {"number": num_str, "staked": 0.0, "is_closed": False}
+
+    closed_nums = set(selected_draw.closed_numbers if selected_draw else [])
+    for num_str in closed_nums:
+        if num_str in numbers_map:
+            numbers_map[num_str]["is_closed"] = True
+
+    if selected_draw:
+        bets_items = (
+            db.query(BetItem.number, func.sum(BetItem.item_stake))
+            .join(BetSlip, BetItem.slip_id == BetSlip.id)
+            .filter(BetSlip.game_type == "2D", BetSlip.draw_id == selected_draw.id)
+            .group_by(BetItem.number)
+            .all()
+        )
+        for num, total_stk in bets_items:
+            clean_n = str(num).strip().zfill(2)
+            if clean_n in numbers_map:
+                numbers_map[clean_n]["staked"] = float(total_stk or 0.0)
+
+    total_pool = sum(n["staked"] for n in numbers_map.values())
+    top_numbers = sorted(numbers_map.values(), key=lambda x: x["staked"], reverse=True)[:10]
+
+    return {
+        "mode": "live",
+        "selected_draw": {
+            "id": selected_draw.id if selected_draw else None,
+            "draw_date": selected_draw.draw_date if selected_draw else None,
+            "session": selected_draw.session if selected_draw else None,
+            "session_label": ("Morning (12:01 PM)" if selected_draw and selected_draw.session == "morning" else "Evening (04:30 PM)") if selected_draw else None,
+            "draw_time_mmt": selected_draw.draw_time_mmt if selected_draw else "12:01 PM MMT",
+            "cutoff_time_mmt": selected_draw.cutoff_time_mmt if selected_draw else "11:30 AM MMT",
+            "status": selected_draw.status if selected_draw else "OPEN",
+            "closed_numbers": list(closed_nums)
+        },
+        "available_draws": [
+            {
+                "id": d.id,
+                "draw_date": d.draw_date,
+                "session": d.session,
+                "session_label": "Morning (12:01 PM)" if d.session == "morning" else "Evening (04:30 PM)",
+                "draw_time_mmt": d.draw_time_mmt,
+                "cutoff_time_mmt": d.cutoff_time_mmt,
+                "status": d.status
+            } for d in open_draws
+        ],
+        "payout_multiplier": payout_multiplier,
+        "max_risk_cap": risk_cap,
+        "total_staked": total_pool,
+        "peak_liability": max((n["staked"] * payout_multiplier for n in numbers_map.values()), default=0.0),
+        "numbers_matrix": list(numbers_map.values()),
+        "top_numbers": top_numbers,
+        "is_2d_enabled": bool(getattr(setting, "is_2d_enabled", True) if getattr(setting, "is_2d_enabled", True) is not None else True)
+    }
+
+@router.post("/2d/closed-numbers")
+def add_2d_closed_number(
+    payload: Dict[str, Any] = Body(...),
+    admin_user: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    draw_id = payload.get("draw_id")
+    raw_num = payload.get("number", "")
+    num_str = str(raw_num).strip().zfill(2)
+    draw = db.query(TwoDDraw).filter(TwoDDraw.id == draw_id).first() if draw_id else db.query(TwoDDraw).filter(TwoDDraw.status == "OPEN").first()
+    if not draw:
+        raise HTTPException(status_code=404, detail="2D Draw session not found")
+    closed = draw.closed_numbers
+    if num_str not in closed:
+        closed.append(num_str)
+        draw.closed_numbers_json = json.dumps(closed)
+        db.commit()
+    return {"status": "success", "closed_numbers": closed}
+
+@router.delete("/2d/closed-numbers/{number}")
+def remove_2d_closed_number(
+    number: str,
+    draw_id: Optional[int] = Query(None),
+    admin_user: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    num_str = str(number).strip().zfill(2)
+    draw = db.query(TwoDDraw).filter(TwoDDraw.id == draw_id).first() if draw_id else db.query(TwoDDraw).filter(TwoDDraw.status == "OPEN").first()
+    if not draw:
+        raise HTTPException(status_code=404, detail="2D Draw session not found")
+    closed = [n for n in draw.closed_numbers if n != num_str]
+    draw.closed_numbers_json = json.dumps(closed)
+    db.commit()
+    return {"status": "success", "closed_numbers": closed}
+
+@router.get("/2d/number-audit")
+def get_2d_number_audit(
+    number: str = Query(...),
+    draw_id: Optional[int] = Query(None),
+    admin_user: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    clean_num = str(number).strip().zfill(2)
+    setting = db.query(SystemSetting).first()
+    payout_mult = float(getattr(setting, "twod_payout_multiplier", 85.0) or 85.0)
+
+    query = (
+        db.query(BetItem, BetSlip, User)
+        .join(BetSlip, BetItem.slip_id == BetSlip.id)
+        .join(User, BetSlip.user_id == User.id)
+        .filter(BetSlip.game_type == "2D", BetItem.number == clean_num)
+    )
+    if draw_id:
+        query = query.filter(BetSlip.draw_id == draw_id)
+    items = query.order_by(BetItem.id.desc()).all()
+
+    total_staked = sum(float(bi.item_stake or 0.0) for bi, bs, u in items)
+    bets_list = []
+    for bi, bs, u in items:
+        bets_list.append({
+            "item_id": bi.id,
+            "voucher": bs.slip_code,
+            "nickname": u.nickname or u.username,
+            "phone": u.phone,
+            "number": bi.number,
+            "stake": float(bi.item_stake or 0.0),
+            "payout": float(bi.item_stake or 0.0) * payout_mult,
+            "created_at": bs.created_at.strftime("%d/%m/%Y %I:%M:%S %p") if bs.created_at else ""
+        })
+
+    return {
+        "number": clean_num,
+        "total_staked": total_staked,
+        "peak_liability": total_staked * payout_mult,
+        "bet_count": len(bets_list),
+        "bets": bets_list
+    }
+
+@router.get("/2d/bets")
+def get_2d_bets_history(
+    page: int = 1,
+    limit: int = 50,
+    session_id: Optional[int] = None,
+    game_date: Optional[str] = None,
+    nickname: Optional[str] = None,
+    phone: Optional[str] = None,
+    number: Optional[str] = None,
+    status: Optional[str] = None,
+    voucher: Optional[str] = None,
+    is_edited: Optional[str] = None,
+    admin_user: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    ensure_twod_draws_exist(db)
+    query = (
+        db.query(BetItem, BetSlip, User, TwoDDraw)
+        .join(BetSlip, BetItem.slip_id == BetSlip.id)
+        .join(User, BetSlip.user_id == User.id)
+        .join(TwoDDraw, BetSlip.draw_id == TwoDDraw.id)
+        .filter(BetSlip.game_type == "2D")
+    )
+
+    if session_id:
+        query = query.filter(TwoDDraw.id == session_id)
+    if game_date:
+        query = query.filter(TwoDDraw.draw_date.contains(game_date))
+    if nickname:
+        query = query.filter(or_(User.nickname.ilike(f"%{nickname}%"), User.username.ilike(f"%{nickname}%")))
+    if phone:
+        query = query.filter(User.phone.contains(phone))
+    if number:
+        query = query.filter(BetItem.number == number.strip().zfill(2))
+    if voucher:
+        query = query.filter(BetSlip.slip_code.contains(voucher))
+
+    edit_filter = (is_edited or "").strip().lower()
+    if edit_filter in ["true", "1", "edited", "yes"]:
+        query = query.filter(BetItem.edit_logs_json.isnot(None), BetItem.edit_logs_json != "[]", BetItem.edit_logs_json != "")
+    elif edit_filter in ["false", "0", "original", "no"]:
+        query = query.filter(or_(BetItem.edit_logs_json.is_(None), BetItem.edit_logs_json == "[]", BetItem.edit_logs_json == ""))
+
+    total_count = query.count()
+    items = query.order_by(BetItem.id.desc()).offset((page - 1) * limit).limit(limit).all()
+
+    setting = db.query(SystemSetting).first()
+    payout_mult = float(getattr(setting, "twod_payout_multiplier", 85.0) or 85.0)
+
+    results = []
+    for bi, bs, u, d in items:
+        edit_history = []
+        try:
+            if getattr(bi, "edit_logs_json", None):
+                edit_history = json.loads(bi.edit_logs_json)
+        except Exception:
+            pass
+
+        results.append({
+            "id": bi.id,
+            "item_id": bi.id,
+            "slip_id": bs.id,
+            "draw_date": d.draw_date,
+            "session": d.session,
+            "session_label": "Morning (12:01 PM)" if d.session == "morning" else "Evening (04:30 PM)",
+            "nickname": u.nickname or u.username or "Player",
+            "phone": u.phone,
+            "number": bi.number,
+            "amount": float(bi.item_stake or 0.0),
+            "multiplier": payout_mult,
+            "potential_win": float(bi.item_stake or 0.0) * payout_mult,
+            "status": "Won" if bi.is_won > 0 else ("Lost" if d.status == "SETTLED" else "Pending"),
+            "voucher": bs.slip_code,
+            "created_at": bs.created_at.strftime("%d/%m/%Y %I:%M:%S %p") if bs.created_at else "",
+            "is_edited": len(edit_history) > 0,
+            "edit_history": edit_history,
+            "is_editable": d.status == "OPEN"
+        })
+
+    return {
+        "bets": results,
+        "results": results,
+        "total": total_count,
+        "page": page,
+        "limit": limit
+    }
+
+@router.put("/2d/bets/{item_id}/edit-number")
+def edit_2d_bet_number(
+    item_id: int,
+    payload: Dict[str, Any] = Body(...),
+    admin_user: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    raw_num = payload.get("new_number", "")
+    clean_num = str(raw_num).strip().zfill(2)
+    if not clean_num.isdigit() or len(clean_num) != 2:
+        raise HTTPException(status_code=400, detail="2D ဂဏန်းသည် 00 မှ 99 အထိ ဂဏန်း ၂ လုံး ဖြစ်ရပါမည်။")
+
+    bi = db.query(BetItem).filter(BetItem.id == item_id).first()
+    if not bi:
+        raise HTTPException(status_code=404, detail="2D Bet Item not found")
+    bs = db.query(BetSlip).filter(BetSlip.id == bi.slip_id).first()
+    d = db.query(TwoDDraw).filter(TwoDDraw.id == bs.draw_id).first() if bs else None
+
+    if d and d.status == "SETTLED":
+        raise HTTPException(status_code=400, detail="ထီပေါက်စဉ်ထွက်ပြီးဖြစ်၍ ပြင်ဆင်ခွင့်ပိတ်ထားပါသည်")
+
+    old_number = bi.number
+    bi.number = clean_num
+    bi.combinations_json = json.dumps([clean_num])
+    bi.combination_count = 1
+
+    # Record audit log
+    existing_logs = []
+    try:
+        if getattr(bi, "edit_logs_json", None):
+            existing_logs = json.loads(bi.edit_logs_json)
+    except Exception:
+        pass
+    existing_logs.append({
+        "admin_id": admin_user.id,
+        "admin_name": admin_user.nickname or admin_user.username or "Admin",
+        "old_number": old_number,
+        "new_number": clean_num,
+        "changed_at": now_mmt().strftime("%d/%m/%Y %I:%M:%S %p"),
+        "note": payload.get("note") or "Admin 2D manual edit"
+    })
+    bi.edit_logs_json = json.dumps(existing_logs)
+    db.commit()
+    return {"status": "success", "message": f"2D ဂဏန်းအား {clean_num} သို့ အောင်မြင်စွာ ပြောင်းလဲပြီးပါပြီ"}
+
+
+# =========================================================================
+# 8. THAI 3D LOTTERY ADMIN CONTROLLERS & GAME MONITOR
+# =========================================================================
+
+def ensure_threed_draws_exist(db: Session):
+    upcoming = db.query(ThreeDDraw).filter(ThreeDDraw.status == "OPEN").first()
+    if not upcoming:
+        db.add(ThreeDDraw(
+            draw_date="2026-11-01",
+            draw_time_mmt="03:30 PM MMT",
+            cutoff_time_mmt="02:30 PM MMT",
+            status="OPEN"
+        ))
+
+    past_cnt = db.query(ThreeDDraw).filter(ThreeDDraw.status == "SETTLED").count()
+    if past_cnt == 0:
+        db.add(ThreeDDraw(
+            draw_date="2026-10-16", draw_time_mmt="03:30 PM MMT", cutoff_time_mmt="02:30 PM MMT",
+            status="SETTLED", thai_first_prize="471782", winning_number="782",
+            total_staked=12500000.0, total_payout=8750000.0, settled_at=now_mmt() - timedelta(days=7)
+        ))
+        db.add(ThreeDDraw(
+            draw_date="2026-10-01", draw_time_mmt="03:30 PM MMT", cutoff_time_mmt="02:30 PM MMT",
+            status="SETTLED", thai_first_prize="829394", winning_number="394",
+            total_staked=11200000.0, total_payout=7840000.0, settled_at=now_mmt() - timedelta(days=22)
+        ))
+    db.commit()
+
+@router.get("/3d/game")
+def get_3d_game_monitor(
+    draw_id: Optional[int] = None,
+    mode: Optional[str] = "live",
+    admin_user: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    ensure_threed_draws_exist(db)
+    setting = db.query(SystemSetting).first()
+    straight_payout = float(getattr(setting, "threed_straight_payout", 700.0) or 700.0)
+    tote_payout = float(getattr(setting, "threed_tote_payout", 10.0) or 10.0)
+    risk_cap = float(getattr(setting, "threed_max_risk_per_number", 200000.0) or 200000.0)
+
+    if mode == "past":
+        past_draws = db.query(ThreeDDraw).filter(ThreeDDraw.status == "SETTLED").order_by(ThreeDDraw.id.desc()).limit(10).all()
+        return {
+            "mode": "past",
+            "past_draws": [
+                {
+                    "id": d.id,
+                    "draw_date": d.draw_date,
+                    "draw_time_mmt": d.draw_time_mmt,
+                    "thai_first_prize": d.thai_first_prize,
+                    "winning_number": d.winning_number,
+                    "total_staked": d.total_staked,
+                    "total_payout": d.total_payout,
+                    "profit": d.total_staked - d.total_payout,
+                    "status": d.status
+                } for d in past_draws
+            ]
+        }
+
+    open_draws = db.query(ThreeDDraw).filter(ThreeDDraw.status == "OPEN").order_by(ThreeDDraw.id.asc()).all()
+    selected_draw = None
+    if draw_id:
+        selected_draw = db.query(ThreeDDraw).filter(ThreeDDraw.id == draw_id).first()
+    if not selected_draw and open_draws:
+        selected_draw = open_draws[0]
+
+    closed_nums = set(selected_draw.closed_numbers if selected_draw else [])
+
+    top_numbers = []
+    total_staked = 0.0
+    if selected_draw:
+        bets_items = (
+            db.query(BetItem.number, func.sum(BetItem.item_stake))
+            .join(BetSlip, BetItem.slip_id == BetSlip.id)
+            .filter(BetSlip.game_type == "3D", BetSlip.draw_id == selected_draw.id)
+            .group_by(BetItem.number)
+            .order_by(func.sum(BetItem.item_stake).desc())
+            .limit(20)
+            .all()
+        )
+        for num, total_stk in bets_items:
+            clean_n = str(num).strip().zfill(3)
+            val = float(total_stk or 0.0)
+            top_numbers.append({
+                "number": clean_n,
+                "staked": val,
+                "is_closed": clean_n in closed_nums,
+                "liability": val * straight_payout
+            })
+            total_staked += val
+
+    return {
+        "mode": "live",
+        "selected_draw": {
+            "id": selected_draw.id if selected_draw else None,
+            "draw_date": selected_draw.draw_date if selected_draw else None,
+            "draw_time_mmt": selected_draw.draw_time_mmt if selected_draw else "03:30 PM MMT",
+            "cutoff_time_mmt": selected_draw.cutoff_time_mmt if selected_draw else "02:30 PM MMT",
+            "status": selected_draw.status if selected_draw else "OPEN",
+            "closed_numbers": list(closed_nums)
+        },
+        "available_draws": [
+            {
+                "id": d.id,
+                "draw_date": d.draw_date,
+                "draw_time_mmt": d.draw_time_mmt,
+                "cutoff_time_mmt": d.cutoff_time_mmt,
+                "status": d.status
+            } for d in open_draws
+        ],
+        "straight_payout": straight_payout,
+        "tote_payout": tote_payout,
+        "max_risk_cap": risk_cap,
+        "total_staked": total_staked,
+        "peak_liability": max((n["liability"] for n in top_numbers), default=0.0),
+        "top_numbers": top_numbers,
+        "is_3d_enabled": bool(getattr(setting, "is_3d_enabled", True) if getattr(setting, "is_3d_enabled", True) is not None else True)
+    }
+
+@router.post("/3d/closed-numbers")
+def add_3d_closed_number(
+    payload: Dict[str, Any] = Body(...),
+    admin_user: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    draw_id = payload.get("draw_id")
+    raw_num = payload.get("number", "")
+    num_str = str(raw_num).strip().zfill(3)
+    draw = db.query(ThreeDDraw).filter(ThreeDDraw.id == draw_id).first() if draw_id else db.query(ThreeDDraw).filter(ThreeDDraw.status == "OPEN").first()
+    if not draw:
+        raise HTTPException(status_code=404, detail="3D Draw not found")
+    closed = draw.closed_numbers
+    if num_str not in closed:
+        closed.append(num_str)
+        draw.closed_numbers_json = json.dumps(closed)
+        db.commit()
+    return {"status": "success", "closed_numbers": closed}
+
+@router.delete("/3d/closed-numbers/{number}")
+def remove_3d_closed_number(
+    number: str,
+    draw_id: Optional[int] = Query(None),
+    admin_user: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    num_str = str(number).strip().zfill(3)
+    draw = db.query(ThreeDDraw).filter(ThreeDDraw.id == draw_id).first() if draw_id else db.query(ThreeDDraw).filter(ThreeDDraw.status == "OPEN").first()
+    if not draw:
+        raise HTTPException(status_code=404, detail="3D Draw not found")
+    closed = [n for n in draw.closed_numbers if n != num_str]
+    draw.closed_numbers_json = json.dumps(closed)
+    db.commit()
+    return {"status": "success", "closed_numbers": closed}
+
+@router.get("/3d/number-audit")
+def get_3d_number_audit(
+    number: str = Query(...),
+    draw_id: Optional[int] = Query(None),
+    admin_user: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    clean_num = str(number).strip().zfill(3)
+    setting = db.query(SystemSetting).first()
+    straight_payout = float(getattr(setting, "threed_straight_payout", 700.0) or 700.0)
+
+    query = (
+        db.query(BetItem, BetSlip, User)
+        .join(BetSlip, BetItem.slip_id == BetSlip.id)
+        .join(User, BetSlip.user_id == User.id)
+        .filter(BetSlip.game_type == "3D", BetItem.number == clean_num)
+    )
+    if draw_id:
+        query = query.filter(BetSlip.draw_id == draw_id)
+    items = query.order_by(BetItem.id.desc()).all()
+
+    total_staked = sum(float(bi.item_stake or 0.0) for bi, bs, u in items)
+    bets_list = []
+    for bi, bs, u in items:
+        bets_list.append({
+            "item_id": bi.id,
+            "voucher": bs.slip_code,
+            "nickname": u.nickname or u.username,
+            "phone": u.phone,
+            "number": bi.number,
+            "bet_type": bi.bet_type or "Straight",
+            "stake": float(bi.item_stake or 0.0),
+            "payout": float(bi.item_stake or 0.0) * straight_payout,
+            "created_at": bs.created_at.strftime("%d/%m/%Y %I:%M:%S %p") if bs.created_at else ""
+        })
+
+    return {
+        "number": clean_num,
+        "total_staked": total_staked,
+        "peak_liability": total_staked * straight_payout,
+        "bet_count": len(bets_list),
+        "bets": bets_list
+    }
+
+@router.get("/3d/bets")
+def get_3d_bets_history(
+    page: int = 1,
+    limit: int = 50,
+    draw_id: Optional[int] = None,
+    game_date: Optional[str] = None,
+    nickname: Optional[str] = None,
+    phone: Optional[str] = None,
+    number: Optional[str] = None,
+    status: Optional[str] = None,
+    voucher: Optional[str] = None,
+    is_edited: Optional[str] = None,
+    admin_user: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    ensure_threed_draws_exist(db)
+    query = (
+        db.query(BetItem, BetSlip, User, ThreeDDraw)
+        .join(BetSlip, BetItem.slip_id == BetSlip.id)
+        .join(User, BetSlip.user_id == User.id)
+        .join(ThreeDDraw, BetSlip.draw_id == ThreeDDraw.id)
+        .filter(BetSlip.game_type == "3D")
+    )
+
+    if draw_id:
+        query = query.filter(ThreeDDraw.id == draw_id)
+    if game_date:
+        query = query.filter(ThreeDDraw.draw_date.contains(game_date))
+    if nickname:
+        query = query.filter(or_(User.nickname.ilike(f"%{nickname}%"), User.username.ilike(f"%{nickname}%")))
+    if phone:
+        query = query.filter(User.phone.contains(phone))
+    if number:
+        query = query.filter(BetItem.number == number.strip().zfill(3))
+    if voucher:
+        query = query.filter(BetSlip.slip_code.contains(voucher))
+
+    edit_filter = (is_edited or "").strip().lower()
+    if edit_filter in ["true", "1", "edited", "yes"]:
+        query = query.filter(BetItem.edit_logs_json.isnot(None), BetItem.edit_logs_json != "[]", BetItem.edit_logs_json != "")
+    elif edit_filter in ["false", "0", "original", "no"]:
+        query = query.filter(or_(BetItem.edit_logs_json.is_(None), BetItem.edit_logs_json == "[]", BetItem.edit_logs_json == ""))
+
+    total_count = query.count()
+    items = query.order_by(BetItem.id.desc()).offset((page - 1) * limit).limit(limit).all()
+
+    setting = db.query(SystemSetting).first()
+    straight_payout = float(getattr(setting, "threed_straight_payout", 700.0) or 700.0)
+
+    results = []
+    for bi, bs, u, d in items:
+        edit_history = []
+        try:
+            if getattr(bi, "edit_logs_json", None):
+                edit_history = json.loads(bi.edit_logs_json)
+        except Exception:
+            pass
+
+        results.append({
+            "id": bi.id,
+            "item_id": bi.id,
+            "slip_id": bs.id,
+            "draw_date": d.draw_date,
+            "nickname": u.nickname or u.username or "Player",
+            "phone": u.phone,
+            "number": bi.number,
+            "bet_type": (bi.bet_type or "straight").upper(),
+            "amount": float(bi.item_stake or 0.0),
+            "multiplier": straight_payout,
+            "potential_win": float(bi.item_stake or 0.0) * straight_payout,
+            "status": "Won" if bi.is_won > 0 else ("Lost" if d.status == "SETTLED" else "Pending"),
+            "voucher": bs.slip_code,
+            "created_at": bs.created_at.strftime("%d/%m/%Y %I:%M:%S %p") if bs.created_at else "",
+            "is_edited": len(edit_history) > 0,
+            "edit_history": edit_history,
+            "is_editable": d.status == "OPEN"
+        })
+
+    return {
+        "bets": results,
+        "results": results,
+        "total": total_count,
+        "page": page,
+        "limit": limit
+    }
+
+@router.put("/3d/bets/{item_id}/edit-number")
+def edit_3d_bet_number(
+    item_id: int,
+    payload: Dict[str, Any] = Body(...),
+    admin_user: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    raw_num = payload.get("new_number", "")
+    clean_num = str(raw_num).strip().zfill(3)
+    if not clean_num.isdigit() or len(clean_num) != 3:
+        raise HTTPException(status_code=400, detail="3D ဂဏန်းသည် 000 မှ 999 အထိ ဂဏန်း ၃ လုံး ဖြစ်ရပါမည်။")
+
+    bi = db.query(BetItem).filter(BetItem.id == item_id).first()
+    if not bi:
+        raise HTTPException(status_code=404, detail="3D Bet Item not found")
+    bs = db.query(BetSlip).filter(BetSlip.id == bi.slip_id).first()
+    d = db.query(ThreeDDraw).filter(ThreeDDraw.id == bs.draw_id).first() if bs else None
+
+    if d and d.status == "SETTLED":
+        raise HTTPException(status_code=400, detail="ထီပေါက်စဉ်ထွက်ပြီးဖြစ်၍ ပြင်ဆင်ခွင့်ပိတ်ထားပါသည်")
+
+    old_number = bi.number
+    bi.number = clean_num
+    bi.combinations_json = json.dumps([clean_num])
+    bi.combination_count = 1
+
+    existing_logs = []
+    try:
+        if getattr(bi, "edit_logs_json", None):
+            existing_logs = json.loads(bi.edit_logs_json)
+    except Exception:
+        pass
+    existing_logs.append({
+        "admin_id": admin_user.id,
+        "admin_name": admin_user.nickname or admin_user.username or "Admin",
+        "old_number": old_number,
+        "new_number": clean_num,
+        "changed_at": now_mmt().strftime("%d/%m/%Y %I:%M:%S %p"),
+        "note": payload.get("note") or "Admin 3D manual edit"
+    })
+    bi.edit_logs_json = json.dumps(existing_logs)
+    db.commit()
+    return {"status": "success", "message": f"3D ဂဏန်းအား {clean_num} သို့ အောင်မြင်စွာ ပြောင်းလဲပြီးပါပြီ"}

@@ -9,6 +9,10 @@ import pytz
 
 from app.config import settings
 from app.database import Base, engine
+from app.models.user import User
+from app.models.lottery import LotteryDraw, TwoDDraw, ThreeDDraw
+from app.models.bet import BetSlip, BetItem, BetEditLog
+from app.models.settings import SystemSetting
 from app.seeds.seed_data import seed_database
 from app.seeds.seed_admin_data import seed_admin_and_system_data
 from app.core.archiver import archive_old_records
@@ -59,8 +63,28 @@ async def lifespan(app: FastAPI):
             except Exception:
                 pass
 
-            # 2D & 3D System Settings Columns Auto-migration
+            try:
+                conn.execute(text("ALTER TABLE bet_slips ADD COLUMN game_type VARCHAR(10) DEFAULT '4D'"))
+            except Exception:
+                pass
+            try:
+                conn.execute(text("ALTER TABLE bet_items ADD COLUMN game_type VARCHAR(10) DEFAULT '4D'"))
+            except Exception:
+                pass
+
+            # System Settings Columns Auto-migration
             settings_cols = [
+                ("agent_tier1_turnover", "FLOAT DEFAULT 0.0"),
+                ("agent_tier1_commission", "FLOAT DEFAULT 20.0"),
+                ("agent_tier2_turnover", "FLOAT DEFAULT 1000000.0"),
+                ("agent_tier2_commission", "FLOAT DEFAULT 23.0"),
+                ("agent_tier3_turnover", "FLOAT DEFAULT 5000000.0"),
+                ("agent_tier3_commission", "FLOAT DEFAULT 26.0"),
+                ("agent_tier4_turnover", "FLOAT DEFAULT 10000000.0"),
+                ("agent_tier4_commission", "FLOAT DEFAULT 30.0"),
+                ("telegram_finance_group_id", "VARCHAR(100) DEFAULT ''"),
+                ("auto_approve_max_amount", "FLOAT DEFAULT 50000.0"),
+                ("is_withdraw_hours_enabled", "BOOLEAN DEFAULT 0"),
                 ("is_2d_enabled", "BOOLEAN DEFAULT 1"),
                 ("twod_payout_multiplier", "FLOAT DEFAULT 85.0"),
                 ("twod_commission_rate", "FLOAT DEFAULT 15.0"),

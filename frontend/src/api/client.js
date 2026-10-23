@@ -329,6 +329,88 @@ export const apiClient = {
     return this.request(`/admin/4d/bets?${q}`);
   },
 
+  // 2D Lottery Admin APIs
+  getAdmin2DGame(drawId = null, mode = 'live') {
+    const params = new URLSearchParams();
+    if (drawId) params.append('draw_id', drawId);
+    if (mode) params.append('mode', mode);
+    const q = params.toString();
+    return this.request(`/admin/2d/game${q ? `?${q}` : ''}`);
+  },
+
+  addAdmin2DClosedNumber(payload) {
+    return this.request('/admin/2d/closed-numbers', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  deleteAdmin2DClosedNumber(number, drawId = null) {
+    const q = drawId ? `?draw_id=${drawId}` : '';
+    return this.request(`/admin/2d/closed-numbers/${encodeURIComponent(number)}${q}`, {
+      method: 'DELETE',
+    });
+  },
+
+  getAdmin2DNumberAudit(number, drawId = null) {
+    const params = new URLSearchParams({ number });
+    if (drawId) params.append('draw_id', drawId);
+    return this.request(`/admin/2d/number-audit?${params.toString()}`);
+  },
+
+  getAdmin2DBets(params = {}) {
+    const q = new URLSearchParams(params).toString();
+    return this.request(`/admin/2d/bets?${q}`);
+  },
+
+  editAdmin2DBetNumber(itemId, data) {
+    return this.request(`/admin/2d/bets/${itemId}/edit-number`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // 3D Lottery Admin APIs
+  getAdmin3DGame(drawId = null, mode = 'live') {
+    const params = new URLSearchParams();
+    if (drawId) params.append('draw_id', drawId);
+    if (mode) params.append('mode', mode);
+    const q = params.toString();
+    return this.request(`/admin/3d/game${q ? `?${q}` : ''}`);
+  },
+
+  addAdmin3DClosedNumber(payload) {
+    return this.request('/admin/3d/closed-numbers', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  deleteAdmin3DClosedNumber(number, drawId = null) {
+    const q = drawId ? `?draw_id=${drawId}` : '';
+    return this.request(`/admin/3d/closed-numbers/${encodeURIComponent(number)}${q}`, {
+      method: 'DELETE',
+    });
+  },
+
+  getAdmin3DNumberAudit(number, drawId = null) {
+    const params = new URLSearchParams({ number });
+    if (drawId) params.append('draw_id', drawId);
+    return this.request(`/admin/3d/number-audit?${params.toString()}`);
+  },
+
+  getAdmin3DBets(params = {}) {
+    const q = new URLSearchParams(params).toString();
+    return this.request(`/admin/3d/bets?${q}`);
+  },
+
+  editAdmin3DBetNumber(itemId, data) {
+    return this.request(`/admin/3d/bets/${itemId}/edit-number`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
   editAdminBetNumber(itemId, data) {
     return this.request(`/admin/bets/${itemId}/edit-number`, {
       method: 'PUT',

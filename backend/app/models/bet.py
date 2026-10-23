@@ -23,6 +23,7 @@ class BetSlip(Base):
     total_stake = Column(Float, nullable=False)
     total_payout = Column(Float, default=0.0)
     status = Column(Enum(BetSlipStatus), default=BetSlipStatus.PENDING, nullable=False)
+    game_type = Column(String(10), default="4D", index=True) # "4D", "2D", "3D"
     
     # Associated Agent & 30% Commission tracking
     agent_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
@@ -52,8 +53,9 @@ class BetItem(Base):
     id = Column(Integer, primary_key=True, index=True)
     slip_id = Column(Integer, ForeignKey("bet_slips.id"), nullable=False, index=True)
     
-    number = Column(String(4), nullable=False) # e.g. "1234" or "R123"
-    bet_type = Column(String(20), default="ordinary") # "ordinary", "box", "roll"
+    number = Column(String(10), nullable=False) # e.g. "1234", "25", "782"
+    bet_type = Column(String(20), default="ordinary") # "ordinary", "box", "roll", "straight", "tote"
+    game_type = Column(String(10), default="4D", index=True) # "4D", "2D", "3D"
     
     big_amount = Column(Float, default=0.0)
     small_amount = Column(Float, default=0.0)
