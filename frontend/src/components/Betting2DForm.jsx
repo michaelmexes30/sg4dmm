@@ -52,7 +52,9 @@ export default function Betting2DForm({ onOpenDeposit, onBetPlaced }) {
       setLoading(true);
       const res = await apiClient.get2DActiveDraw();
       setActiveDrawData(res);
-      if (res?.sessions && res.sessions.length > 0) {
+      if (res?.active_session?.id) {
+        setSelectedSessionId(res.active_session.id);
+      } else if (res?.sessions && res.sessions.length > 0) {
         setSelectedSessionId(res.sessions[0].id);
       }
     } catch (err) {
@@ -197,6 +199,10 @@ export default function Betting2DForm({ onOpenDeposit, onBetPlaced }) {
   // Place 2D Bet
   const handlePlaceBet = async () => {
     if (!currentSession) return;
+    if (currentSession?.status === 'SETTLED') {
+      setErrorMsg('ဤပွဲစဉ်သည် ထွက်ပြီးဖြစ်သောကြောင့် ထိုးခွင့်မရှိတော့ပါ။ ဖွင့်ထားသော ညနေပွဲစဉ်အား ရွေးချယ်ပါခင်ဗျာ။');
+      return;
+    }
     if (selectedNumbers.length === 0) {
       setErrorMsg('ထိုးမည့် 2D ဂဏန်း ရွေးချယ်ပေးပါခင်ဗျာ');
       return;
@@ -286,6 +292,7 @@ export default function Betting2DForm({ onOpenDeposit, onBetPlaced }) {
               {(activeDrawData?.sessions || []).map(sess => {
                 const isSelected = sess.id === currentSession?.id;
                 const isMorning = sess.session === 'morning';
+                const isSettled = sess.status === 'SETTLED';
                 return (
                   <button
                     key={sess.id}
@@ -293,6 +300,8 @@ export default function Betting2DForm({ onOpenDeposit, onBetPlaced }) {
                     className={`p-3 rounded-2xl border text-left transition-all cursor-pointer relative overflow-hidden ${
                       isSelected
                         ? 'bg-gradient-to-r from-emerald-600 to-teal-500 text-slate-950 font-black border-emerald-300 shadow-lg shadow-emerald-900/60 scale-[1.02]'
+                        : isSettled
+                        ? 'bg-dark-card/60 text-slate-400 border-slate-800 hover:border-slate-700'
                         : 'bg-dark-card/90 text-slate-300 border-emerald-900/60 hover:border-emerald-600 hover:text-white'
                     }`}
                   >
@@ -300,18 +309,42 @@ export default function Betting2DForm({ onOpenDeposit, onBetPlaced }) {
                       <span className="font-bold flex items-center gap-1.5">
                         {isMorning ? '☀️ မနက်ပိုင်း' : '🌙 ညနေပိုင်း'}
                       </span>
-                      <span className={`text-[10px] px-2 py-0.2 rounded-full font-bold ${
-                        isSelected ? 'bg-black/30 text-emerald-100' : 'bg-emerald-500/20 text-emerald-300'
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                        isSelected
+                          ? 'bg-black/30 text-emerald-100'
+                          : isSettled
+                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                          : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
                       }`}>
-                        {sess.draw_time_mmt}
+                        {isSettled ? `ပေါက်ဂဏန်း: ${sess.winning_number || '-'}` : sess.draw_time_mmt}
                       </span>
                     </div>
-                    <div className="text-[11px] opacity-90 font-mono">
-                      ပိတ်ချိန်: {sess.cutoff_time_mmt}
+                    <div className="text-[11px] opacity-90 font-mono flex items-center justify-between">
+                      <span>{isSettled ? 'ပွဲစဉ်ပြီးဆုံး' : `ပိတ်ချိန်: ${sess.cutoff_time_mmt}`}</span>
+                      {!isSettled && (
+                        <span className="text-[10px] text-emerald-400 font-bold animate-pulse">● LIVE</span>
+                      )}
                     </div>
                   </button>
                 );
               })}
+            </div>
+
+            {/* Live Thai SET Status Bar */}
+            <div className="pt-3 border-t border-emerald-500/20 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
+              <div className="flex items-center gap-2">
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                </span>
+                <span className="text-emerald-300 font-bold">
+                  {currentSession?.status === 'OPEN' ? `🟢 LIVE: ${currentSession?.session === 'morning' ? 'မနက် ၁၂:၀၁ ပွဲစဉ်' : 'ညနေ ၀၄:၃၀ ပွဲစဉ်'}` : '🏁 SETTLED - ထွက်ပြီး'}
+                </span>
+              </div>
+              <div className="flex items-center gap-3 text-slate-300 text-[11px]">
+                <span>ထွက်မည့်ရက်: <strong className="text-white">{currentSession?.draw_date}</strong></span>
+                <span>ထိုးကြေးပိတ်ချိန်: <strong className="text-amber-300">{currentSession?.cutoff_time_mmt || '04:00 PM'}</strong></span>
+              </div>
             </div>
           </div>
         </div>

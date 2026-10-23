@@ -405,6 +405,13 @@ export const apiClient = {
     });
   },
 
+  settleAdmin2DDraw(payload) {
+    return this.request('/admin/2d/settle', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
   // 3D Lottery Admin APIs
   getAdmin3DGame(drawId = null, mode = 'live') {
     const params = new URLSearchParams();
@@ -443,6 +450,13 @@ export const apiClient = {
     return this.request(`/admin/3d/bets/${itemId}/edit-number`, {
       method: 'PUT',
       body: JSON.stringify(data),
+    });
+  },
+
+  settleAdmin3DDraw(payload) {
+    return this.request('/admin/3d/settle', {
+      method: 'POST',
+      body: JSON.stringify(payload),
     });
   },
 

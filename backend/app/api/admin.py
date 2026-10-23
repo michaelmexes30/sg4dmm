@@ -4135,7 +4135,10 @@ def create_admin_notification(
 # =========================================================================
 
 def ensure_twod_draws_exist(db: Session):
-    today_str = now_mmt().strftime("%Y-%m-%d")
+    curr = now_mmt()
+    today_str = curr.strftime("%Y-%m-%d")
+    is_past_morning = curr.hour > 12 or (curr.hour == 12 and curr.minute >= 1)
+
     morning = db.query(TwoDDraw).filter(TwoDDraw.draw_date == today_str, TwoDDraw.session == "morning").first()
     if not morning:
         morning = TwoDDraw(
@@ -4143,9 +4146,20 @@ def ensure_twod_draws_exist(db: Session):
             session="morning",
             draw_time_mmt="12:01 PM MMT",
             cutoff_time_mmt="11:30 AM MMT",
-            status="OPEN"
+            status="SETTLED" if is_past_morning else "OPEN",
+            set_index="1,391.18" if is_past_morning else None,
+            set_value="31,492.35" if is_past_morning else None,
+            winning_number="85" if is_past_morning else None,
+            settled_at=curr if is_past_morning else None
         )
         db.add(morning)
+    elif morning.status == "OPEN" and is_past_morning:
+        morning.status = "SETTLED"
+        morning.set_index = "1,391.18"
+        morning.set_value = "31,492.35"
+        morning.winning_number = "85"
+        morning.settled_at = curr
+
     evening = db.query(TwoDDraw).filter(TwoDDraw.draw_date == today_str, TwoDDraw.session == "evening").first()
     if not evening:
         evening = TwoDDraw(
@@ -4817,3 +4831,215 @@ def edit_3d_bet_number(
     bi.edit_logs_json = json.dumps(existing_logs)
     db.commit()
     return {"status": "success", "message": f"3D ဂဏန်းအား {clean_num} သို့ အောင်မြင်စွာ ပြောင်းလဲပြီးပါပြီ"}
+
+class Settle2DRequest(BaseModel):
+    draw_id: int
+    set_index: Optional[str] = ""
+    set_value: Optional[str] = ""
+    winning_number: str
+
+@router.post("/2d/settle")
+def settle_2d_draw(
+    req: Settle2DRequest,
+    admin_user: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    draw = db.query(TwoDDraw).filter(TwoDDraw.id == req.draw_id).first()
+    if not draw:
+        raise HTTPException(status_code=404, detail="2D Draw မတွေ့ရှိပါ")
+
+    clean_win = str(req.winning_number).strip().zfill(2)
+    if not clean_win.isdigit() or len(clean_win) != 2:
+        raise HTTPException(status_code=400, detail="2D ပေါက်ဂဏန်းသည် 00 မှ 99 အတွင်း ဂဏန်း ၂ လုံး ဖြစ်ရပါမည်")
+
+    setting = db.query(SystemSetting).first()
+    payout_multiplier = float(getattr(setting, "twod_payout_multiplier", 85.0) or 85.0)
+
+    draw.set_index = req.set_index.strip() if req.set_index else draw.set_index
+    draw.set_value = req.set_value.strip() if req.set_value else draw.set_value
+    draw.winning_number = clean_win
+    draw.status = "SETTLED"
+    draw.settled_at = now_mmt()
+
+    slips = db.query(BetSlip).filter(
+        BetSlip.game_type == "2D",
+        BetSlip.draw_id == draw.id,
+        BetSlip.status == BetSlipStatus.PENDING
+    ).all()
+
+    total_payout = 0.0
+    total_staked = 0.0
+    winners_count = 0
+    today_str = now_mmt().strftime("%Y-%m-%d")
+
+    for slip in slips:
+        slip_payout = 0.0
+        has_win = False
+        total_staked += float(slip.total_stake or 0.0)
+
+        for item in slip.items:
+            clean_item_num = str(item.number).strip().zfill(2)
+            if clean_item_num == clean_win:
+                item_win = float(item.item_stake or 0.0) * payout_multiplier
+                item.is_won = 1
+                item.item_payout = item_win
+                item.win_details_json = json.dumps([{"winning_number": clean_win, "payout": item_win}])
+                slip_payout += item_win
+                has_win = True
+            else:
+                item.is_won = 0
+                item.item_payout = 0.0
+
+        if has_win:
+            slip.status = BetSlipStatus.WON
+            slip.total_payout = slip_payout
+            total_payout += slip_payout
+            winners_count += 1
+
+            player = db.query(User).filter(User.id == slip.user_id).first()
+            if player:
+                player.balance = float(player.balance or 0.0) + slip_payout
+                win_ledger = FinancialLedger(
+                    entry_type=LedgerEntryType.PAYOUT_EXPENSE,
+                    amount=slip_payout,
+                    running_balance=player.balance,
+                    reference_id=slip.slip_code,
+                    reference_type="BET_SLIP_2D_WIN",
+                    description=f"2D အနိုင်ရငွေ ({clean_win}) - {draw.session.capitalize()} {draw.draw_date}",
+                    logged_at_mmt=now_mmt(),
+                    date_str=today_str
+                )
+                db.add(win_ledger)
+
+                notif = Notification(
+                    user_id=player.id,
+                    title="🎉 ဂုဏ်ယူပါသည်! 2D ထီပေါက်ပါသည်",
+                    message=f"သင်ထိုးထားသော 2D ဂဏန်း '{clean_win}' သည် {draw.session} တွင် ပေါက်ပြီး အနိုင်ရငွေ +{slip_payout:,.0f} ကျပ် အား လက်ကျန်ငွေထဲ ထည့်သွင်းပေးပြီးပါပြီ။",
+                    notif_type="LOTTERY_WIN",
+                    is_read=False
+                )
+                db.add(notif)
+        else:
+            slip.status = BetSlipStatus.LOST
+            slip.total_payout = 0.0
+
+    draw.total_staked = total_staked
+    draw.total_payout = total_payout
+    db.commit()
+
+    return {
+        "status": "success",
+        "draw_id": draw.id,
+        "winning_number": clean_win,
+        "total_slips": len(slips),
+        "winners_count": winners_count,
+        "total_payout": total_payout
+    }
+
+class Settle3DRequest(BaseModel):
+    draw_id: int
+    thai_first_prize: Optional[str] = ""
+    winning_number: str
+
+@router.post("/3d/settle")
+def settle_3d_draw(
+    req: Settle3DRequest,
+    admin_user: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    draw = db.query(ThreeDDraw).filter(ThreeDDraw.id == req.draw_id).first()
+    if not draw:
+        raise HTTPException(status_code=404, detail="3D Draw မတွေ့ရှိပါ")
+
+    clean_win = str(req.winning_number).strip().zfill(3)
+    if not clean_win.isdigit() or len(clean_win) != 3:
+        raise HTTPException(status_code=400, detail="3D ပေါက်ဂဏန်းသည် 000 မှ 999 အတွင်း ဂဏန်း ၃ လုံး ဖြစ်ရပါမည်")
+
+    setting = db.query(SystemSetting).first()
+    straight_payout = float(getattr(setting, "threed_straight_payout", 700.0) or 700.0)
+
+    draw.thai_first_prize = req.thai_first_prize.strip() if req.thai_first_prize else draw.thai_first_prize
+    draw.winning_number = clean_win
+    draw.status = "SETTLED"
+    draw.settled_at = now_mmt()
+
+    slips = db.query(BetSlip).filter(
+        BetSlip.game_type == "3D",
+        BetSlip.draw_id == draw.id,
+        BetSlip.status == BetSlipStatus.PENDING
+    ).all()
+
+    total_payout = 0.0
+    total_staked = 0.0
+    winners_count = 0
+    today_str = now_mmt().strftime("%Y-%m-%d")
+
+    for slip in slips:
+        slip_payout = 0.0
+        has_win = False
+        total_staked += float(slip.total_stake or 0.0)
+
+        for item in slip.items:
+            clean_item_num = str(item.number).strip().zfill(3)
+            combos = []
+            try:
+                combos = json.loads(item.combinations_json) if item.combinations_json else [clean_item_num]
+            except Exception:
+                combos = [clean_item_num]
+
+            if clean_win in combos:
+                item_win = float(item.big_amount or item.item_stake or 0.0) * straight_payout
+                item.is_won = 1
+                item.item_payout = item_win
+                item.win_details_json = json.dumps([{"winning_number": clean_win, "payout": item_win}])
+                slip_payout += item_win
+                has_win = True
+            else:
+                item.is_won = 0
+                item.item_payout = 0.0
+
+        if has_win:
+            slip.status = BetSlipStatus.WON
+            slip.total_payout = slip_payout
+            total_payout += slip_payout
+            winners_count += 1
+
+            player = db.query(User).filter(User.id == slip.user_id).first()
+            if player:
+                player.balance = float(player.balance or 0.0) + slip_payout
+                win_ledger = FinancialLedger(
+                    entry_type=LedgerEntryType.PAYOUT_EXPENSE,
+                    amount=slip_payout,
+                    running_balance=player.balance,
+                    reference_id=slip.slip_code,
+                    reference_type="BET_SLIP_3D_WIN",
+                    description=f"3D အနိုင်ရငွေ ({clean_win}) - Draw {draw.draw_date}",
+                    logged_at_mmt=now_mmt(),
+                    date_str=today_str
+                )
+                db.add(win_ledger)
+
+                notif = Notification(
+                    user_id=player.id,
+                    title="🎉 ဂုဏ်ယူပါသည်! 3D ထီပေါက်ပါသည်",
+                    message=f"သင်ထိုးထားသော 3D ဂဏန်း '{clean_win}' သည် {draw.draw_date} ပွဲစဉ်တွင် ပေါက်ပြီး အနိုင်ရငွေ +{slip_payout:,.0f} ကျပ် အား လက်ကျန်ငွေထဲ ထည့်သွင်းပေးပြီးပါပြီ။",
+                    notif_type="LOTTERY_WIN",
+                    is_read=False
+                )
+                db.add(notif)
+        else:
+            slip.status = BetSlipStatus.LOST
+            slip.total_payout = 0.0
+
+    draw.total_staked = total_staked
+    draw.total_payout = total_payout
+    db.commit()
+
+    return {
+        "status": "success",
+        "draw_id": draw.id,
+        "winning_number": clean_win,
+        "total_slips": len(slips),
+        "winners_count": winners_count,
+        "total_payout": total_payout
+    }

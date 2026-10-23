@@ -47,6 +47,68 @@ export default function Game2DView({ onNotify, mode = 'live' }) {
   const [loadingAudit, setLoadingAudit] = useState(false);
   const [copiedVoucher, setCopiedVoucher] = useState(null);
 
+  // Settle 2D Draw Modal State
+  const [isSettleModalOpen, setIsSettleModalOpen] = useState(false);
+  const [settleSetIndex, setSettleSetIndex] = useState('');
+  const [settleSetValue, setSettleSetValue] = useState('');
+  const [settleWinningNumber, setSettleWinningNumber] = useState('');
+  const [submittingSettle, setSubmittingSettle] = useState(false);
+  const [settleError, setSettleError] = useState('');
+
+  const handleSetIndexChange = (val) => {
+    setSettleSetIndex(val);
+    deriveWinningNumber(val, settleSetValue);
+  };
+
+  const handleSetValueChange = (val) => {
+    setSettleSetValue(val);
+    deriveWinningNumber(settleSetIndex, val);
+  };
+
+  const deriveWinningNumber = (idxStr, valStr) => {
+    try {
+      const cleanIdx = idxStr.replace(/,/g, '').split('.')[0] || '';
+      const cleanVal = valStr.replace(/,/g, '').split('.')[1] || '';
+      if (cleanIdx && cleanVal) {
+        const d1 = cleanIdx[cleanIdx.length - 1];
+        const d2 = cleanVal[cleanVal.length - 1];
+        if (d1 && d2) setSettleWinningNumber(d1 + d2);
+      }
+    } catch {}
+  };
+
+  const handleSettleSubmit = async (e) => {
+    e.preventDefault();
+    const clean = settleWinningNumber.trim().padStart(2, '0');
+    if (!clean || clean.length !== 2 || isNaN(clean)) {
+      setSettleError('2D ပေါက်ဂဏန်းသည် 00 မှ 99 အတွင်း ဂဏန်း ၂ လုံး ဖြစ်ရပါမည်');
+      return;
+    }
+    if (!window.confirm(`ယနေ့ 2D ပွဲစဉ်အတွက် ပေါက်ဂဏန်း '${clean}' အား အတည်ပြုပြီး ကံထူးရှင်များအား ၈၅ ဆ အနိုင်ကြေး ရှင်းလင်းပေးမည်မှာ သေချာပါသလား?`)) {
+      return;
+    }
+    try {
+      setSubmittingSettle(true);
+      setSettleError('');
+      const res = await apiClient.settleAdmin2DDraw({
+        draw_id: selectedDrawId,
+        set_index: settleSetIndex.trim(),
+        set_value: settleSetValue.trim(),
+        winning_number: clean
+      });
+      if (onNotify) onNotify(`2D ပေါက်ဂဏန်း '${clean}' အား အောင်မြင်စွာ ဖွင့်လှစ်ပြီး ကံထူးရှင် (${res.winners_count || 0}) ဦးအား Ks ${(res.total_payout || 0).toLocaleString()} ရှင်းလင်းပြီးပါပြီ!`, 'success');
+      setIsSettleModalOpen(false);
+      setSettleSetIndex('');
+      setSettleSetValue('');
+      setSettleWinningNumber('');
+      loadGameData(selectedDrawId);
+    } catch (err) {
+      setSettleError(err.message || 'ပေါက်ဂဏန်း ရှင်းလင်းရာတွင် အမှားဖြစ်ပေါ်ပါသည်');
+    } finally {
+      setSubmittingSettle(false);
+    }
+  };
+
   useEffect(() => {
     loadGameData(selectedDrawId);
   }, [mode, selectedDrawId]);
@@ -313,6 +375,22 @@ export default function Game2DView({ onNotify, mode = 'live' }) {
             <Lock className="w-4 h-4" />
             <span>+ Lock / Close 2D Number</span>
           </button>
+
+          {currentDraw?.status === 'OPEN' && (
+            <button
+              onClick={() => {
+                setSettleSetIndex('');
+                setSettleSetValue('');
+                setSettleWinningNumber('');
+                setSettleError('');
+                setIsSettleModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-black shadow-lg shadow-emerald-950 transition-all cursor-pointer"
+            >
+              <Award className="w-4 h-4 text-emerald-200" />
+              <span>🏆 Settle / ပေါက်ဂဏန်းဖွင့်မည်</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -696,6 +774,115 @@ export default function Game2DView({ onNotify, mode = 'live' }) {
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Settle 2D Draw Modal */}
+      {isSettleModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-slate-900 border border-emerald-500/40 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-300 flex items-center justify-center font-black">
+                  🏆
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-white">2D ပေါက်ဂဏန်း ဖွင့်လှစ်ခြင်း (Settle)</h3>
+                  <p className="text-[11px] text-slate-400 font-mono">
+                    {currentDraw?.draw_date} ({currentDraw?.session_label})
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsSettleModalOpen(false)}
+                className="text-slate-400 hover:text-white p-1 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {settleError && (
+              <div className="p-3 rounded-xl bg-rose-950/80 border border-rose-500/50 text-rose-200 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>{settleError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleSettleSubmit} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">
+                    SET Index (ထိုင်းစတော့အညွှန်း)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 1,392.48"
+                    value={settleSetIndex}
+                    onChange={(e) => handleSetIndexChange(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono font-bold focus:border-emerald-400 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-300 font-bold mb-1">
+                    SET Value (ကုန်သွယ်မှုပမာဏ)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 38,419.64"
+                    value={settleSetValue}
+                    onChange={(e) => handleSetValueChange(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono font-bold focus:border-emerald-400 focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-emerald-300 mb-1">
+                  2D ပေါက်ဂဏန်း (Winning Number - 00 to 99)
+                </label>
+                <input
+                  type="text"
+                  maxLength={2}
+                  required
+                  placeholder="e.g. 84"
+                  value={settleWinningNumber}
+                  onChange={(e) => setSettleWinningNumber(e.target.value)}
+                  className="w-full px-4 py-3 rounded-2xl bg-slate-950 border border-emerald-500 text-emerald-300 font-mono font-black text-3xl text-center tracking-widest focus:outline-none focus:ring-2 focus:ring-emerald-400 shadow-inner"
+                />
+                <span className="text-[10px] text-slate-400 block text-center mt-1">
+                  SET Index နှင့် Value ထည့်သွင်းပါက ပေါက်ဂဏန်း အလိုအလျောက် တွက်ချက်ပေးပါသည်
+                </span>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-slate-950/80 border border-slate-800 text-xs space-y-1.5 font-mono">
+                <div className="flex justify-between text-slate-400">
+                  <span>ယခုပွဲစဉ် စုစုပေါင်း လောင်းကြေး:</span>
+                  <span className="text-white font-bold">Ks {totalStaked.toLocaleString()}</span>
+                </div>
+                <div className="flex justify-between text-slate-400">
+                  <span>ပေါက်ဆ အဆ:</span>
+                  <span className="text-emerald-400 font-bold">{payoutMultiplier} ဆ</span>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsSettleModalOpen(false)}
+                  className="flex-1 py-3 rounded-xl bg-slate-800 hover:bg-slate-750 text-slate-300 font-bold text-xs cursor-pointer transition-colors"
+                >
+                  မလုပ်တော့ပါ (Cancel)
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingSettle}
+                  className="flex-1 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs shadow-lg shadow-emerald-950 cursor-pointer disabled:opacity-50 transition-all"
+                >
+                  {submittingSettle ? 'ရှင်းလင်းနေသည်...' : 'အတည်ပြုမည် (Settle Now)'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

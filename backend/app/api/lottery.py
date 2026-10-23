@@ -331,10 +331,12 @@ def get_2d_active_draw(db: Session = Depends(get_db)):
     min_bet = float(getattr(setting, "twod_min_bet", 100.0) or 100.0)
     max_bet = float(getattr(setting, "twod_max_bet", 50000.0) or 50000.0)
 
-    open_draws = db.query(TwoDDraw).filter(TwoDDraw.status == "OPEN").order_by(TwoDDraw.id.asc()).all()
+    today_str = now_mmt().strftime("%Y-%m-%d")
+    today_draws = db.query(TwoDDraw).filter(TwoDDraw.draw_date == today_str).order_by(TwoDDraw.id.asc()).all()
     draws_data = []
-    for d in open_draws:
-        draws_data.append({
+    active_session = None
+    for d in today_draws:
+        s_data = {
             "id": d.id,
             "draw_date": d.draw_date,
             "session": d.session,
@@ -342,8 +344,17 @@ def get_2d_active_draw(db: Session = Depends(get_db)):
             "draw_time_mmt": d.draw_time_mmt,
             "cutoff_time_mmt": d.cutoff_time_mmt,
             "status": d.status,
+            "set_index": d.set_index,
+            "set_value": d.set_value,
+            "winning_number": d.winning_number,
             "closed_numbers": d.closed_numbers
-        })
+        }
+        draws_data.append(s_data)
+        if d.status == "OPEN" and not active_session:
+            active_session = s_data
+
+    if not active_session and draws_data:
+        active_session = draws_data[-1]
 
     return {
         "is_enabled": is_enabled,
@@ -351,7 +362,7 @@ def get_2d_active_draw(db: Session = Depends(get_db)):
         "min_bet": min_bet,
         "max_bet": max_bet,
         "sessions": draws_data,
-        "active_session": draws_data[0] if draws_data else None
+        "active_session": active_session
     }
 
 @router.get("/2d/results")
