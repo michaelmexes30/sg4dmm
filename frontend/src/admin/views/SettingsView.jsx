@@ -55,7 +55,27 @@ export default function SettingsView({ onNotify }) {
     agent_lvl5_target_turnover: 20000000,
     telegram_finance_group_id: '',
     auto_approve_max_amount: 50000,
-    is_withdraw_hours_enabled: false
+    is_withdraw_hours_enabled: false,
+
+    // 2D Lottery Settings
+    is_2d_enabled: true,
+    twod_payout_multiplier: 85,
+    twod_commission_rate: 15,
+    twod_min_bet: 100,
+    twod_max_bet: 50000,
+    twod_max_risk_per_number: 100000,
+    twod_morning_cutoff: '11:30 AM',
+    twod_evening_cutoff: '04:00 PM',
+
+    // 3D Lottery Settings
+    is_3d_enabled: true,
+    threed_straight_payout: 700,
+    threed_tote_payout: 10,
+    threed_commission_rate: 15,
+    threed_min_bet: 100,
+    threed_max_bet: 50000,
+    threed_max_risk_per_number: 200000,
+    threed_draw_cutoff: '02:30 PM'
   });
 
   // Application Releases state (Screenshot 13)
@@ -91,6 +111,23 @@ export default function SettingsView({ onNotify }) {
             cutoff_time: res.cutoff_time ?? res.bet_end_time ?? '16:30',
             result_time: res.result_time ?? res.result_confirm_time ?? '18:00',
             reward_percentage: res.reward_percentage ?? res.consecutive_reward_percent ?? 20,
+            is_2d_enabled: res.is_2d_enabled ?? true,
+            twod_payout_multiplier: res.twod_payout_multiplier ?? 85,
+            twod_commission_rate: res.twod_commission_rate ?? 15,
+            twod_min_bet: res.twod_min_bet ?? 100,
+            twod_max_bet: res.twod_max_bet ?? 50000,
+            twod_max_risk_per_number: res.twod_max_risk_per_number ?? 100000,
+            twod_morning_cutoff: res.twod_morning_cutoff ?? '11:30 AM',
+            twod_evening_cutoff: res.twod_evening_cutoff ?? '04:00 PM',
+
+            is_3d_enabled: res.is_3d_enabled ?? true,
+            threed_straight_payout: res.threed_straight_payout ?? 700,
+            threed_tote_payout: res.threed_tote_payout ?? 10,
+            threed_commission_rate: res.threed_commission_rate ?? 15,
+            threed_min_bet: res.threed_min_bet ?? 100,
+            threed_max_bet: res.threed_max_bet ?? 50000,
+            threed_max_risk_per_number: res.threed_max_risk_per_number ?? 200000,
+            threed_draw_cutoff: res.threed_draw_cutoff ?? '02:30 PM'
           }));
         }
       } else if (activeTab === 'applications') {
@@ -127,7 +164,25 @@ export default function SettingsView({ onNotify }) {
         commission_rate: Number(systemSettings.commission_rate || 30),
         telegram_finance_group_id: (systemSettings.telegram_finance_group_id || '').trim(),
         auto_approve_max_amount: Number(systemSettings.auto_approve_max_amount ?? 50000),
-        is_withdraw_hours_enabled: Boolean(systemSettings.is_withdraw_hours_enabled)
+        is_withdraw_hours_enabled: Boolean(systemSettings.is_withdraw_hours_enabled),
+
+        is_2d_enabled: Boolean(systemSettings.is_2d_enabled),
+        twod_payout_multiplier: Number(systemSettings.twod_payout_multiplier || 85),
+        twod_commission_rate: Number(systemSettings.twod_commission_rate || 15),
+        twod_min_bet: Number(systemSettings.twod_min_bet || 100),
+        twod_max_bet: Number(systemSettings.twod_max_bet || 50000),
+        twod_max_risk_per_number: Number(systemSettings.twod_max_risk_per_number || 100000),
+        twod_morning_cutoff: (systemSettings.twod_morning_cutoff || '11:30 AM').trim(),
+        twod_evening_cutoff: (systemSettings.twod_evening_cutoff || '04:00 PM').trim(),
+
+        is_3d_enabled: Boolean(systemSettings.is_3d_enabled),
+        threed_straight_payout: Number(systemSettings.threed_straight_payout || 700),
+        threed_tote_payout: Number(systemSettings.threed_tote_payout || 10),
+        threed_commission_rate: Number(systemSettings.threed_commission_rate || 15),
+        threed_min_bet: Number(systemSettings.threed_min_bet || 100),
+        threed_max_bet: Number(systemSettings.threed_max_bet || 50000),
+        threed_max_risk_per_number: Number(systemSettings.threed_max_risk_per_number || 200000),
+        threed_draw_cutoff: (systemSettings.threed_draw_cutoff || '02:30 PM').trim()
       };
       await apiClient.updateAdminSystemSettings(payload);
       if (onNotify) onNotify('System settings & Telegram Finance Alerts updated successfully!', 'success');
@@ -540,6 +595,236 @@ export default function SettingsView({ onNotify }) {
                   <span className={`w-2.5 h-2.5 rounded-full ${systemSettings.is_withdraw_hours_enabled ? 'bg-emerald-400 animate-pulse' : 'bg-slate-500'}`} />
                   <span>{systemSettings.is_withdraw_hours_enabled ? 'ဖွင့်ထားသည် (8 AM - 8 PM ကန့်သတ်)' : 'ပိတ်ထားသည် (24/7 အချိန်မရွေး)'}</span>
                 </button>
+              </div>
+            </div>
+          </div>
+
+          {/* 2D Lottery (Thai SET) Operational Rules & Controls */}
+          <div className="bg-navy-900/90 border border-gold-500/20 rounded-2xl p-5 shadow-xl space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gold-500/20 pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-cyan-400"></span>
+                  <span>Thai 2D Lottery Settings (ထိုင်း ၂လုံး ထီ ဆက်တင်များ)</span>
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  ထိုင်း SET Index အခြေခံ 2D ပေါက်ဆ၊ အေးဂျင့်ကော်မရှင်၊ ထိုးကြေးနှင့် ယာယီ ပိတ်/ဖွင့် စနစ်
+                </p>
+              </div>
+
+              {/* 2D Enable / Disable Toggle */}
+              <button
+                type="button"
+                onClick={() => setSystemSettings({ ...systemSettings, is_2d_enabled: !systemSettings.is_2d_enabled })}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
+                  systemSettings.is_2d_enabled
+                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/50 hover:bg-emerald-500/30 shadow-md'
+                    : 'bg-rose-500/20 text-rose-300 border border-rose-500/50 hover:bg-rose-500/30 shadow-md'
+                }`}
+              >
+                <span className={`w-2.5 h-2.5 rounded-full ${systemSettings.is_2d_enabled ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'}`} />
+                <span>{systemSettings.is_2d_enabled ? '🟢 2D ဖွင့်ထားသည် (Active)' : '🔴 2D ယာယီပိတ်ထားသည် (Suspended)'}</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-[11px] text-slate-400 mb-1">2D Payout Multiplier (ပေါက်ဆ)</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    value={systemSettings.twod_payout_multiplier}
+                    onChange={(e) => setSystemSettings({ ...systemSettings, twod_payout_multiplier: Number(e.target.value) })}
+                    className="w-full bg-navy-950 border border-gold-500/20 rounded-xl px-3 py-1.5 text-xs text-cyan-300 font-bold focus:outline-none focus:border-cyan-400 font-mono"
+                  />
+                  <span className="absolute right-3 top-1.5 text-[11px] text-slate-500 font-bold">ဆ (x)</span>
+                </div>
+                <span className="text-[10px] text-slate-500 block mt-1">၁ ကျပ်ထိုးလျှင် ပေါက်ငွေ {systemSettings.twod_payout_multiplier} ကျပ်</span>
+              </div>
+
+              <div>
+                <label className="block text-[11px] text-slate-400 mb-1">2D Agent Commission (%)</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    value={systemSettings.twod_commission_rate}
+                    onChange={(e) => setSystemSettings({ ...systemSettings, twod_commission_rate: Number(e.target.value) })}
+                    className="w-full bg-navy-950 border border-gold-500/20 rounded-xl px-3 py-1.5 text-xs text-amber-300 font-bold focus:outline-none focus:border-gold-400 font-mono"
+                  />
+                  <span className="absolute right-3 top-1.5 text-[11px] text-slate-500 font-bold">%</span>
+                </div>
+                <span className="text-[10px] text-slate-500 block mt-1">2D ထိုးငွေအပေါ် Agent ရရှိမည့် ကော်မရှင် %</span>
+              </div>
+
+              <div>
+                <label className="block text-[11px] text-slate-400 mb-1">2D Max Risk per Number (MMK)</label>
+                <input
+                  type="number"
+                  value={systemSettings.twod_max_risk_per_number}
+                  onChange={(e) => setSystemSettings({ ...systemSettings, twod_max_risk_per_number: Number(e.target.value) })}
+                  className="w-full bg-navy-950 border border-gold-500/20 rounded-xl px-3 py-1.5 text-xs text-amber-300 font-bold focus:outline-none focus:border-gold-400 font-mono"
+                />
+                <span className="text-[10px] text-amber-400/90 block mt-1">ဂဏန်းတစ်လုံးစီ အများဆုံးလက်ခံငွေ (ပြည့်လျှင် Auto ပိတ်)</span>
+              </div>
+
+              <div>
+                <label className="block text-[11px] text-slate-400 mb-1">2D Min / Max Bet Amount (MMK)</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="number"
+                    value={systemSettings.twod_min_bet}
+                    onChange={(e) => setSystemSettings({ ...systemSettings, twod_min_bet: Number(e.target.value) })}
+                    placeholder="Min"
+                    className="w-full bg-navy-950 border border-gold-500/20 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-gold-400 font-mono"
+                  />
+                  <input
+                    type="number"
+                    value={systemSettings.twod_max_bet}
+                    onChange={(e) => setSystemSettings({ ...systemSettings, twod_max_bet: Number(e.target.value) })}
+                    placeholder="Max"
+                    className="w-full bg-navy-950 border border-gold-500/20 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-gold-400 font-mono"
+                  />
+                </div>
+                <span className="text-[10px] text-slate-500 block mt-1">အနည်းဆုံး / အများဆုံး ထိုးကြေး</span>
+              </div>
+
+              <div>
+                <label className="block text-[11px] text-slate-400 mb-1">Morning Cutoff (မနက်ပိုင်း ပိတ်ချိန်)</label>
+                <input
+                  type="text"
+                  value={systemSettings.twod_morning_cutoff}
+                  onChange={(e) => setSystemSettings({ ...systemSettings, twod_morning_cutoff: e.target.value })}
+                  placeholder="11:30 AM"
+                  className="w-full bg-navy-950 border border-gold-500/20 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-gold-400 font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] text-slate-400 mb-1">Evening Cutoff (ညနေပိုင်း ပိတ်ချိန်)</label>
+                <input
+                  type="text"
+                  value={systemSettings.twod_evening_cutoff}
+                  onChange={(e) => setSystemSettings({ ...systemSettings, twod_evening_cutoff: e.target.value })}
+                  placeholder="04:00 PM"
+                  className="w-full bg-navy-950 border border-gold-500/20 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-gold-400 font-mono"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* 3D Lottery (Thai Govt) Operational Rules & Controls */}
+          <div className="bg-navy-900/90 border border-gold-500/20 rounded-2xl p-5 shadow-xl space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gold-500/20 pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-purple-400"></span>
+                  <span>Thai 3D Lottery Settings (ထိုင်း ၃လုံး ထီ ဆက်တင်များ)</span>
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  ထိုင်းအစိုးရထီ (၁ ရက် / ၁၆ ရက်) အခြေခံ 3D တည့်ပေါက်ဆ၊ အာပေါက်ဆ၊ ကော်မရှင်နှင့် ယာယီ ပိတ်/ဖွင့် စနစ်
+                </p>
+              </div>
+
+              {/* 3D Enable / Disable Toggle */}
+              <button
+                type="button"
+                onClick={() => setSystemSettings({ ...systemSettings, is_3d_enabled: !systemSettings.is_3d_enabled })}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shrink-0 ${
+                  systemSettings.is_3d_enabled
+                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/50 hover:bg-emerald-500/30 shadow-md'
+                    : 'bg-rose-500/20 text-rose-300 border border-rose-500/50 hover:bg-rose-500/30 shadow-md'
+                }`}
+              >
+                <span className={`w-2.5 h-2.5 rounded-full ${systemSettings.is_3d_enabled ? 'bg-emerald-400 animate-pulse' : 'bg-rose-500'}`} />
+                <span>{systemSettings.is_3d_enabled ? '🟢 3D ဖွင့်ထားသည် (Active)' : '🔴 3D ယာယီပိတ်ထားသည် (Suspended)'}</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-[11px] text-slate-400 mb-1">3D Straight Payout (တည့်ပေါက်ဆ)</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    value={systemSettings.threed_straight_payout}
+                    onChange={(e) => setSystemSettings({ ...systemSettings, threed_straight_payout: Number(e.target.value) })}
+                    className="w-full bg-navy-950 border border-gold-500/20 rounded-xl px-3 py-1.5 text-xs text-purple-300 font-bold focus:outline-none focus:border-purple-400 font-mono"
+                  />
+                  <span className="absolute right-3 top-1.5 text-[11px] text-slate-500 font-bold">ဆ (x)</span>
+                </div>
+                <span className="text-[10px] text-slate-500 block mt-1">၁ ကျပ်ထိုးလျှင် တည့်ပေါက်ငွေ {systemSettings.threed_straight_payout} ကျပ်</span>
+              </div>
+
+              <div>
+                <label className="block text-[11px] text-slate-400 mb-1">3D Permutation/Tote Payout (အာ/တွဲ ပေါက်ဆ)</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    value={systemSettings.threed_tote_payout}
+                    onChange={(e) => setSystemSettings({ ...systemSettings, threed_tote_payout: Number(e.target.value) })}
+                    className="w-full bg-navy-950 border border-gold-500/20 rounded-xl px-3 py-1.5 text-xs text-indigo-300 font-bold focus:outline-none focus:border-indigo-400 font-mono"
+                  />
+                  <span className="absolute right-3 top-1.5 text-[11px] text-slate-500 font-bold">ဆ (x)</span>
+                </div>
+                <span className="text-[10px] text-slate-500 block mt-1">အာပေါက်ပါက ၁ ကျပ်လျှင် {systemSettings.threed_tote_payout} ကျပ်</span>
+              </div>
+
+              <div>
+                <label className="block text-[11px] text-slate-400 mb-1">3D Agent Commission (%)</label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    value={systemSettings.threed_commission_rate}
+                    onChange={(e) => setSystemSettings({ ...systemSettings, threed_commission_rate: Number(e.target.value) })}
+                    className="w-full bg-navy-950 border border-gold-500/20 rounded-xl px-3 py-1.5 text-xs text-amber-300 font-bold focus:outline-none focus:border-gold-400 font-mono"
+                  />
+                  <span className="absolute right-3 top-1.5 text-[11px] text-slate-500 font-bold">%</span>
+                </div>
+                <span className="text-[10px] text-slate-500 block mt-1">3D ထိုးငွေအပေါ် Agent ရရှိမည့် ကော်မရှင် %</span>
+              </div>
+
+              <div>
+                <label className="block text-[11px] text-slate-400 mb-1">3D Max Risk per Number (MMK)</label>
+                <input
+                  type="number"
+                  value={systemSettings.threed_max_risk_per_number}
+                  onChange={(e) => setSystemSettings({ ...systemSettings, threed_max_risk_per_number: Number(e.target.value) })}
+                  className="w-full bg-navy-950 border border-gold-500/20 rounded-xl px-3 py-1.5 text-xs text-amber-300 font-bold focus:outline-none focus:border-gold-400 font-mono"
+                />
+                <span className="text-[10px] text-amber-400/90 block mt-1">ဂဏန်းတစ်လုံးစီ အများဆုံးလက်ခံငွေ (ပြည့်လျှင် Auto ပိတ်)</span>
+              </div>
+
+              <div>
+                <label className="block text-[11px] text-slate-400 mb-1">3D Min / Max Bet Amount (MMK)</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="number"
+                    value={systemSettings.threed_min_bet}
+                    onChange={(e) => setSystemSettings({ ...systemSettings, threed_min_bet: Number(e.target.value) })}
+                    placeholder="Min"
+                    className="w-full bg-navy-950 border border-gold-500/20 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-gold-400 font-mono"
+                  />
+                  <input
+                    type="number"
+                    value={systemSettings.threed_max_bet}
+                    onChange={(e) => setSystemSettings({ ...systemSettings, threed_max_bet: Number(e.target.value) })}
+                    placeholder="Max"
+                    className="w-full bg-navy-950 border border-gold-500/20 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-gold-400 font-mono"
+                  />
+                </div>
+                <span className="text-[10px] text-slate-500 block mt-1">အနည်းဆုံး / အများဆုံး ထိုးကြေး</span>
+              </div>
+
+              <div>
+                <label className="block text-[11px] text-slate-400 mb-1">3D Draw Cutoff Time (ထိုးကြေးပိတ်ချိန်)</label>
+                <input
+                  type="text"
+                  value={systemSettings.threed_draw_cutoff}
+                  onChange={(e) => setSystemSettings({ ...systemSettings, threed_draw_cutoff: e.target.value })}
+                  placeholder="02:30 PM"
+                  className="w-full bg-navy-950 border border-gold-500/20 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-gold-400 font-mono"
+                />
+                <span className="text-[10px] text-slate-500 block mt-1">၁ ရက် / ၁၆ ရက် နေ့များအတွက် ပိတ်ချိန်</span>
               </div>
             </div>
           </div>

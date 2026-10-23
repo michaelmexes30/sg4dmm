@@ -1742,6 +1742,26 @@ class SystemSettingsUpdate(BaseModel):
     auto_approve_max_amount: Optional[float] = None
     is_withdraw_hours_enabled: Optional[bool] = None
 
+    # 2D Lottery Settings
+    is_2d_enabled: Optional[bool] = None
+    twod_payout_multiplier: Optional[float] = None
+    twod_commission_rate: Optional[float] = None
+    twod_min_bet: Optional[float] = None
+    twod_max_bet: Optional[float] = None
+    twod_max_risk_per_number: Optional[float] = None
+    twod_morning_cutoff: Optional[str] = None
+    twod_evening_cutoff: Optional[str] = None
+
+    # 3D Lottery Settings
+    is_3d_enabled: Optional[bool] = None
+    threed_straight_payout: Optional[float] = None
+    threed_tote_payout: Optional[float] = None
+    threed_commission_rate: Optional[float] = None
+    threed_min_bet: Optional[float] = None
+    threed_max_bet: Optional[float] = None
+    threed_max_risk_per_number: Optional[float] = None
+    threed_draw_cutoff: Optional[str] = None
+
 class ToggleAgentCreditRequest(BaseModel):
     enabled: Optional[bool] = None
 
@@ -3804,6 +3824,26 @@ def get_system_settings(
         "auto_approve_max_amount": float(getattr(setting, "auto_approve_max_amount", 50000.0) or 50000.0),
         "is_withdraw_hours_enabled": bool(getattr(setting, "is_withdraw_hours_enabled", False)),
 
+        # 2D Lottery Settings
+        "is_2d_enabled": bool(getattr(setting, "is_2d_enabled", True) if getattr(setting, "is_2d_enabled", True) is not None else True),
+        "twod_payout_multiplier": float(getattr(setting, "twod_payout_multiplier", 85.0) or 85.0),
+        "twod_commission_rate": float(getattr(setting, "twod_commission_rate", 15.0) or 15.0),
+        "twod_min_bet": float(getattr(setting, "twod_min_bet", 100.0) or 100.0),
+        "twod_max_bet": float(getattr(setting, "twod_max_bet", 50000.0) or 50000.0),
+        "twod_max_risk_per_number": float(getattr(setting, "twod_max_risk_per_number", 100000.0) or 100000.0),
+        "twod_morning_cutoff": getattr(setting, "twod_morning_cutoff", "11:30 AM") or "11:30 AM",
+        "twod_evening_cutoff": getattr(setting, "twod_evening_cutoff", "04:00 PM") or "04:00 PM",
+
+        # 3D Lottery Settings
+        "is_3d_enabled": bool(getattr(setting, "is_3d_enabled", True) if getattr(setting, "is_3d_enabled", True) is not None else True),
+        "threed_straight_payout": float(getattr(setting, "threed_straight_payout", 700.0) or 700.0),
+        "threed_tote_payout": float(getattr(setting, "threed_tote_payout", 10.0) or 10.0),
+        "threed_commission_rate": float(getattr(setting, "threed_commission_rate", 15.0) or 15.0),
+        "threed_min_bet": float(getattr(setting, "threed_min_bet", 100.0) or 100.0),
+        "threed_max_bet": float(getattr(setting, "threed_max_bet", 50000.0) or 50000.0),
+        "threed_max_risk_per_number": float(getattr(setting, "threed_max_risk_per_number", 200000.0) or 200000.0),
+        "threed_draw_cutoff": getattr(setting, "threed_draw_cutoff", "02:30 PM") or "02:30 PM",
+
         "company_balance_oct": float(setting.company_balance_oct or 4198200.0),
         "updated_at": setting.updated_at.strftime("%Y-%m-%d %H:%M:%S") if setting.updated_at else None
     }
@@ -3923,6 +3963,26 @@ def update_system_settings(
             _save_fallback_group_id(setting.telegram_finance_group_id)
     if req.auto_approve_max_amount is not None: setting.auto_approve_max_amount = float(req.auto_approve_max_amount)
     if req.is_withdraw_hours_enabled is not None: setting.is_withdraw_hours_enabled = bool(req.is_withdraw_hours_enabled)
+
+    # 9. 2D Lottery Settings
+    if req.is_2d_enabled is not None: setting.is_2d_enabled = bool(req.is_2d_enabled)
+    if req.twod_payout_multiplier is not None: setting.twod_payout_multiplier = float(req.twod_payout_multiplier)
+    if req.twod_commission_rate is not None: setting.twod_commission_rate = float(req.twod_commission_rate)
+    if req.twod_min_bet is not None: setting.twod_min_bet = float(req.twod_min_bet)
+    if req.twod_max_bet is not None: setting.twod_max_bet = float(req.twod_max_bet)
+    if req.twod_max_risk_per_number is not None: setting.twod_max_risk_per_number = float(req.twod_max_risk_per_number)
+    if req.twod_morning_cutoff is not None: setting.twod_morning_cutoff = str(req.twod_morning_cutoff).strip()
+    if req.twod_evening_cutoff is not None: setting.twod_evening_cutoff = str(req.twod_evening_cutoff).strip()
+
+    # 10. 3D Lottery Settings
+    if req.is_3d_enabled is not None: setting.is_3d_enabled = bool(req.is_3d_enabled)
+    if req.threed_straight_payout is not None: setting.threed_straight_payout = float(req.threed_straight_payout)
+    if req.threed_tote_payout is not None: setting.threed_tote_payout = float(req.threed_tote_payout)
+    if req.threed_commission_rate is not None: setting.threed_commission_rate = float(req.threed_commission_rate)
+    if req.threed_min_bet is not None: setting.threed_min_bet = float(req.threed_min_bet)
+    if req.threed_max_bet is not None: setting.threed_max_bet = float(req.threed_max_bet)
+    if req.threed_max_risk_per_number is not None: setting.threed_max_risk_per_number = float(req.threed_max_risk_per_number)
+    if req.threed_draw_cutoff is not None: setting.threed_draw_cutoff = str(req.threed_draw_cutoff).strip()
 
     setting.updated_at = now_mmt()
     db.commit()

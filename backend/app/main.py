@@ -58,6 +58,31 @@ async def lifespan(app: FastAPI):
                 conn.execute(text("UPDATE bet_slips SET total_stake = (SELECT SUM(item_stake) FROM bet_items WHERE slip_id = bet_slips.id) WHERE slip_code = 'SLIP-20261022-46DB76'"))
             except Exception:
                 pass
+
+            # 2D & 3D System Settings Columns Auto-migration
+            settings_cols = [
+                ("is_2d_enabled", "BOOLEAN DEFAULT 1"),
+                ("twod_payout_multiplier", "FLOAT DEFAULT 85.0"),
+                ("twod_commission_rate", "FLOAT DEFAULT 15.0"),
+                ("twod_min_bet", "FLOAT DEFAULT 100.0"),
+                ("twod_max_bet", "FLOAT DEFAULT 50000.0"),
+                ("twod_max_risk_per_number", "FLOAT DEFAULT 100000.0"),
+                ("twod_morning_cutoff", "VARCHAR(20) DEFAULT '11:30 AM'"),
+                ("twod_evening_cutoff", "VARCHAR(20) DEFAULT '04:00 PM'"),
+                ("is_3d_enabled", "BOOLEAN DEFAULT 1"),
+                ("threed_straight_payout", "FLOAT DEFAULT 700.0"),
+                ("threed_tote_payout", "FLOAT DEFAULT 10.0"),
+                ("threed_commission_rate", "FLOAT DEFAULT 15.0"),
+                ("threed_min_bet", "FLOAT DEFAULT 100.0"),
+                ("threed_max_bet", "FLOAT DEFAULT 50000.0"),
+                ("threed_max_risk_per_number", "FLOAT DEFAULT 200000.0"),
+                ("threed_draw_cutoff", "VARCHAR(20) DEFAULT '02:30 PM'"),
+            ]
+            for col_name, col_type in settings_cols:
+                try:
+                    conn.execute(text(f"ALTER TABLE system_settings ADD COLUMN {col_name} {col_type}"))
+                except Exception:
+                    pass
     except Exception as ddl_ex:
         print(f"Lifespan schema update notice: {ddl_ex}")
 
