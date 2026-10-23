@@ -496,6 +496,23 @@ def get_user_bets(
         query = query.filter(BetSlip.game_type == game_type.upper())
     
     slips = query.order_by(BetSlip.id.desc()).limit(100).all()
+    from app.models.lottery import TwoDDraw, ThreeDDraw
+    twod_draws = {d.id: d for d in db.query(TwoDDraw).all()}
+    threed_draws = {d.id: d for d in db.query(ThreeDDraw).all()}
+
+    for s in slips:
+        gtype = (s.game_type or "4D").upper()
+        if gtype == "2D" and s.draw_id in twod_draws:
+            td = twod_draws[s.draw_id]
+            s._custom_draw_date = td.draw_date
+            s._custom_draw_session = td.session
+            s._custom_draw_time = td.draw_time_mmt
+        elif gtype == "3D" and s.draw_id in threed_draws:
+            td = threed_draws[s.draw_id]
+            s._custom_draw_date = td.draw_date
+            s._custom_draw_session = "Official Thai 3D"
+            s._custom_draw_time = td.draw_time_mmt
+
     return slips
 
 
@@ -635,6 +652,9 @@ def place_2d_bet_slip(
 
     db.commit()
     db.refresh(bet_slip)
+    bet_slip._custom_draw_date = draw.draw_date
+    bet_slip._custom_draw_session = getattr(draw, 'session', None)
+    bet_slip._custom_draw_time = getattr(draw, 'draw_time_mmt', None)
     return bet_slip
 
 
@@ -786,4 +806,7 @@ def place_3d_bet_slip(
 
     db.commit()
     db.refresh(bet_slip)
+    bet_slip._custom_draw_date = draw.draw_date
+    bet_slip._custom_draw_session = getattr(draw, 'session', None)
+    bet_slip._custom_draw_time = getattr(draw, 'draw_time_mmt', None)
     return bet_slip

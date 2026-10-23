@@ -56,6 +56,8 @@ class BetSlipResponse(BaseModel):
     draw_id: int
     draw_number: Optional[str] = None
     draw_date: Optional[str] = None
+    draw_session: Optional[str] = None
+    draw_time: Optional[str] = None
     total_stake: float
     total_payout: float
     status: str

@@ -45,7 +45,21 @@ class BetSlip(Base):
 
     @property
     def draw_date(self):
+        if hasattr(self, '_custom_draw_date') and self._custom_draw_date:
+            return self._custom_draw_date
         return self.draw.draw_date if self.draw else None
+
+    @property
+    def draw_session(self):
+        if hasattr(self, '_custom_draw_session') and self._custom_draw_session:
+            return self._custom_draw_session
+        return None
+
+    @property
+    def draw_time(self):
+        if hasattr(self, '_custom_draw_time') and self._custom_draw_time:
+            return self._custom_draw_time
+        return None
 
 class BetItem(Base):
     __tablename__ = "bet_items"

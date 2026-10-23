@@ -316,44 +316,93 @@ export default function BetHistory({ onBetNow, targetSlipCode }) {
               return (a.number || '').localeCompare(b.number || '');
             });
 
+            const is2D = (slip.game_type === '2D') || (slip.slip_code && slip.slip_code.includes('-2D-'));
+            const is3D = (slip.game_type === '3D') || (slip.slip_code && slip.slip_code.includes('-3D-'));
+            
+            // Resolve accurate draw date (fallback for 2D if legacy slip had 4D draw date)
+            let effectiveDrawDate = slip.draw_date;
+            if (!effectiveDrawDate || (is2D && effectiveDrawDate === '2026-10-14')) {
+              if (slip.slip_code && slip.slip_code.includes('-2D-20261023-')) {
+                effectiveDrawDate = '2026-10-23';
+              } else if (slip.created_at) {
+                effectiveDrawDate = String(slip.created_at).slice(0, 10);
+              }
+            }
+
+            // Resolve session name for 2D
+            let sessionName = slip.draw_session;
+            if (!sessionName && is2D) {
+              if (slip.draw_time && slip.draw_time.includes('12:01')) {
+                sessionName = 'morning';
+              } else {
+                sessionName = 'evening';
+              }
+            }
+
             return (
               <div
                 key={slip.id}
                 id={`slip-${slip.id}`}
                 data-slip-code={slip.slip_code}
-                className={`glass-panel-gold rounded-2xl border overflow-hidden shadow-gold-sm transition-all ${
-                  slip.status === 'WON' 
-                    ? 'border-amber-400/80 shadow-amber-500/20 shadow-md ring-1 ring-amber-400/40' 
-                    : 'border-gold-700/50 hover:border-gold-500/70'
+                className={`rounded-2xl border overflow-hidden shadow-lg transition-all ${
+                  is2D
+                    ? (slip.status === 'WON' 
+                        ? 'bg-gradient-to-br from-emerald-950 via-[#07241a] to-dark-bg border-emerald-400 shadow-emerald-950/40' 
+                        : 'bg-dark-card/90 border-emerald-500/30 hover:border-emerald-500/60')
+                    : is3D
+                    ? (slip.status === 'WON'
+                        ? 'bg-gradient-to-br from-purple-950 via-[#1c082e] to-dark-bg border-purple-400 shadow-purple-950/40'
+                        : 'bg-dark-card/90 border-purple-500/30 hover:border-purple-500/60')
+                    : (slip.status === 'WON' 
+                        ? 'glass-panel-gold border-amber-400/80 shadow-amber-500/20 shadow-md ring-1 ring-amber-400/40' 
+                        : 'glass-panel-gold border-gold-700/50 hover:border-gold-500/70')
                 }`}
               >
-                {/* Main Compact Row (အဓိက ပေါင်းချုပ်) */}
+                {/* Main Clean Header Row (မနှိပ်ခင် ပေါင်းချုပ် - ရှင်းလင်းလှပစွာ) */}
                 <div
                   onClick={() => toggleExpand(slip.id)}
-                  className="p-3 sm:p-3.5 flex items-center justify-between gap-3 cursor-pointer hover:bg-dark-card/50 transition-colors"
+                  className="p-3.5 sm:p-4 cursor-pointer hover:bg-white/5 transition-colors space-y-2.5"
                 >
-                  {/* Left Column: Summary & Small Draw/Placed Dates */}
-                  <div className="min-w-0 flex-1">
-                    {/* Top line: Bet Summary e.g. ဝယ်ထားသည့်အမောင့်: 3445(R) - 600ကျပ် */}
-                    <div className="flex flex-wrap items-center gap-2">
-                      {/* Game Type Badge (Themed per Game) */}
-                      {((slip.game_type === '2D') || (slip.slip_code && slip.slip_code.includes('-2D-'))) ? (
-                        <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-400/50 shrink-0 font-mono">
-                          📈 Thai 2D
+                  {/* Top Line: Game Badge, Session Pill, Combos count, Status */}
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      {is2D ? (
+                        <span className="text-[11px] font-black px-2.5 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-400/50 flex items-center gap-1 font-mono">
+                          <span>📈</span>
+                          <span>Thai 2D</span>
                         </span>
-                      ) : ((slip.game_type === '3D') || (slip.slip_code && slip.slip_code.includes('-3D-'))) ? (
-                        <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-300 border border-purple-400/50 shrink-0 font-mono">
-                          🎲 Thai 3D
+                      ) : is3D ? (
+                        <span className="text-[11px] font-black px-2.5 py-0.5 rounded-lg bg-purple-500/20 text-purple-300 border border-purple-400/50 flex items-center gap-1 font-mono">
+                          <span>🎲</span>
+                          <span>Thai 3D</span>
                         </span>
                       ) : (
-                        <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-400/50 shrink-0 font-mono">
-                          🦚 4D
+                        <span className="text-[11px] font-black px-2.5 py-0.5 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-400/50 flex items-center gap-1 font-mono">
+                          <span>🦚</span>
+                          <span>4D</span>
                         </span>
                       )}
 
-                      <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md border shrink-0 ${
+                      {/* 2D Session Tag */}
+                      {is2D && (
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${
+                          sessionName === 'morning'
+                            ? 'bg-amber-950/80 text-amber-300 border-amber-500/40'
+                            : 'bg-emerald-950/80 text-emerald-300 border-emerald-500/40'
+                        }`}>
+                          {sessionName === 'morning' ? '☀️ မနက် (၁၂:၀၁)' : '🌙 ညနေ (၀၄:၃၀)'}
+                        </span>
+                      )}
+
+                      <span className="text-[11px] text-slate-400 font-sans font-medium">
+                        ({formatDigits(items.length)} ကွက်)
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-lg border shrink-0 ${
                         slip.status === 'WON'
-                          ? 'bg-amber-500 text-dark-bg border-amber-300 font-black shadow-sm'
+                          ? 'bg-amber-500 text-slate-950 border-amber-300 font-black shadow-md'
                           : slip.status === 'PENDING'
                           ? 'bg-gold-950/80 text-gold-300 border-gold-600'
                           : 'bg-dark-bg text-gray-500 border-dark-border'
@@ -361,67 +410,51 @@ export default function BetHistory({ onBetNow, targetSlipCode }) {
                         {slip.status === 'WON' ? `🏆 ${t('won')}` : slip.status === 'PENDING' ? t('pending') : t('lost')}
                       </span>
 
-                      <div className="font-bold text-sm sm:text-base text-white tracking-wide truncate">
-                        <span className="text-gray-300 font-normal mr-1">{t('purchasedAmount')}:</span>
-                        {items.length > 0 ? (
-                          <>
-                            {sortedItems.slice(0, 10).map((it, idx) => (
-                              <span key={idx} className="text-gold-300 font-mono font-bold">
-                                {getItemLabel(it)} - {formatMoney(it.item_stake)}
-                                {(idx < Math.min(sortedItems.length, 10) - 1) && <span className="text-gray-500 mx-1.5">•</span>}
-                              </span>
-                            ))}
-                            {sortedItems.length > 10 && (
-                              <span className="text-gold-400/90 text-xs font-semibold ml-1.5">
-                                ... (+{formatDigits(sortedItems.length - 10)} {lang === 'mm' ? 'တွဲ' : 'combos'})
-                              </span>
-                            )}
-                          </>
+                      <div className="text-slate-400 p-0.5">
+                        {isExpanded ? (
+                          <ChevronUp className="w-4 h-4 text-emerald-400" />
                         ) : (
-                          <span className="text-gold-300 font-mono font-bold">{formatMoney(slip.total_stake)}</span>
+                          <ChevronDown className="w-4 h-4 text-slate-400" />
                         )}
                       </div>
                     </div>
-
-                    {/* Bottom sub-row: Small Draw Date & Small Placed Date/Time */}
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-gray-400 mt-1">
-                      {slip.draw_date && (
-                        <span className="flex items-center space-x-1 text-gold-300/90 font-medium">
-                          <Calendar className="w-3 h-3 text-gold-400" />
-                          <span>{t('drawDateShort')}: {formatDigits(slip.draw_date)}</span>
-                        </span>
-                      )}
-                      <span className="text-gray-600 hidden sm:inline">•</span>
-                      <span className="flex items-center space-x-1 text-gray-400 font-mono text-[10.5px]">
-                        <Clock className="w-3 h-3 text-gray-500" />
-                        <span>{t('betPlacedTime')}: {formatDateTime(slip.created_at)}</span>
-                      </span>
-                      <span className="text-gray-600 hidden sm:inline">•</span>
-                      <span className="text-[10px] font-mono text-gray-400">
-                        {slip.slip_code}
-                      </span>
-                    </div>
                   </div>
 
-                  {/* Right Column: Payout if won & Expand trigger */}
-                  <div className="flex items-center space-x-3 shrink-0">
-                    {slip.status === 'WON' && (
-                      <div className="text-right">
-                        <span className="text-[10px] text-amber-400 uppercase font-black block">
-                          {t('wonLabel')}
+                  {/* Main Visual Row: ဘယ်နေ့အတွက်လဲ (Left) VS Total ငွေအမောင့် (Right) */}
+                  <div className="flex items-center justify-between gap-3 pt-1 border-t border-white/5">
+                    {/* Left: ဘယ်နေ့အတွက်လဲ (Draw Date & Time) */}
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 text-white font-black text-sm sm:text-base">
+                        <Calendar className={`w-4 h-4 shrink-0 ${is2D ? 'text-emerald-400' : is3D ? 'text-purple-400' : 'text-gold-400'}`} />
+                        <span>
+                          ထွက်မည့်ရက်: <strong className={`font-mono ${is2D ? 'text-emerald-300' : is3D ? 'text-purple-300' : 'text-gold-300'}`}>{formatDigits(effectiveDrawDate)}</strong>
                         </span>
-                        <span className="font-mono font-black text-amber-300 text-sm sm:text-base flex items-center justify-end space-x-1">
-                          <Award className="w-4 h-4 text-amber-400 inline" />
-                          <span>+{formatMoney(slip.total_payout)}</span>
-                        </span>
+                        {is2D && (
+                          <span className="text-xs text-slate-300 font-normal hidden sm:inline">
+                            ({sessionName === 'morning' ? 'မနက်ပိုင်း ၁၂:၀၁' : 'ညနေပိုင်း ၀၄:၃၀'})
+                          </span>
+                        )}
                       </div>
-                    )}
 
-                    <div className="text-gold-400 p-1 rounded-lg hover:bg-gold-500/10 transition-colors">
-                      {isExpanded ? (
-                        <ChevronUp className="w-4 h-4 sm:w-5 sm:h-5 text-gold-400" />
-                      ) : (
-                        <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />
+                      <div className="flex items-center gap-2 text-[10.5px] text-slate-400 font-mono mt-0.5 truncate">
+                        <span>ထိုးချိန်: {formatDateTime(slip.created_at)}</span>
+                        <span>•</span>
+                        <span>{slip.slip_code}</span>
+                      </div>
+                    </div>
+
+                    {/* Right: Total ငွေအမောင့် (Total Stake) */}
+                    <div className="text-right shrink-0">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block font-sans">
+                        စုစုပေါင်း ထိုးငွေ
+                      </span>
+                      <span className={`font-mono font-black text-base sm:text-lg block ${is2D ? 'text-emerald-300' : is3D ? 'text-purple-300' : 'text-gold-300'}`}>
+                        Ks {formatMoney(slip.total_stake)}
+                      </span>
+                      {slip.status === 'WON' && (
+                        <span className="font-mono font-black text-amber-300 text-xs block text-right mt-0.5 animate-pulse">
+                          🏆 +Ks {formatMoney(slip.total_payout)}
+                        </span>
                       )}
                     </div>
                   </div>
@@ -429,7 +462,41 @@ export default function BetHistory({ onBetNow, targetSlipCode }) {
 
                 {/* Expanded Detailed Breakdown */}
                 {isExpanded && (
-                  <div className="px-3 sm:px-4 pb-4 pt-3 border-t border-gold-900/50 bg-dark-bg/90 space-y-4">
+                  <div className="px-3 sm:px-4 pb-4 pt-3 border-t border-white/10 bg-black/40 space-y-4">
+                    
+                    {/* Voucher Summary Card (ဘယ်နေ့အတွက်၊ မနက်/ညနေ၊ အကွက်အရေအတွက်နှင့် စုစုပေါင်းငွေ) */}
+                    <div className={`p-3 sm:p-4 rounded-2xl border grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-mono shadow-inner ${
+                      is2D
+                        ? 'bg-emerald-950/40 border-emerald-500/30'
+                        : is3D
+                        ? 'bg-purple-950/40 border-purple-500/30'
+                        : 'bg-slate-950/80 border-gold-500/30'
+                    }`}>
+                      <div>
+                        <span className="text-[10px] text-slate-400 block font-sans">ထီဖွင့်မည့်ရက်:</span>
+                        <span className="font-bold text-white text-sm">{formatDigits(effectiveDrawDate)}</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-400 block font-sans">ပွဲစဉ် / အချိန်:</span>
+                        <span className={`font-bold text-sm ${is2D ? 'text-emerald-300' : is3D ? 'text-purple-300' : 'text-gold-300'}`}>
+                          {is2D 
+                            ? (sessionName === 'morning' ? '☀️ မနက်ပိုင်း (၁၂:၀၁)' : '🌙 ညနေပိုင်း (၀၄:၃၀)') 
+                            : is3D 
+                            ? '🎲 Thai 3D (၀၃:၃၀ PM)' 
+                            : `🦚 4D (#${slip.draw_number || '-'})`}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-400 block font-sans">ထိုးကွက် စုစုပေါင်း:</span>
+                        <span className="font-bold text-white text-sm">{formatDigits(items.length)} ကွက်</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-slate-400 block font-sans">စုစုပေါင်း ထိုးငွေ:</span>
+                        <span className={`font-bold text-sm ${is2D ? 'text-emerald-300' : is3D ? 'text-purple-300' : 'text-gold-300'}`}>
+                          Ks {formatMoney(slip.total_stake)}
+                        </span>
+                      </div>
+                    </div>
                     
                     {/* 1. If WON, Show Dedicated Winning Numbers Showcase */}
                     {slip.status === 'WON' && allWinningMatches.length > 0 && (
@@ -568,11 +635,13 @@ export default function BetHistory({ onBetNow, targetSlipCode }) {
                                     </div>
                                   ) : (
                                     <div className="flex items-center justify-between text-xs font-mono">
-                                      <span className="font-bold text-gold-300 tracking-wider">
+                                      <span className={`font-black text-sm tracking-wider ${
+                                        is2D ? 'text-emerald-300' : is3D ? 'text-purple-300' : 'text-gold-300'
+                                      }`}>
                                         {formatDigits(combo)}
                                       </span>
-                                      <span className="text-gray-300 font-medium">
-                                        - {formatDigits(comboStake)}
+                                      <span className="text-gray-300 font-bold">
+                                        {formatMoney(comboStake)}
                                       </span>
                                     </div>
                                   )}
