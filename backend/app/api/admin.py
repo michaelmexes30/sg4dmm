@@ -4896,9 +4896,31 @@ def settle_2d_draw(
             total_payout += slip_payout
             winners_count += 1
 
+            slip.settled_at = now_mmt()
             player = db.query(User).filter(User.id == slip.user_id).first()
             if player:
                 player.balance = float(player.balance or 0.0) + slip_payout
+                win_tx = Transaction(
+                    user_id=player.id,
+                    tx_type=TransactionType.WIN_PAYOUT,
+                    gateway="SG4D 2D",
+                    transaction_id=slip.slip_code,
+                    receiver_id=f"Player #{player.id} ({player.phone})",
+                    amount=slip_payout,
+                    slip_image_url=None,
+                    client_timezone="MMT",
+                    tx_timestamp_mmt=now_mmt(),
+                    submission_timestamp_mmt=now_mmt(),
+                    delta_minutes=0.0,
+                    is_time_valid=True,
+                    is_receiver_valid=True,
+                    is_tx_unique=True,
+                    status=TransactionStatus.COMPLETED,
+                    verification_notes=f"2D Prize payout for ticket {slip.slip_code} ({clean_win}) - {draw.session.capitalize()} {draw.draw_date}",
+                    created_at=now_mmt()
+                )
+                db.add(win_tx)
+
                 win_ledger = FinancialLedger(
                     entry_type=LedgerEntryType.PAYOUT_EXPENSE,
                     amount=slip_payout,
@@ -5004,9 +5026,31 @@ def settle_3d_draw(
             total_payout += slip_payout
             winners_count += 1
 
+            slip.settled_at = now_mmt()
             player = db.query(User).filter(User.id == slip.user_id).first()
             if player:
                 player.balance = float(player.balance or 0.0) + slip_payout
+                win_tx = Transaction(
+                    user_id=player.id,
+                    tx_type=TransactionType.WIN_PAYOUT,
+                    gateway="SG4D 2D",
+                    transaction_id=slip.slip_code,
+                    receiver_id=f"Player #{player.id} ({player.phone})",
+                    amount=slip_payout,
+                    slip_image_url=None,
+                    client_timezone="MMT",
+                    tx_timestamp_mmt=now_mmt(),
+                    submission_timestamp_mmt=now_mmt(),
+                    delta_minutes=0.0,
+                    is_time_valid=True,
+                    is_receiver_valid=True,
+                    is_tx_unique=True,
+                    status=TransactionStatus.COMPLETED,
+                    verification_notes=f"2D Prize payout for ticket {slip.slip_code} ({clean_win}) - {draw.session.capitalize()} {draw.draw_date}",
+                    created_at=now_mmt()
+                )
+                db.add(win_tx)
+
                 win_ledger = FinancialLedger(
                     entry_type=LedgerEntryType.PAYOUT_EXPENSE,
                     amount=slip_payout,
