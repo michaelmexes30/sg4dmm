@@ -304,7 +304,7 @@ def send_apk_info_message(chat_id: str, first_name: str = "Member"):
     web_url = "https://sg4dmm.onrender.com"
 
     apk_text = (
-        f"🇲🇲 <b>SG4D Myanmar (ရွှေဥဒေါင်း) - 2D | 3D | 4D</b>\n\n"
+        f"🇲🇲 <b>SG4D Myanmar (ရွှေဥဒေါင်း) - 2D | 3D | 4D</b>\n" f"📱 Version: <b>v1.2.0</b> | 📅 Update: <b>2026-10-23</b>\n\n"
         f"မင်္ဂလာပါ <b>{first_name}</b> ခင်ဗျာ!\n"
         f"SG4D Myanmar ၏ 2D, 3D နှင့် 4D ဂိမ်းအသစ်များ အားလုံး စုံလင်စွာ ကစားနိုင်ပါပြီ။\n\n"
         f"🎮 <b>Web App ဖြင့် တိုက်ရိုက်ကစားရန်</b>:\n"

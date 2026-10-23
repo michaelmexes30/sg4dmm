@@ -225,9 +225,14 @@ export default function Navbar({ activeTab, setActiveTab, onOpenDeposit, onNavig
                   {t('peacockBadge')}
                 </span>
               </div>
-              <p className="text-[9px] sm:text-[10px] text-gold-400/90 tracking-wider uppercase font-semibold whitespace-nowrap truncate max-w-[110px] sm:max-w-none">
-                {lang === 'mm' ? 'စင်ကာပူ ၄လုံးထီ' : 'Official 4D Agent'}
-              </p>
+              <div className="flex items-center space-x-1.5">
+                <p className="text-[9px] sm:text-[10px] text-gold-400/90 tracking-wider uppercase font-semibold whitespace-nowrap truncate max-w-[110px] sm:max-w-none">
+                  {lang === 'mm' ? 'စင်ကာပူ ၄လုံးထီ' : 'Official 4D Agent'}
+                </p>
+                <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-gold-950/80 border border-gold-800/80 text-gold-400 font-bold" title="Version v1.2.0 (Updated: 2026-10-23)">
+                  v1.2.0
+                </span>
+              </div>
             </div>
           </div>
 

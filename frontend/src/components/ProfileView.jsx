@@ -25,7 +25,9 @@ import {
   AlertTriangle,
   Award,
   Shield,
-  Trophy
+  Trophy,
+  Download,
+  Smartphone
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -854,6 +856,37 @@ export default function ProfileView({ onOpenWallet, onOpenAdmin }) {
           </p>
 
           <div className="space-y-3 pt-2">
+            {/* Android APK Download & Version Info */}
+            <a
+              href="/download/apk"
+              target="_blank"
+              rel="noreferrer"
+              className="p-3.5 rounded-xl bg-gradient-to-r from-emerald-950/60 to-dark-card border border-emerald-600/40 hover:border-emerald-400 transition-all flex items-center justify-between text-xs text-white group cursor-pointer shadow-sm"
+            >
+              <div className="flex items-center space-x-3">
+                <div className="p-2 rounded-lg bg-emerald-950 text-emerald-400 border border-emerald-700">
+                  <Smartphone className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <p className="font-bold text-emerald-300">
+                      {lang === 'mm' ? 'Android APK မိုဘိုင်းအက်ပ်' : 'Android Mobile APK'}
+                    </p>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-900/90 text-emerald-300 font-mono font-bold border border-emerald-700">
+                      v1.2.0
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-gray-400">
+                    {lang === 'mm' ? 'Update: ၂၀၂၆-၁၀-၂၃ (2D | 3D | 4D အသစ်)' : 'Updated: 2026-10-23 (Latest)'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center space-x-1.5 text-[11px] text-emerald-400 font-bold group-hover:underline">
+                <Download className="w-3.5 h-3.5" />
+                <span>{lang === 'mm' ? 'ဒေါင်းလုဒ်' : 'Download'}</span>
+              </div>
+            </a>
+
             
             {/* Telegram Bot */}
             <a
@@ -933,6 +966,18 @@ export default function ProfileView({ onOpenWallet, onOpenAdmin }) {
           <LogOut className="w-4 h-4" />
           <span>{t('signOutBtn')}</span>
         </button>
+      </div>
+
+      {/* App Version & Updated Date Footer */}
+      <div className="pt-3 pb-2 text-center text-xs space-y-1">
+        <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-dark-card border border-gold-900/60 font-mono text-[11px]">
+          <span className="text-gold-400 font-bold">Version: v1.2.0</span>
+          <span className="text-gray-600">•</span>
+          <span className="text-gray-400">
+            {lang === 'mm' ? 'Update ရက်စွဲ: ၂၀၂၆-၁၀-၂၃' : 'Updated: 2026-10-23'}
+          </span>
+        </div>
+        <p className="text-[10px] text-gray-500 font-mono">SG4D Myanmar (2D | 3D | 4D) © 2026</p>
       </div>
 
     </div>
