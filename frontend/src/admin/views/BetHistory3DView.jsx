@@ -149,7 +149,7 @@ export default function BetHistory3DView({ onNotify }) {
             <span>Thai 3D Bet History (3D လောင်းကြေးမှတ်တမ်းများ)</span>
           </h2>
           <p className="text-xs text-slate-400 mt-1">
-            3D ထိုးထားသော ဘောက်ချာများနှင့် Straight / Tote ဂဏန်းများအား စစ်ဆေးခြင်း၊ နံပါတ် အမှားပြင်ဆင်ခြင်းနှင့် Audit Log များ
+            3D ထိုးထားသော ဘောက်ချာများနှင့် Straight / R ဂဏန်းများအား စစ်ဆေးခြင်း၊ နံပါတ် အမှားပြင်ဆင်ခြင်းနှင့် Audit Log များ
           </p>
         </div>
 

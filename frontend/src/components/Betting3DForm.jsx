@@ -221,13 +221,9 @@ export default function Betting3DForm({ onOpenDeposit, onBetPlaced }) {
 
             {/* Payout Badges */}
             <div className="flex items-center gap-2 font-mono">
-              <div className="bg-purple-950/80 border border-purple-500/40 px-3 py-1.5 rounded-xl text-center shadow-inner">
-                <span className="text-[9px] text-purple-300/80 uppercase font-bold block">တည့်ပေါက်</span>
+              <div className="bg-purple-950/80 border border-purple-500/40 px-4 py-2 rounded-xl text-center shadow-inner">
+                <span className="text-[9px] text-purple-300/80 uppercase font-bold block">တည့် / R ပေါက်ဆ</span>
                 <span className="text-base font-black text-purple-200">{straightPayout} ဆ</span>
-              </div>
-              <div className="bg-purple-950/80 border border-purple-500/40 px-3 py-1.5 rounded-xl text-center shadow-inner">
-                <span className="text-[9px] text-purple-300/80 uppercase font-bold block">အာ/တွဲ</span>
-                <span className="text-base font-black text-purple-200">{totePayout} ဆ</span>
               </div>
             </div>
           </div>
@@ -250,10 +246,22 @@ export default function Betting3DForm({ onOpenDeposit, onBetPlaced }) {
           
           {/* Bet Type Tabs */}
           <div>
-            <label className="text-xs font-bold text-purple-300 block mb-2">
-              ထိုးလိုသည့် ပုံစံ ရွေးချယ်ပါ (Bet Type):
-            </label>
-            <div className="grid grid-cols-3 gap-2 text-xs font-bold font-sans">
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-bold text-purple-300">
+                ထိုးလိုသည့် ပုံစံ ရွေးချယ်ပါ (Bet Type):
+              </label>
+              <button
+                type="button"
+                onClick={handleRandomPick}
+                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-purple-950/90 hover:bg-purple-900 border border-purple-500/60 text-purple-200 hover:text-white text-xs font-bold transition-all shadow-md shadow-purple-950 cursor-pointer active:scale-95"
+                title="Generate Random 3D Number"
+              >
+                <Dices className="w-3.5 h-3.5 text-purple-300" />
+                <Sparkles className="w-3.5 h-3.5 text-fuchsia-300" />
+                <span>Lucky Number Pick (ကံစမ်းဂဏန်း)</span>
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-3 text-xs font-bold font-sans">
               <button
                 type="button"
                 onClick={() => setBetType('straight')}
@@ -269,19 +277,6 @@ export default function Betting3DForm({ onOpenDeposit, onBetPlaced }) {
 
               <button
                 type="button"
-                onClick={() => setBetType('tote')}
-                className={`py-3 px-3 rounded-2xl border text-center transition-all cursor-pointer ${
-                  betType === 'tote'
-                    ? 'bg-gradient-to-r from-purple-600 to-fuchsia-600 text-white font-black border-purple-300 shadow-lg shadow-purple-950/80'
-                    : 'bg-slate-950/80 border-purple-950 text-slate-400 hover:text-white'
-                }`}
-              >
-                <span className="block text-sm">🔄 အာ / တွဲ (Tote)</span>
-                <span className="text-[10px] opacity-80 block font-mono mt-0.5">{totePayout} ဆ အာပေါက်</span>
-              </button>
-
-              <button
-                type="button"
                 onClick={() => setBetType('r')}
                 className={`py-3 px-3 rounded-2xl border text-center transition-all cursor-pointer ${
                   betType === 'r'
@@ -290,7 +285,7 @@ export default function Betting3DForm({ onOpenDeposit, onBetPlaced }) {
                 }`}
               >
                 <span className="block text-sm">🔀 ပတ်လည် (R / 6 အာ)</span>
-                <span className="text-[10px] opacity-80 block font-mono mt-0.5">ဂဏန်း ၆ လုံးစလုံး တည့်ပေါက်</span>
+                <span className="text-[10px] opacity-80 block font-mono mt-0.5">ဂဏန်း ၆ လုံးစလုံး တည့်ပေါက် ({straightPayout} ဆ)</span>
               </button>
             </div>
           </div>
@@ -306,10 +301,10 @@ export default function Betting3DForm({ onOpenDeposit, onBetPlaced }) {
                   <button
                     type="button"
                     onClick={handleRandomPick}
-                    className="text-[11px] text-purple-400 hover:text-purple-200 flex items-center gap-1 font-bold cursor-pointer"
+                    className="text-[11px] text-fuchsia-400 hover:text-fuchsia-200 flex items-center gap-1 font-bold cursor-pointer"
                   >
-                    <Dices className="w-3.5 h-3.5" />
-                    <span>ကံစမ်းဂဏန်း</span>
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Lucky Pick</span>
                   </button>
                 </div>
 

@@ -315,7 +315,7 @@ export default function Game3DView({ onNotify, mode = 'live' }) {
             </span>
           </div>
           <p className="mt-1 text-[11px] text-slate-400">
-            Straight: <span className="font-bold text-amber-300 font-mono">{straightPayout}x</span> | Tote: <span className="font-bold text-amber-300 font-mono">{totePayout}x</span>
+            Straight / R Payout: <span className="font-bold text-amber-300 font-mono">{straightPayout}x</span>
           </p>
         </div>
 

@@ -700,6 +700,8 @@ def place_3d_bet_slip(
             raise HTTPException(status_code=400, detail=f"ဂဏန်း '{clean_num}' အတွက် အများဆုံးထိုးကြေးမှာ {max_bet_val:,.0f} ကျပ် ဖြစ်ပါသည်")
         
         btype = (item.bet_type or "straight").lower()
+        if btype == "tote":
+            raise HTTPException(status_code=400, detail="3D တွင် Tote (အာ/တွဲ) ထိုးခွင့်မရှိတော့ပါ။ တည့် (Straight) သို့မဟုတ် ပတ်လည် (R) ဖြင့်သာ ထိုးနိုင်ပါသည်")
         if btype in ["r", "box"]:
             from itertools import permutations
             combos = sorted(list(set(["".join(p) for p in permutations(clean_num)])))
