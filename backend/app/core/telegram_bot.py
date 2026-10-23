@@ -293,29 +293,33 @@ def send_otp_to_telegram(db: Session, phone: str, otp_code: str, purpose: str = 
 
 def get_apk_download_url() -> str:
     """Returns public APK download URL based on environment or server config"""
-    if settings.APK_DOWNLOAD_URL:
+    if settings.APK_DOWNLOAD_URL and "tinyurl" not in settings.APK_DOWNLOAD_URL:
         return settings.APK_DOWNLOAD_URL
-    return "https://tinyurl.com/sg4d-myanmar-apk"
+    return "https://sg4dmm.onrender.com/download/apk"
 
 
 def send_apk_info_message(chat_id: str, first_name: str = "Member"):
-    """Sends Android APK download link and info to user using short/masked link"""
-    short_apk_url = "https://tinyurl.com/sg4d-myanmar-apk"
+    """Sends Android APK download link and Web App info to user"""
+    apk_url = get_apk_download_url()
+    web_url = "https://sg4dmm.onrender.com"
 
     apk_text = (
-        f"🇲🇲 <b>SG4D Myanmar (ရွှေဥဒေါင်း) Mobile App</b>\n\n"
+        f"🇲🇲 <b>SG4D Myanmar (ရွှေဥဒေါင်း) - 2D | 3D | 4D</b>\n\n"
         f"မင်္ဂလာပါ <b>{first_name}</b> ခင်ဗျာ!\n"
-        f"SG4D Myanmar တရားဝင် Android Mobile APK ကို အောက်ပါ Link မှ လုံခြုံစိတ်ချစွာ ဒေါင်းလုဒ်ရယူနိုင်ပါပြီ။\n\n"
-        f"📱 Version: <b>v1.0.1 (Android Official)</b>\n"
-        f"⚡️ ပေါ့ပါးသွက်လက်ပြီး လိုင်းဆွဲအားကောင်းခြင်း\n"
-        f"🎰 4D ကံစမ်းဂဏန်းများ လွယ်ကူစွာထိုးနိုင်ခြင်း\n"
-        f"📊 ထီပေါက်စဉ်များ Live စစ်ဆေးနိုင်ခြင်း\n"
-        f"💳 KPay / WavePay QR ဖြင့် အလွယ်တကူ ငွေသွင်းငွေထုတ် ပြုလုပ်နိုင်ခြင်း\n\n"
-        f"👉 <b>ဒေါင်းလုဒ်ရယူရန်:</b> <a href=\"{short_apk_url}\"><b>[ 📲 Download SG4D APK ]</b></a>"
+        f"SG4D Myanmar ၏ 2D, 3D နှင့် 4D ဂိမ်းအသစ်များ အားလုံး စုံလင်စွာ ကစားနိုင်ပါပြီ။\n\n"
+        f"🎮 <b>Web App ဖြင့် တိုက်ရိုက်ကစားရန်</b>:\n"
+        f"ဖုန်း Browser သို့မဟုတ် Telegram အတွင်းမှ App ဒေါင်းစရာမလိုဘဲ ချက်ချင်း တိုက်ရိုက်ကစားနိုင်ပါသည်။\n\n"
+        f"📲 <b>Android APK ဒေါင်းလုဒ်ရယူရန်</b>:\n"
+        f"ဖုန်းထဲသို့ APK သီးသန့် အက်ပ်အနေဖြင့် သွင်းယူလိုပါက အောက်ပါခလုတ်ကို နှိပ်၍ ဒေါင်းလုဒ်ရယူနိုင်ပါသည် ခင်ဗျာ။\n\n"
+        f"⚡️ 2D (ထိုင်းစတော့ မနက် ၁၂:၀၁ / ညနေ ၀၄:၃၀)\n"
+        f"🎲 3D (လဆန်း ၁ ရက် / ၁၆ ရက်)\n"
+        f"🎰 4D (စင်ကာပူ ပူးလ်စ် ဗုဒ္ဓဟူး၊ စနေ၊ တနင်္ဂနွေ)\n"
+        f"💳 KPay / WavePay QR ဖြင့် အလျင်အမြန် ငွေသွင်းငွေထုတ်"
     )
     inline_keyboard = {
         "inline_keyboard": [
-            [{"text": "📲 Download APK", "url": short_apk_url}]
+            [{"text": "🎮 Play Online (တိုက်ရိုက်ကစားရန်)", "web_app": {"url": web_url}}],
+            [{"text": "📲 Download APK (Android App)", "url": apk_url}]
         ]
     }
     send_telegram_message(chat_id, apk_text, reply_markup=inline_keyboard)
