@@ -155,9 +155,44 @@ export const apiClient = {
     });
   },
 
-  getBetHistory(statusFilter = '') {
-    const url = statusFilter ? `/bets/my-history?status_filter=${statusFilter}` : '/bets/my-history';
-    return this.request(url);
+  getBetHistory(statusFilter = '', gameType = '') {
+    const params = new URLSearchParams();
+    if (statusFilter) params.append('status_filter', statusFilter);
+    if (gameType) params.append('game_type', gameType);
+    const q = params.toString();
+    return this.request(`/bets/my-history${q ? `?${q}` : ''}`);
+  },
+
+  // 2D Player APIs
+  get2DActiveDraw() {
+    return this.request('/lottery/2d/active-draw');
+  },
+
+  get2DResults(limit = 20) {
+    return this.request(`/lottery/2d/results?limit=${limit}`);
+  },
+
+  place2DBet(drawId, items) {
+    return this.request('/bets/2d/place', {
+      method: 'POST',
+      body: JSON.stringify({ draw_id: drawId, items }),
+    });
+  },
+
+  // 3D Player APIs
+  get3DActiveDraw() {
+    return this.request('/lottery/3d/active-draw');
+  },
+
+  get3DResults(limit = 15) {
+    return this.request(`/lottery/3d/results?limit=${limit}`);
+  },
+
+  place3DBet(drawId, items) {
+    return this.request('/bets/3d/place', {
+      method: 'POST',
+      body: JSON.stringify({ draw_id: drawId, items }),
+    });
   },
 
   // Payments & Auto-Verification

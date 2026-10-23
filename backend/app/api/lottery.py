@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models.lottery import LotteryDraw, DrawStatus
+from app.models.lottery import LotteryDraw, DrawStatus, TwoDDraw, ThreeDDraw
+from app.models.settings import SystemSetting
 from app.models.bet import BetSlip, BetSlipStatus
 from app.models.user import User, Notification
 from app.models.transaction import Transaction, TransactionType, TransactionStatus
@@ -312,3 +313,118 @@ def get_sgpools_live_feed():
         "draws": results
     }
 
+
+
+# =========================================================================
+# THAI 2D LOTTERY PUBLIC PLAYER ENDPOINTS
+# =========================================================================
+
+@router.get("/2d/active-draw")
+def get_2d_active_draw(db: Session = Depends(get_db)):
+    """Returns today's active 2D sessions (Morning 12:01 PM & Evening 04:30 PM)."""
+    from app.api.admin import ensure_twod_draws_exist
+    ensure_twod_draws_exist(db)
+
+    setting = db.query(SystemSetting).first()
+    is_enabled = bool(getattr(setting, "is_2d_enabled", True) if getattr(setting, "is_2d_enabled", True) is not None else True)
+    payout_mult = float(getattr(setting, "twod_payout_multiplier", 85.0) or 85.0)
+    min_bet = float(getattr(setting, "twod_min_bet", 100.0) or 100.0)
+    max_bet = float(getattr(setting, "twod_max_bet", 50000.0) or 50000.0)
+
+    open_draws = db.query(TwoDDraw).filter(TwoDDraw.status == "OPEN").order_by(TwoDDraw.id.asc()).all()
+    draws_data = []
+    for d in open_draws:
+        draws_data.append({
+            "id": d.id,
+            "draw_date": d.draw_date,
+            "session": d.session,
+            "session_label": "Morning (12:01 PM)" if d.session == "morning" else "Evening (04:30 PM)",
+            "draw_time_mmt": d.draw_time_mmt,
+            "cutoff_time_mmt": d.cutoff_time_mmt,
+            "status": d.status,
+            "closed_numbers": d.closed_numbers
+        })
+
+    return {
+        "is_enabled": is_enabled,
+        "payout_multiplier": payout_mult,
+        "min_bet": min_bet,
+        "max_bet": max_bet,
+        "sessions": draws_data,
+        "active_session": draws_data[0] if draws_data else None
+    }
+
+@router.get("/2d/results")
+def get_2d_results(limit: int = 20, db: Session = Depends(get_db)):
+    """Returns settled Thai 2D results from Thai Stock Exchange (SET)."""
+    from app.api.admin import ensure_twod_draws_exist
+    ensure_twod_draws_exist(db)
+
+    draws = db.query(TwoDDraw).filter(TwoDDraw.status == "SETTLED").order_by(TwoDDraw.id.desc()).limit(limit).all()
+    return [
+        {
+            "id": d.id,
+            "draw_date": d.draw_date,
+            "session": d.session,
+            "session_label": "Morning (12:01 PM)" if d.session == "morning" else "Evening (04:30 PM)",
+            "draw_time_mmt": d.draw_time_mmt,
+            "set_index": d.set_index,
+            "set_value": d.set_value,
+            "winning_number": d.winning_number,
+            "status": d.status
+        }
+        for d in draws
+    ]
+
+# =========================================================================
+# THAI 3D LOTTERY PUBLIC PLAYER ENDPOINTS
+# =========================================================================
+
+@router.get("/3d/active-draw")
+def get_3d_active_draw(db: Session = Depends(get_db)):
+    """Returns upcoming Thai Government 3D Draw (1st or 16th of month)."""
+    from app.api.admin import ensure_threed_draws_exist
+    ensure_threed_draws_exist(db)
+
+    setting = db.query(SystemSetting).first()
+    is_enabled = bool(getattr(setting, "is_3d_enabled", True) if getattr(setting, "is_3d_enabled", True) is not None else True)
+    straight_payout = float(getattr(setting, "threed_straight_payout", 700.0) or 700.0)
+    tote_payout = float(getattr(setting, "threed_tote_payout", 10.0) or 10.0)
+    min_bet = float(getattr(setting, "threed_min_bet", 100.0) or 100.0)
+    max_bet = float(getattr(setting, "threed_max_bet", 50000.0) or 50000.0)
+
+    upcoming = db.query(ThreeDDraw).filter(ThreeDDraw.status == "OPEN").order_by(ThreeDDraw.id.asc()).first()
+    return {
+        "is_enabled": is_enabled,
+        "straight_payout": straight_payout,
+        "tote_payout": tote_payout,
+        "min_bet": min_bet,
+        "max_bet": max_bet,
+        "draw": {
+            "id": upcoming.id if upcoming else None,
+            "draw_date": upcoming.draw_date if upcoming else None,
+            "draw_time_mmt": upcoming.draw_time_mmt if upcoming else "03:30 PM MMT",
+            "cutoff_time_mmt": upcoming.cutoff_time_mmt if upcoming else "02:30 PM MMT",
+            "status": upcoming.status if upcoming else "OPEN",
+            "closed_numbers": upcoming.closed_numbers if upcoming else []
+        } if upcoming else None
+    }
+
+@router.get("/3d/results")
+def get_3d_results(limit: int = 15, db: Session = Depends(get_db)):
+    """Returns settled Thai 3D lottery results (Thai 1st prize & last 3 digits)."""
+    from app.api.admin import ensure_threed_draws_exist
+    ensure_threed_draws_exist(db)
+
+    draws = db.query(ThreeDDraw).filter(ThreeDDraw.status == "SETTLED").order_by(ThreeDDraw.id.desc()).limit(limit).all()
+    return [
+        {
+            "id": d.id,
+            "draw_date": d.draw_date,
+            "draw_time_mmt": d.draw_time_mmt,
+            "thai_first_prize": d.thai_first_prize,
+            "winning_number": d.winning_number,
+            "status": d.status
+        }
+        for d in draws
+    ]

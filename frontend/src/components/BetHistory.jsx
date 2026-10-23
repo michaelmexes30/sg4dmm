@@ -111,17 +111,18 @@ export default function BetHistory({ onBetNow, targetSlipCode }) {
   const { t, lang, formatMoney, formatDigits, formatDateTime } = useLanguage();
   const [slips, setSlips] = useState([]);
   const [filter, setFilter] = useState('');
+  const [gameFilter, setGameFilter] = useState('');
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
 
   useEffect(() => {
     loadSlips();
-  }, [filter]);
+  }, [filter, gameFilter]);
 
   const loadSlips = async () => {
     try {
       setLoading(true);
-      const res = await apiClient.getBetHistory(filter);
+      const res = await apiClient.getBetHistory(filter, gameFilter);
       setSlips(res || []);
     } catch (err) {
       console.error('Failed to load bet slips:', err);
@@ -173,26 +174,68 @@ export default function BetHistory({ onBetNow, targetSlipCode }) {
             </p>
           </div>
 
-          {/* Status Filters */}
-          <div className="flex items-center space-x-1.5 self-start sm:self-auto">
-            {[
-              { val: '', label: t('all') },
-              { val: 'PENDING', label: t('pending') },
-              { val: 'WON', label: t('won') },
-              { val: 'LOST', label: t('lost') }
-            ].map((st) => (
+          {/* Filters: Game Type & Status */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 self-start sm:self-auto">
+            {/* Game Type Filter (4D Gold, 2D Emerald, 3D Purple) */}
+            <div className="flex items-center bg-dark-bg/80 p-1 rounded-xl border border-dark-border text-xs">
               <button
-                key={st.val}
-                onClick={() => setFilter(st.val)}
-                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                  filter === st.val
-                    ? 'gold-gradient-btn text-dark-bg shadow-gold-sm font-extrabold'
-                    : 'bg-dark-card text-gray-400 hover:text-white border border-dark-border'
+                onClick={() => setGameFilter('')}
+                className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
+                  gameFilter === '' ? 'bg-slate-700 text-white font-extrabold shadow-sm' : 'text-slate-400 hover:text-white'
                 }`}
               >
-                {st.label}
+                All Games
               </button>
-            ))}
+              <button
+                onClick={() => setGameFilter('4D')}
+                className={`px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1 ${
+                  gameFilter === '4D' ? 'bg-amber-500 text-dark-bg font-black shadow-md' : 'text-amber-400/80 hover:text-amber-300'
+                }`}
+              >
+                <span>🦚</span>
+                <span>4D</span>
+              </button>
+              <button
+                onClick={() => setGameFilter('2D')}
+                className={`px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1 ${
+                  gameFilter === '2D' ? 'bg-emerald-500 text-dark-bg font-black shadow-md' : 'text-emerald-400/80 hover:text-emerald-300'
+                }`}
+              >
+                <span>📈</span>
+                <span>2D</span>
+              </button>
+              <button
+                onClick={() => setGameFilter('3D')}
+                className={`px-2.5 py-1 rounded-lg font-bold transition-all flex items-center gap-1 ${
+                  gameFilter === '3D' ? 'bg-purple-600 text-white font-black shadow-md' : 'text-purple-400/80 hover:text-purple-300'
+                }`}
+              >
+                <span>🎲</span>
+                <span>3D</span>
+              </button>
+            </div>
+
+            {/* Status Filters */}
+            <div className="flex items-center space-x-1">
+              {[
+                { val: '', label: t('all') },
+                { val: 'PENDING', label: t('pending') },
+                { val: 'WON', label: t('won') },
+                { val: 'LOST', label: t('lost') }
+              ].map((st) => (
+                <button
+                  key={st.val}
+                  onClick={() => setFilter(st.val)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                    filter === st.val
+                      ? 'gold-gradient-btn text-dark-bg shadow-gold-sm font-extrabold'
+                      : 'bg-dark-card text-gray-400 hover:text-white border border-dark-border'
+                  }`}
+                >
+                  {st.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -293,6 +336,21 @@ export default function BetHistory({ onBetNow, targetSlipCode }) {
                   <div className="min-w-0 flex-1">
                     {/* Top line: Bet Summary e.g. ဝယ်ထားသည့်အမောင့်: 3445(R) - 600ကျပ် */}
                     <div className="flex flex-wrap items-center gap-2">
+                      {/* Game Type Badge (Themed per Game) */}
+                      {((slip.game_type === '2D') || (slip.slip_code && slip.slip_code.includes('-2D-'))) ? (
+                        <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-400/50 shrink-0 font-mono">
+                          📈 Thai 2D
+                        </span>
+                      ) : ((slip.game_type === '3D') || (slip.slip_code && slip.slip_code.includes('-3D-'))) ? (
+                        <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-300 border border-purple-400/50 shrink-0 font-mono">
+                          🎲 Thai 3D
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-400/50 shrink-0 font-mono">
+                          🦚 4D
+                        </span>
+                      )}
+
                       <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md border shrink-0 ${
                         slip.status === 'WON'
                           ? 'bg-amber-500 text-dark-bg border-amber-300 font-black shadow-sm'

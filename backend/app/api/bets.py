@@ -1,6 +1,7 @@
 import json
 import uuid
 from typing import List, Optional
+from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -8,7 +9,7 @@ from app.config import settings
 from app.database import get_db
 from app.models.user import User, UserRole, AgentCommissionLog, Notification
 from app.models.bet import BetSlip, BetItem, BetSlipStatus
-from app.models.lottery import LotteryDraw, DrawStatus
+from app.models.lottery import LotteryDraw, DrawStatus, TwoDDraw, ThreeDDraw
 from app.models.ledger import FinancialLedger, LedgerEntryType, DailyLedgerSummary
 from app.schemas.bet import (
     CalculateStakeRequest, 
@@ -484,12 +485,303 @@ def place_bet_slip(
 @router.get("/my-history", response_model=List[BetSlipResponse])
 def get_user_bets(
     status_filter: Optional[str] = None,
+    game_type: Optional[str] = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     query = db.query(BetSlip).filter(BetSlip.user_id == current_user.id)
     if status_filter:
         query = query.filter(BetSlip.status == status_filter.upper())
+    if game_type and game_type.upper() in ["4D", "2D", "3D"]:
+        query = query.filter(BetSlip.game_type == game_type.upper())
     
     slips = query.order_by(BetSlip.id.desc()).limit(100).all()
     return slips
+
+
+# =========================================================================
+# THAI 2D BET PLACEMENT ENGINE
+# =========================================================================
+
+class Place2DBetItem(BaseModel):
+    number: str
+    amount: float
+
+class Place2DBetRequest(BaseModel):
+    draw_id: int
+    items: List[Place2DBetItem]
+
+@router.post("/2d/place", response_model=BetSlipResponse)
+def place_2d_bet_slip(
+    req: Place2DBetRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if getattr(current_user, 'is_betting_locked', False):
+        raise HTTPException(
+            status_code=403,
+            detail="သင့်အကောင့်သည် အပတ်စဉ် စာရင်းမရှင်းရသေးသောကြောင့် ထိုးခွင့်ယာယီပိတ်ထားပါသည် (Betting is locked due to unsettled debt)."
+        )
+
+    setting = db.query(SystemSetting).first()
+    is_2d_enabled = bool(getattr(setting, "is_2d_enabled", True) if getattr(setting, "is_2d_enabled", True) is not None else True)
+    if not is_2d_enabled:
+        raise HTTPException(status_code=400, detail="2D ထီထိုးခြင်းအား ယာယီပိတ်ထားပါသည် (2D lottery is temporarily disabled).")
+
+    payout_multiplier = float(getattr(setting, "twod_payout_multiplier", 85.0) or 85.0)
+    min_bet_val = float(getattr(setting, "twod_min_bet", 100.0) or 100.0)
+    max_bet_val = float(getattr(setting, "twod_max_bet", 50000.0) or 50000.0)
+    comm_rate = float(getattr(setting, "twod_commission_rate", 15.0) or 15.0) / 100.0
+
+    draw = db.query(TwoDDraw).filter(TwoDDraw.id == req.draw_id).first()
+    if not draw:
+        raise HTTPException(status_code=404, detail="2D Session မတွေ့ရှိပါ")
+    if draw.status != "OPEN":
+        raise HTTPException(status_code=400, detail=f"2D {draw.session} ပွဲစဉ်အား ပိတ်ထားပြီးဖြစ်ပါသည်")
+
+    if not req.items or len(req.items) == 0:
+        raise HTTPException(status_code=400, detail="ကျေးဇူးပြု၍ အနည်းဆုံး 2D ဂဏန်း ၁ လုံး ရွေးချယ်ပါ")
+
+    closed_set = set(draw.closed_numbers)
+    total_stake = 0.0
+    valid_items = []
+
+    for item in req.items:
+        clean_num = str(item.number).strip().zfill(2)
+        if not clean_num.isdigit() or len(clean_num) != 2:
+            raise HTTPException(status_code=400, detail=f"ဂဏန်း '{clean_num}' သည် 00 မှ 99 အတွင်း ဂဏန်း ၂ လုံး ဖြစ်ရပါမည်")
+        if clean_num in closed_set:
+            raise HTTPException(status_code=400, detail=f"ဂဏန်း '{clean_num}' သည် ယခုပွဲစဉ်အတွက် ထိုးကြေးပိတ်ထားသော Closed Number ဖြစ်ပါသည်")
+        amt = float(item.amount)
+        if amt < min_bet_val:
+            raise HTTPException(status_code=400, detail=f"ဂဏန်း '{clean_num}' အတွက် အနည်းဆုံးထိုးကြေးမှာ {min_bet_val:,.0f} ကျပ် ဖြစ်ပါသည်")
+        if amt > max_bet_val:
+            raise HTTPException(status_code=400, detail=f"ဂဏန်း '{clean_num}' အတွက် အများဆုံးထိုးကြေးမှာ {max_bet_val:,.0f} ကျပ် ဖြစ်ပါသည်")
+        
+        total_stake += amt
+        valid_items.append((clean_num, amt))
+
+    # Wallet & Credit Balance check
+    is_agent = current_user.role == UserRole.AGENT
+    is_credit_enabled = getattr(current_user, 'is_agent_credit_enabled', False)
+    if is_agent and is_credit_enabled:
+        available_credit = max(0.0, float(current_user.credit_limit or 0) - float(current_user.used_credit or 0))
+        if available_credit < total_stake:
+            raise HTTPException(status_code=400, detail=f"Credit လက်ကျန် မလုံလောက်ပါ (လိုအပ်ငွေ: {total_stake:,.0f} Ks, လက်ကျန် Credit: {available_credit:,.0f} Ks)")
+        current_user.used_credit = float(current_user.used_credit or 0) + total_stake
+    else:
+        if current_user.balance < total_stake:
+            raise HTTPException(status_code=400, detail=f"လက်ကျန်ငွေ မလုံလောက်ပါ (လိုအပ်ငွေ: {total_stake:,.0f} Ks, လက်ကျန်ငွေ: {current_user.balance:,.0f} Ks)")
+        current_user.balance = float(current_user.balance) - total_stake
+
+    # Find referring agent if customer
+    agent = None
+    if current_user.agent_id:
+        agent = db.query(User).filter(User.id == current_user.agent_id).first()
+    elif is_agent:
+        agent = current_user
+
+    current_time = now_mmt()
+    slip_code = f"SLIP-2D-{current_time.strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
+    agent_comm_amt = round(total_stake * comm_rate, 2) if agent else 0.0
+
+    bet_slip = BetSlip(
+        slip_code=slip_code,
+        game_type="2D",
+        user_id=current_user.id,
+        agent_id=agent.id if agent else None,
+        agent_commission=agent_comm_amt,
+        draw_id=draw.id,
+        total_stake=total_stake,
+        total_payout=0.0,
+        status=BetSlipStatus.PENDING,
+        created_at=current_time
+    )
+    db.add(bet_slip)
+    db.flush()
+
+    for clean_num, amt in valid_items:
+        bi = BetItem(
+            slip_id=bet_slip.id,
+            game_type="2D",
+            number=clean_num,
+            bet_type="2D",
+            big_amount=amt,
+            small_amount=0,
+            combination_count=1,
+            combinations_json=json.dumps([clean_num]),
+            item_stake=amt,
+            item_payout=amt * payout_multiplier,
+            is_won=0,
+            win_details_json="[]"
+        )
+        db.add(bi)
+
+    # Commission log
+    if agent and agent_comm_amt > 0:
+        comm_log = AgentCommissionLog(
+            agent_id=agent.id,
+            player_id=current_user.id,
+            bet_slip_id=bet_slip.id,
+            bet_total_stake=total_stake,
+            commission_rate=comm_rate,
+            commission_amount=agent_comm_amt,
+            agent_balance_after=agent.balance,
+            is_settled=False,
+            settlement_status="PENDING",
+            created_at=current_time
+        )
+        db.add(comm_log)
+
+    db.commit()
+    db.refresh(bet_slip)
+    return bet_slip
+
+
+# =========================================================================
+# THAI 3D BET PLACEMENT ENGINE
+# =========================================================================
+
+class Place3DBetItem(BaseModel):
+    number: str
+    bet_type: str = "straight" # straight, tote, r
+    amount: float
+
+class Place3DBetRequest(BaseModel):
+    draw_id: int
+    items: List[Place3DBetItem]
+
+@router.post("/3d/place", response_model=BetSlipResponse)
+def place_3d_bet_slip(
+    req: Place3DBetRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    if getattr(current_user, 'is_betting_locked', False):
+        raise HTTPException(
+            status_code=403,
+            detail="သင့်အကောင့်သည် အပတ်စဉ် စာရင်းမရှင်းရသေးသောကြောင့် ထိုးခွင့်ယာယီပိတ်ထားပါသည် (Betting is locked due to unsettled debt)."
+        )
+
+    setting = db.query(SystemSetting).first()
+    is_3d_enabled = bool(getattr(setting, "is_3d_enabled", True) if getattr(setting, "is_3d_enabled", True) is not None else True)
+    if not is_3d_enabled:
+        raise HTTPException(status_code=400, detail="3D ထီထိုးခြင်းအား ယာယီပိတ်ထားပါသည် (3D lottery is temporarily disabled).")
+
+    straight_payout = float(getattr(setting, "threed_straight_payout", 700.0) or 700.0)
+    tote_payout = float(getattr(setting, "threed_tote_payout", 10.0) or 10.0)
+    min_bet_val = float(getattr(setting, "threed_min_bet", 100.0) or 100.0)
+    max_bet_val = float(getattr(setting, "threed_max_bet", 50000.0) or 50000.0)
+    comm_rate = float(getattr(setting, "threed_commission_rate", 15.0) or 15.0) / 100.0
+
+    draw = db.query(ThreeDDraw).filter(ThreeDDraw.id == req.draw_id).first()
+    if not draw:
+        raise HTTPException(status_code=404, detail="3D Draw မတွေ့ရှိပါ")
+    if draw.status != "OPEN":
+        raise HTTPException(status_code=400, detail="3D ပွဲစဉ်အား ပိတ်ထားပြီးဖြစ်ပါသည်")
+
+    if not req.items or len(req.items) == 0:
+        raise HTTPException(status_code=400, detail="ကျေးဇူးပြု၍ အနည်းဆုံး 3D ဂဏန်း ၁ လုံး ရွေးချယ်ပါ")
+
+    closed_set = set(draw.closed_numbers)
+    total_stake = 0.0
+    valid_items = []
+
+    for item in req.items:
+        clean_num = str(item.number).strip().zfill(3)
+        if not clean_num.isdigit() or len(clean_num) != 3:
+            raise HTTPException(status_code=400, detail=f"ဂဏန်း '{clean_num}' သည် 000 မှ 999 အတွင်း ဂဏန်း ၃ လုံး ဖြစ်ရပါမည်")
+        if clean_num in closed_set:
+            raise HTTPException(status_code=400, detail=f"ဂဏန်း '{clean_num}' သည် ယခုပွဲစဉ်အတွက် ထိုးကြေးပိတ်ထားသော Closed Number ဖြစ်ပါသည်")
+        amt = float(item.amount)
+        if amt < min_bet_val:
+            raise HTTPException(status_code=400, detail=f"ဂဏန်း '{clean_num}' အတွက် အနည်းဆုံးထိုးကြေးမှာ {min_bet_val:,.0f} ကျပ် ဖြစ်ပါသည်")
+        if amt > max_bet_val:
+            raise HTTPException(status_code=400, detail=f"ဂဏန်း '{clean_num}' အတွက် အများဆုံးထိုးကြေးမှာ {max_bet_val:,.0f} ကျပ် ဖြစ်ပါသည်")
+        
+        btype = (item.bet_type or "straight").lower()
+        if btype in ["r", "box"]:
+            from itertools import permutations
+            combos = sorted(list(set(["".join(p) for p in permutations(clean_num)])))
+            item_tot = amt * len(combos)
+        else:
+            combos = [clean_num]
+            item_tot = amt
+
+        total_stake += item_tot
+        valid_items.append((clean_num, btype, amt, combos, item_tot))
+
+    # Wallet & Credit Balance check
+    is_agent = current_user.role == UserRole.AGENT
+    is_credit_enabled = getattr(current_user, 'is_agent_credit_enabled', False)
+    if is_agent and is_credit_enabled:
+        available_credit = max(0.0, float(current_user.credit_limit or 0) - float(current_user.used_credit or 0))
+        if available_credit < total_stake:
+            raise HTTPException(status_code=400, detail=f"Credit လက်ကျန် မလုံလောက်ပါ (လိုအပ်ငွေ: {total_stake:,.0f} Ks, လက်ကျန် Credit: {available_credit:,.0f} Ks)")
+        current_user.used_credit = float(current_user.used_credit or 0) + total_stake
+    else:
+        if current_user.balance < total_stake:
+            raise HTTPException(status_code=400, detail=f"လက်ကျန်ငွေ မလုံလောက်ပါ (လိုအပ်ငွေ: {total_stake:,.0f} Ks, လက်ကျန်ငွေ: {current_user.balance:,.0f} Ks)")
+        current_user.balance = float(current_user.balance) - total_stake
+
+    agent = None
+    if current_user.agent_id:
+        agent = db.query(User).filter(User.id == current_user.agent_id).first()
+    elif is_agent:
+        agent = current_user
+
+    current_time = now_mmt()
+    slip_code = f"SLIP-3D-{current_time.strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
+    agent_comm_amt = round(total_stake * comm_rate, 2) if agent else 0.0
+
+    bet_slip = BetSlip(
+        slip_code=slip_code,
+        game_type="3D",
+        user_id=current_user.id,
+        agent_id=agent.id if agent else None,
+        agent_commission=agent_comm_amt,
+        draw_id=draw.id,
+        total_stake=total_stake,
+        total_payout=0.0,
+        status=BetSlipStatus.PENDING,
+        created_at=current_time
+    )
+    db.add(bet_slip)
+    db.flush()
+
+    for clean_num, btype, amt, combos, item_tot in valid_items:
+        payout_unit = straight_payout if btype != "tote" else tote_payout
+        bi = BetItem(
+            slip_id=bet_slip.id,
+            game_type="3D",
+            number=clean_num,
+            bet_type=btype.upper(),
+            big_amount=amt,
+            small_amount=0,
+            combination_count=len(combos),
+            combinations_json=json.dumps(combos),
+            item_stake=item_tot,
+            item_payout=amt * payout_unit,
+            is_won=0,
+            win_details_json="[]"
+        )
+        db.add(bi)
+
+    if agent and agent_comm_amt > 0:
+        comm_log = AgentCommissionLog(
+            agent_id=agent.id,
+            player_id=current_user.id,
+            bet_slip_id=bet_slip.id,
+            bet_total_stake=total_stake,
+            commission_rate=comm_rate,
+            commission_amount=agent_comm_amt,
+            agent_balance_after=agent.balance,
+            is_settled=False,
+            settlement_status="PENDING",
+            created_at=current_time
+        )
+        db.add(comm_log)
+
+    db.commit()
+    db.refresh(bet_slip)
+    return bet_slip

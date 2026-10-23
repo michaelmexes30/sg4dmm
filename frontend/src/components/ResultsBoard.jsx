@@ -16,6 +16,43 @@ export default function ResultsBoard() {
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState(null);
   const [winnerTierFilter, setWinnerTierFilter] = useState('ALL');
+  const [activeGameResult, setActiveGameResult] = useState('4D'); // '4D' | '2D' | '3D'
+  const [results2D, setResults2D] = useState([]);
+  const [results3D, setResults3D] = useState([]);
+  const [loading2D, setLoading2D] = useState(false);
+  const [loading3D, setLoading3D] = useState(false);
+
+  useEffect(() => {
+    if (activeGameResult === '2D' && results2D.length === 0) {
+      load2DResults();
+    } else if (activeGameResult === '3D' && results3D.length === 0) {
+      load3DResults();
+    }
+  }, [activeGameResult]);
+
+  const load2DResults = async () => {
+    try {
+      setLoading2D(true);
+      const res = await apiClient.get2DResults(25);
+      setResults2D(res || []);
+    } catch (err) {
+      console.error('Failed to load 2D results:', err);
+    } finally {
+      setLoading2D(false);
+    }
+  };
+
+  const load3DResults = async () => {
+    try {
+      setLoading3D(true);
+      const res = await apiClient.get3DResults(20);
+      setResults3D(res || []);
+    } catch (err) {
+      console.error('Failed to load 3D results:', err);
+    } finally {
+      setLoading3D(false);
+    }
+  };
 
   useEffect(() => {
     loadDraws();
@@ -108,6 +145,202 @@ export default function ResultsBoard() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
+
+      {/* Game Results Selector Bar: 4D (Gold), 2D (Emerald), 3D (Purple) */}
+      <div className="bg-dark-card/90 backdrop-blur-xl border border-dark-border p-1.5 sm:p-2 rounded-3xl shadow-xl flex items-center justify-between gap-1.5 sm:gap-2">
+        <button
+          onClick={() => setActiveGameResult('4D')}
+          className={`flex-1 py-3 px-3 rounded-2xl flex items-center justify-center gap-2 transition-all cursor-pointer relative overflow-hidden ${
+            activeGameResult === '4D'
+              ? 'bg-gradient-to-r from-amber-500 via-gold-400 to-amber-600 text-dark-bg font-black shadow-lg shadow-amber-500/30 scale-[1.01] border border-amber-300'
+              : 'bg-dark-bg/60 text-slate-400 hover:text-amber-300 hover:bg-dark-card border border-slate-800'
+          }`}
+        >
+          <span className="text-base sm:text-lg">🦚</span>
+          <div className="text-left leading-tight">
+            <span className="block text-xs sm:text-sm font-black tracking-wide">Singapore 4D</span>
+            <span className={`text-[9px] sm:text-[10px] font-bold block ${activeGameResult === '4D' ? 'text-black/80' : 'text-amber-400/80'}`}>၄လုံးထီ ပေါက်စဉ်</span>
+          </div>
+        </button>
+
+        <button
+          onClick={() => setActiveGameResult('2D')}
+          className={`flex-1 py-3 px-3 rounded-2xl flex items-center justify-center gap-2 transition-all cursor-pointer relative overflow-hidden ${
+            activeGameResult === '2D'
+              ? 'bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-600 text-dark-bg font-black shadow-lg shadow-emerald-500/30 scale-[1.01] border border-emerald-300'
+              : 'bg-dark-bg/60 text-slate-400 hover:text-emerald-300 hover:bg-dark-card border border-slate-800'
+          }`}
+        >
+          <span className="text-base sm:text-lg">📈</span>
+          <div className="text-left leading-tight">
+            <span className="block text-xs sm:text-sm font-black tracking-wide">Thai 2D (SET)</span>
+            <span className={`text-[9px] sm:text-[10px] font-bold block ${activeGameResult === '2D' ? 'text-black/80' : 'text-emerald-400/80'}`}>ထိုင်း ၂ လုံးထီ ပေါက်စဉ်</span>
+          </div>
+        </button>
+
+        <button
+          onClick={() => setActiveGameResult('3D')}
+          className={`flex-1 py-3 px-3 rounded-2xl flex items-center justify-center gap-2 transition-all cursor-pointer relative overflow-hidden ${
+            activeGameResult === '3D'
+              ? 'bg-gradient-to-r from-purple-600 via-fuchsia-500 to-purple-700 text-white font-black shadow-lg shadow-purple-600/30 scale-[1.01] border border-purple-300'
+              : 'bg-dark-bg/60 text-slate-400 hover:text-purple-300 hover:bg-dark-card border border-slate-800'
+          }`}
+        >
+          <span className="text-base sm:text-lg">🎲</span>
+          <div className="text-left leading-tight">
+            <span className="block text-xs sm:text-sm font-black tracking-wide">Thai 3D (Gov)</span>
+            <span className={`text-[9px] sm:text-[10px] font-bold block ${activeGameResult === '3D' ? 'text-purple-200' : 'text-purple-400/80'}`}>ထိုင်း ၃ လုံးထီ ပေါက်စဉ်</span>
+          </div>
+        </button>
+      </div>
+
+      {/* 2D Results View (Emerald Green Theme) */}
+      {activeGameResult === '2D' && (
+        <div className="space-y-4">
+          <div className="rounded-3xl bg-gradient-to-br from-emerald-950 via-[#062419] to-dark-bg border border-emerald-500/40 p-5 sm:p-6 shadow-xl shadow-emerald-950/40 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-300 border border-emerald-400/50 flex items-center justify-center font-black text-xl font-mono">
+                2D
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-white">Thai 2D Official Results (ထိုင်း ၂ လုံးထီ ပေါက်စဉ်များ)</h3>
+                <p className="text-xs text-emerald-400/80 mt-0.5">
+                  Thai Stock Exchange (SET) Morning 12:01 PM & Evening 04:30 PM Results
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={load2DResults}
+              className="p-2.5 rounded-xl bg-emerald-950 border border-emerald-500/40 text-emerald-300 hover:text-white transition-colors cursor-pointer"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading2D ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {loading2D ? (
+              <div className="col-span-full py-12 text-center text-emerald-400 font-mono">
+                <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2" />
+                2D Results Loading...
+              </div>
+            ) : results2D.length === 0 ? (
+              <div className="col-span-full py-12 text-center text-slate-500 text-xs">
+                ထွက်ရှိထားသော 2D ပေါက်စဉ်များ မရှိသေးပါ
+              </div>
+            ) : (
+              results2D.map((res) => (
+                <div
+                  key={res.id}
+                  className="rounded-2xl bg-dark-card border border-emerald-500/30 p-4 space-y-3 shadow-lg shadow-emerald-950/20"
+                >
+                  <div className="flex items-center justify-between pb-2 border-b border-emerald-900/40">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-white text-xs">{res.draw_date}</span>
+                      <span className={`px-2 py-0.2 rounded text-[10px] font-bold ${
+                        res.session === 'morning' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/40'
+                      }`}>
+                        {res.session_label}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-emerald-400 font-bold">{res.draw_time_mmt}</span>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-1">
+                    <div className="space-y-1 font-mono text-xs">
+                      <div className="text-slate-400">
+                        SET Index: <strong className="text-slate-200">{res.set_index || '-'}</strong>
+                      </div>
+                      <div className="text-slate-400">
+                        SET Value: <strong className="text-slate-200">{res.set_value || '-'}</strong>
+                      </div>
+                    </div>
+
+                    <div className="text-center">
+                      <span className="text-[10px] text-slate-400 font-sans block mb-0.5">ထွက်ဂဏန်း</span>
+                      <div className="w-16 h-14 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-400 text-slate-950 font-black text-2xl flex items-center justify-center font-mono shadow-lg shadow-emerald-950 tracking-wider">
+                        {res.winning_number || '--'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 3D Results View (Purple Theme) */}
+      {activeGameResult === '3D' && (
+        <div className="space-y-4">
+          <div className="rounded-3xl bg-gradient-to-br from-purple-950 via-[#1c082e] to-dark-bg border border-purple-500/40 p-5 sm:p-6 shadow-xl shadow-purple-950/40 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-purple-500/20 text-purple-300 border border-purple-400/50 flex items-center justify-center font-black text-xl font-mono">
+                3D
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-white">Thai 3D Official Results (ထိုင်း ၃ လုံးထီ ပေါက်စဉ်များ)</h3>
+                <p className="text-xs text-purple-400/80 mt-0.5">
+                  Thai Government Official Lottery Results (လစဉ် ၁ ရက် နှင့် ၁၆ ရက်နေ့ ၀၃:၃၀ PM)
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={load3DResults}
+              className="p-2.5 rounded-xl bg-purple-950 border border-purple-500/40 text-purple-300 hover:text-white transition-colors cursor-pointer"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading3D ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {loading3D ? (
+              <div className="col-span-full py-12 text-center text-purple-400 font-mono">
+                <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2" />
+                3D Results Loading...
+              </div>
+            ) : results3D.length === 0 ? (
+              <div className="col-span-full py-12 text-center text-slate-500 text-xs">
+                ထွက်ရှိထားသော 3D ပေါက်စဉ်များ မရှိသေးပါ
+              </div>
+            ) : (
+              results3D.map((res) => (
+                <div
+                  key={res.id}
+                  className="rounded-2xl bg-dark-card border border-purple-500/30 p-5 space-y-4 shadow-lg shadow-purple-950/20"
+                >
+                  <div className="flex items-center justify-between pb-3 border-b border-purple-900/40">
+                    <span className="font-bold text-white text-sm">{res.draw_date}</span>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/40">
+                      {res.draw_time_mmt}
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    <span className="text-[11px] text-slate-400 block">ထိုင်း ပထမဆုကြီး (၆ လုံး):</span>
+                    <div className="text-xl font-mono font-black text-slate-200 tracking-widest bg-slate-950 p-2 rounded-xl text-center border border-slate-800">
+                      {res.thai_first_prize || '------'}
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-purple-900/40 flex items-center justify-between">
+                    <div>
+                      <span className="text-xs text-purple-300 font-bold block">3D အမြီး ၃ လုံး ထွက်ဂဏန်း:</span>
+                      <span className="text-[11px] text-slate-400">တည့် ၇၀၀ ဆ • အာ ၁၀ ဆ</span>
+                    </div>
+                    <div className="px-4 py-2 rounded-2xl bg-gradient-to-tr from-purple-600 to-fuchsia-600 text-white font-black text-2xl font-mono shadow-lg shadow-purple-950 tracking-widest">
+                      {res.winning_number || '---'}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 4D Results Board Content (Gold Theme) */}
+      {activeGameResult === '4D' && (
+        <div className="space-y-6">
       
       {/* 1. Live Winners Ticker Banner (Marquee) */}
       {recentWinners.length > 0 && (
@@ -584,6 +817,9 @@ export default function ResultsBoard() {
               </div>
             )}
           </div>
+
+        </div>
+      )}
 
         </div>
       )}

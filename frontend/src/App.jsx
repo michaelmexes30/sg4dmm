@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import Navbar from './components/Navbar';
 import BettingForm from './components/BettingForm';
+import Betting2DForm from './components/Betting2DForm';
+import Betting3DForm from './components/Betting3DForm';
 import LiveSlip from './components/LiveSlip';
 import DepositModal from './components/DepositModal';
 import ResultsBoard from './components/ResultsBoard';
@@ -29,6 +31,7 @@ export default function App() {
       hash.includes('admin')
     );
   };
+  const [activeGame, setActiveGame] = useState('4D'); // '4D' | '2D' | '3D'
   const [activeTab, setActiveTab] = useState(() => {
     if (typeof window !== 'undefined' && (
       window.location.pathname.toLowerCase().includes('backend') ||
@@ -176,37 +179,125 @@ export default function App() {
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24 md:pb-8">
         
-        {/* TAB 1: 4D Betting */}
+        {/* TAB 1: Betting View with 4D, 2D, 3D Distinct Color Themes */}
         {activeTab === 'betting' && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          <div className="space-y-6">
             
-            {/* Left Col: Interactive 4D Entry Form */}
-            <div className="lg:col-span-7 space-y-6">
-              <BettingForm
-                onAddToSlip={handleAddToSlip}
-                activeDraw={activeDraw}
-                availableDraws={availableDraws}
-                selectedDrawIds={selectedDrawIds}
-                setSelectedDrawIds={setSelectedDrawIds}
-              />
+            {/* Master Game Selector Tabs: 4D (Gold), 2D (Emerald), 3D (Purple) */}
+            <div className="bg-dark-card/90 backdrop-blur-xl border border-dark-border p-1.5 sm:p-2 rounded-3xl shadow-xl flex items-center justify-between gap-1.5 sm:gap-2">
+              
+              {/* 4D Button (Gold Theme) */}
+              <button
+                onClick={() => setActiveGame('4D')}
+                className={`flex-1 py-3 sm:py-3.5 px-3 rounded-2xl flex items-center justify-center gap-2 transition-all cursor-pointer relative overflow-hidden ${
+                  activeGame === '4D'
+                    ? 'bg-gradient-to-r from-amber-500 via-gold-400 to-amber-600 text-dark-bg font-black shadow-lg shadow-amber-500/30 scale-[1.01] border border-amber-300'
+                    : 'bg-dark-bg/60 text-slate-400 hover:text-amber-300 hover:bg-dark-card border border-slate-800'
+                }`}
+              >
+                <span className="text-base sm:text-lg">🦚</span>
+                <div className="text-left leading-tight">
+                  <span className="block text-xs sm:text-sm font-black tracking-wide">
+                    Singapore 4D
+                  </span>
+                  <span className={`text-[9px] sm:text-[10px] font-bold block ${activeGame === '4D' ? 'text-black/80' : 'text-amber-400/80'}`}>
+                    စင်ကာပူ ၄ လုံးထီ
+                  </span>
+                </div>
+              </button>
+
+              {/* 2D Button (Emerald Green Theme) */}
+              <button
+                onClick={() => setActiveGame('2D')}
+                className={`flex-1 py-3 sm:py-3.5 px-3 rounded-2xl flex items-center justify-center gap-2 transition-all cursor-pointer relative overflow-hidden ${
+                  activeGame === '2D'
+                    ? 'bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-600 text-dark-bg font-black shadow-lg shadow-emerald-500/30 scale-[1.01] border border-emerald-300'
+                    : 'bg-dark-bg/60 text-slate-400 hover:text-emerald-300 hover:bg-dark-card border border-slate-800'
+                }`}
+              >
+                <span className="text-base sm:text-lg">📈</span>
+                <div className="text-left leading-tight">
+                  <span className="block text-xs sm:text-sm font-black tracking-wide">
+                    Thai 2D (SET)
+                  </span>
+                  <span className={`text-[9px] sm:text-[10px] font-bold block ${activeGame === '2D' ? 'text-black/80' : 'text-emerald-400/80'}`}>
+                    ထိုင်း ၂ လုံးထီ (၈၅ ဆ)
+                  </span>
+                </div>
+              </button>
+
+              {/* 3D Button (Royal Purple Theme) */}
+              <button
+                onClick={() => setActiveGame('3D')}
+                className={`flex-1 py-3 sm:py-3.5 px-3 rounded-2xl flex items-center justify-center gap-2 transition-all cursor-pointer relative overflow-hidden ${
+                  activeGame === '3D'
+                    ? 'bg-gradient-to-r from-purple-600 via-fuchsia-500 to-purple-700 text-white font-black shadow-lg shadow-purple-600/30 scale-[1.01] border border-purple-300'
+                    : 'bg-dark-bg/60 text-slate-400 hover:text-purple-300 hover:bg-dark-card border border-slate-800'
+                }`}
+              >
+                <span className="text-base sm:text-lg">🎲</span>
+                <div className="text-left leading-tight">
+                  <span className="block text-xs sm:text-sm font-black tracking-wide">
+                    Thai 3D (Gov)
+                  </span>
+                  <span className={`text-[9px] sm:text-[10px] font-bold block ${activeGame === '3D' ? 'text-purple-200' : 'text-purple-400/80'}`}>
+                    ထိုင်း ၃ လုံးထီ (၇၀၀ ဆ)
+                  </span>
+                </div>
+              </button>
+
             </div>
 
-            {/* Right Col: Live Bet Slip Queue */}
-            <div className="lg:col-span-5">
-              <LiveSlip
-                items={slipItems}
-                onRemoveItem={handleRemoveSlipItem}
-                onClearSlip={handleClearSlip}
-                activeDraw={activeDraw}
-                availableDraws={availableDraws}
-                selectedDrawIds={selectedDrawIds}
-                setSelectedDrawIds={setSelectedDrawIds}
+            {/* Active Game Content */}
+            {activeGame === '4D' && (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                {/* Left Col: Interactive 4D Entry Form */}
+                <div className="lg:col-span-7 space-y-6">
+                  <BettingForm
+                    onAddToSlip={handleAddToSlip}
+                    activeDraw={activeDraw}
+                    availableDraws={availableDraws}
+                    selectedDrawIds={selectedDrawIds}
+                    setSelectedDrawIds={setSelectedDrawIds}
+                  />
+                </div>
+
+                {/* Right Col: Live Bet Slip Queue */}
+                <div className="lg:col-span-5">
+                  <LiveSlip
+                    items={slipItems}
+                    onRemoveItem={handleRemoveSlipItem}
+                    onClearSlip={handleClearSlip}
+                    activeDraw={activeDraw}
+                    availableDraws={availableDraws}
+                    selectedDrawIds={selectedDrawIds}
+                    setSelectedDrawIds={setSelectedDrawIds}
+                    onOpenDeposit={() => setIsDepositOpen(true)}
+                    onBetPlaced={() => {
+                      loadDraws();
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {activeGame === '2D' && (
+              <Betting2DForm
                 onOpenDeposit={() => setIsDepositOpen(true)}
                 onBetPlaced={() => {
                   loadDraws();
                 }}
               />
-            </div>
+            )}
+
+            {activeGame === '3D' && (
+              <Betting3DForm
+                onOpenDeposit={() => setIsDepositOpen(true)}
+                onBetPlaced={() => {
+                  loadDraws();
+                }}
+              />
+            )}
 
           </div>
         )}
