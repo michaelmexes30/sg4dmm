@@ -181,6 +181,31 @@ async def lifespan(app: FastAPI):
         replace_existing=True
     )
 
+    # 7. Thai 2D Live Results Polling & Settlement:
+    # Runs during draw settlement windows (12:01 PM & 04:30 PM MMT) and heartbeat every 5 mins
+    from app.core.twod_service import poll_and_settle_2d_job
+    try:
+        poll_and_settle_2d_job()
+    except Exception as e:
+        print(f"Startup 2D settlement notice: {e}")
+
+    scheduler.add_job(
+        poll_and_settle_2d_job,
+        "cron",
+        hour="12,16",
+        minute="1,2,5,30,31,35,45",
+        id="thai_2d_settlement_cron",
+        replace_existing=True
+    )
+
+    scheduler.add_job(
+        poll_and_settle_2d_job,
+        "interval",
+        minutes=5,
+        id="thai_2d_background_heartbeat",
+        replace_existing=True
+    )
+
     scheduler.start()
     print("APScheduler started: Active schedules:")
     print("  - Nightly 02:00 AM MMT 3-month Data Archiving")

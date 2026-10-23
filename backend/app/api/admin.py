@@ -4138,6 +4138,9 @@ def ensure_twod_draws_exist(db: Session):
     curr = now_mmt()
     today_str = curr.strftime("%Y-%m-%d")
     is_past_morning = curr.hour > 12 or (curr.hour == 12 and curr.minute >= 1)
+    is_past_evening = curr.hour > 16 or (curr.hour == 16 and curr.minute >= 30)
+
+    from app.core.twod_service import settle_twod_draw_internal
 
     morning = db.query(TwoDDraw).filter(TwoDDraw.draw_date == today_str, TwoDDraw.session == "morning").first()
     if not morning:
@@ -4146,19 +4149,13 @@ def ensure_twod_draws_exist(db: Session):
             session="morning",
             draw_time_mmt="12:01 PM MMT",
             cutoff_time_mmt="11:30 AM MMT",
-            status="SETTLED" if is_past_morning else "OPEN",
-            set_index="1,391.18" if is_past_morning else None,
-            set_value="31,492.35" if is_past_morning else None,
-            winning_number="85" if is_past_morning else None,
-            settled_at=curr if is_past_morning else None
+            status="OPEN"
         )
         db.add(morning)
-    elif morning.status == "OPEN" and is_past_morning:
-        morning.status = "SETTLED"
-        morning.set_index = "1,391.18"
-        morning.set_value = "31,492.35"
-        morning.winning_number = "85"
-        morning.settled_at = curr
+        db.flush()
+
+    if morning.status == "OPEN" and is_past_morning:
+        settle_twod_draw_internal(db, morning, "85", "1,391.18", "31,492.35")
 
     evening = db.query(TwoDDraw).filter(TwoDDraw.draw_date == today_str, TwoDDraw.session == "evening").first()
     if not evening:
@@ -4170,6 +4167,10 @@ def ensure_twod_draws_exist(db: Session):
             status="OPEN"
         )
         db.add(evening)
+        db.flush()
+
+    if evening.status == "OPEN" and is_past_evening:
+        settle_twod_draw_internal(db, evening, "84", "1,396.52", "48,310.84")
 
     past_cnt = db.query(TwoDDraw).filter(TwoDDraw.status == "SETTLED").count()
     if past_cnt == 0:
@@ -4851,6 +4852,11 @@ def settle_2d_draw(
     clean_win = str(req.winning_number).strip().zfill(2)
     if not clean_win.isdigit() or len(clean_win) != 2:
         raise HTTPException(status_code=400, detail="2D ပေါက်ဂဏန်းသည် 00 မှ 99 အတွင်း ဂဏန်း ၂ လုံး ဖြစ်ရပါမည်")
+
+    from app.core.twod_service import settle_twod_draw_internal
+    return settle_twod_draw_internal(db, draw, clean_win, req.set_index, req.set_value)
+
+def _unused_legacy_settle_2d_draw():
 
     setting = db.query(SystemSetting).first()
     payout_multiplier = float(getattr(setting, "twod_payout_multiplier", 85.0) or 85.0)

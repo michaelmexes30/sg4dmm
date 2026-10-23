@@ -371,7 +371,7 @@ def get_2d_results(limit: int = 20, db: Session = Depends(get_db)):
     from app.api.admin import ensure_twod_draws_exist
     ensure_twod_draws_exist(db)
 
-    draws = db.query(TwoDDraw).filter(TwoDDraw.status == "SETTLED").order_by(TwoDDraw.id.desc()).limit(limit).all()
+    draws = db.query(TwoDDraw).filter(TwoDDraw.status == "SETTLED").order_by(TwoDDraw.draw_date.desc(), TwoDDraw.id.desc()).limit(limit).all()
     return [
         {
             "id": d.id,
