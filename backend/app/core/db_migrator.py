@@ -99,6 +99,12 @@ def auto_migrate_sqlite_to_active_db(engine):
             except Exception as fk_ex:
                 print(f"db_migrator: drop fkey notice: {fk_ex}")
 
+            # Terminate any previous hanging queries
+            try:
+                cleanup_conn.execute(text("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND datname = current_database() AND state in ('idle in transaction')"))
+            except Exception:
+                pass
+
             tables_to_clean = [
                 "bet_items", "bet_slips", "agent_commission_logs", "agent_level_logs",
                 "weekly_bonuses", "transactions", "financial_ledger", "users",
@@ -106,8 +112,9 @@ def auto_migrate_sqlite_to_active_db(engine):
             ]
             for tbl in tables_to_clean:
                 try:
-                    cleanup_conn.execute(text(f"TRUNCATE TABLE {tbl} RESTART IDENTITY CASCADE"))
+                    cleanup_conn.execute(text(f"DELETE FROM {tbl}"))
                 except Exception as tr_ex:
+                    print(f"db_migrator: Delete {tbl} notice: {tr_ex}")
                     print(f"db_migrator: Truncate {tbl} notice: {tr_ex}")
 
     # Now migrate each table in its own transaction block to guarantee isolation

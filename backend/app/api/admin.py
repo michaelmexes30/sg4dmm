@@ -45,7 +45,10 @@ def get_financial_dashboard(
     - Active Draw & Last Settled Draw spotlight
     - Registered players, active agents, and pending approvals
     """
-    today_str = now_mmt().strftime("%Y-%m-%d")
+    now = now_mmt()
+    today_str = now.strftime("%Y-%m-%d")
+    today_start = datetime.strptime(today_str, "%Y-%m-%d")
+    today_end = today_start + timedelta(days=1)
 
     # All-time deposits
     total_deposits = db.query(func.coalesce(func.sum(Transaction.amount), 0.0)).filter(
@@ -56,7 +59,8 @@ def get_financial_dashboard(
     today_deposits = db.query(func.coalesce(func.sum(Transaction.amount), 0.0)).filter(
         Transaction.tx_type == TransactionType.DEPOSIT,
         Transaction.status.in_([TransactionStatus.AUTO_APPROVED, TransactionStatus.COMPLETED]),
-        func.date(Transaction.created_at) == today_str
+        Transaction.created_at >= today_start,
+        Transaction.created_at < today_end
     ).scalar() or 0.0
 
     # All-time withdrawals
@@ -68,7 +72,8 @@ def get_financial_dashboard(
     today_withdrawals = db.query(func.coalesce(func.sum(Transaction.amount), 0.0)).filter(
         Transaction.tx_type == TransactionType.WITHDRAWAL,
         Transaction.status == TransactionStatus.COMPLETED,
-        func.date(Transaction.created_at) == today_str
+        Transaction.created_at >= today_start,
+        Transaction.created_at < today_end
     ).scalar() or 0.0
 
     pending_deposits_count = db.query(func.count(Transaction.id)).filter(
@@ -89,10 +94,12 @@ def get_financial_dashboard(
     total_bets_count = db.query(func.count(BetSlip.id)).scalar() or 0
 
     today_bets = db.query(func.coalesce(func.sum(BetSlip.total_stake), 0.0)).filter(
-        func.date(BetSlip.created_at) == today_str
+        BetSlip.created_at >= today_start,
+        BetSlip.created_at < today_end
     ).scalar() or 0.0
     today_bets_count = db.query(func.count(BetSlip.id)).filter(
-        func.date(BetSlip.created_at) == today_str
+        BetSlip.created_at >= today_start,
+        BetSlip.created_at < today_end
     ).scalar() or 0
 
     # 30% Agent Commission (Settled vs Pending)
@@ -121,7 +128,7 @@ def get_financial_dashboard(
 
     # Active pool
     active_pool = db.query(func.coalesce(func.sum(BetSlip.total_stake), 0.0)).filter(
-        BetSlip.status == "PENDING"
+        BetSlip.status == BetSlipStatus.PENDING
     ).scalar() or 0.0
 
     # User / Agent counts
