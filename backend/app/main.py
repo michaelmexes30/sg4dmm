@@ -289,6 +289,75 @@ def download_app_apk():
     return {"status": "error", "message": "APK is being compiled or not found"}
 
 
+@app.get("/api/system/db-status")
+def get_db_status():
+    from app.database import engine
+    from sqlalchemy import text
+    info = {"status": "ok"}
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SET statement_timeout = '5s'"))
+            # 1. Active activity
+            try:
+                act = conn.execute(text("""
+                    SELECT pid, usename, state, wait_event_type, wait_event, query 
+                    FROM pg_stat_activity 
+                    WHERE pid != pg_backend_pid() AND state != 'idle'
+                """)).fetchall()
+                info["active_processes"] = [
+                    {"pid": r[0], "user": r[1], "state": r[2], "wait_type": r[3], "wait_event": r[4], "query": r[5][:100]}
+                    for r in act
+                ]
+            except Exception as e:
+                info["active_processes_err"] = str(e)
+                
+            # 2. Blocked locks
+            try:
+                locks = conn.execute(text("""
+                    SELECT pid, mode, granted FROM pg_locks WHERE pid != pg_backend_pid()
+                """)).fetchall()
+                info["locks"] = [{"pid": r[0], "mode": r[1], "granted": r[2]} for r in locks]
+            except Exception as e:
+                info["locks_err"] = str(e)
+                
+            # 3. User count
+            try:
+                info["user_count"] = conn.execute(text("SELECT count(*) FROM users")).scalar()
+            except Exception as e:
+                info["user_count_err"] = str(e)
+                
+            # 4. Bet count
+            try:
+                info["bet_count"] = conn.execute(text("SELECT count(*) FROM bet_slips")).scalar()
+            except Exception as e:
+                info["bet_count_err"] = str(e)
+    except Exception as e:
+        info["error"] = str(e)
+    return info
+
+
+@app.get("/api/system/clear-locks")
+def clear_db_locks():
+    from app.database import engine
+    from sqlalchemy import text
+    res = []
+    try:
+        with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            pids = conn.execute(text("""
+                SELECT pid FROM pg_stat_activity 
+                WHERE pid != pg_backend_pid() AND datname = current_database()
+            """)).fetchall()
+            for (p,) in pids:
+                try:
+                    conn.execute(text(f"SELECT pg_cancel_backend({p})"))
+                    res.append(f"Cancelled {p}")
+                except Exception as ex:
+                    res.append(f"Failed {p}: {ex}")
+    except Exception as e:
+        return {"error": str(e), "results": res}
+    return {"results": res}
+
+
 # Serve React frontend dist assets directly on FastAPI
 frontend_dist = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist"))
 frontend_assets = os.path.join(frontend_dist, "assets")

@@ -17,15 +17,15 @@ else:
     try:
         # 1. Try modern psycopg (psycopg 3)
         psycopg3_url = clean_url.replace("postgresql://", "postgresql+psycopg://", 1)
-        engine = create_engine(psycopg3_url, pool_pre_ping=True, pool_recycle=300, echo=False)
+        engine = create_engine(psycopg3_url, pool_pre_ping=True, pool_recycle=300, pool_size=10, max_overflow=20, connect_args={"options": "-c statement_timeout=15000"}, echo=False)
     except Exception:
         try:
             # 2. Try psycopg2
             psycopg2_url = clean_url.replace("postgresql://", "postgresql+psycopg2://", 1)
-            engine = create_engine(psycopg2_url, pool_pre_ping=True, pool_recycle=300, echo=False)
+            engine = create_engine(psycopg2_url, pool_pre_ping=True, pool_recycle=300, pool_size=10, max_overflow=20, connect_args={"options": "-c statement_timeout=15000"}, echo=False)
         except Exception:
             # 3. Fallback to standard postgresql://
-            engine = create_engine(clean_url, pool_pre_ping=True, pool_recycle=300, echo=False)
+            engine = create_engine(clean_url, pool_pre_ping=True, pool_recycle=300, pool_size=10, max_overflow=20, connect_args={"options": "-c statement_timeout=15000"}, echo=False)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
