@@ -19,51 +19,111 @@ logger = logging.getLogger("twod_service")
 logger.setLevel(logging.INFO)
 
 THAISTOCK2D_API_URL = "https://api.thaistock2d.com/live"
+SET_OFFICIAL_URL = "https://www.set.or.th/en/home"
+
+def fetch_live_twod_from_set_official() -> Optional[Dict[str, str]]:
+    """
+    Scrapes official Thai Stock Exchange directly from https://set.or.th/en/home.
+    Extracts the SET Index and Market Value, then calculates the Myanmar 2D winning number:
+      - 1st digit (Tens): Last digit of SET Index decimal (e.g. 1,553.99 -> 9)
+      - 2nd digit (Units): Last digit of Market Value integer part (e.g. 41,021.10 -> 1)
+      - Result: "91"
+    """
+    try:
+        from bs4 import BeautifulSoup
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9'
+        }
+        resp = requests.get(SET_OFFICIAL_URL, headers=headers, timeout=8)
+        if resp.status_code == 200:
+            soup = BeautifulSoup(resp.text, "html.parser")
+            for row in soup.find_all("tr"):
+                parts = row.get_text(" ", strip=True).split()
+                if len(parts) >= 5 and parts[0] == "SET":
+                    set_idx = parts[1]  # e.g. "1,553.99"
+                    val = parts[-1]     # e.g. "41,021.10"
+                    if "." in set_idx and "." in val:
+                        d1 = set_idx.split(".")[-1][-1]
+                        val_int = val.split(".")[0].replace(",", "")
+                        d2 = val_int[-1]
+                        twod = f"{d1}{d2}"
+                        logger.info(f"Fetched official 2D from set.or.th: SET={set_idx}, Value={val} -> 2D={twod}")
+                        return {
+                            "twod": twod,
+                            "set_index": set_idx,
+                            "set_value": val,
+                            "source": "set.or.th (Official)"
+                        }
+    except Exception as e:
+        logger.warning(f"Error fetching from set.or.th: {e}")
+    return None
 
 def fetch_live_twod_from_api(session_type: str = "evening") -> Optional[Dict[str, str]]:
     """
     Attempts to fetch official Thai Stock 2D results from the primary ThaiStock2D live API.
-    Returns dict with { 'twod': '84', 'set_index': '1,395.40', 'set_value': '42,150.84' } or None if holiday/market closed.
+    Handles official closing results array (12:01:00 / 12:00:00 / 16:30:00).
     """
     try:
         proxies = {"http": None, "https": None}
         resp = requests.get(THAISTOCK2D_API_URL, proxies=proxies, timeout=8)
         if resp.status_code == 200:
             data = resp.json()
-            # Check if market is on holiday
             holiday = data.get("holiday")
             if holiday and str(holiday.get("status", "0")) == "1":
                 logger.info(f"Thai Stock Exchange is closed today for holiday: {holiday.get('name')}")
                 return None
 
             results = data.get("result", [])
-            target_time = "12:01:00" if session_type == "morning" else "16:30:00"
+            target_times = ["12:01:00", "12:00:00"] if session_type == "morning" else ["16:30:00"]
             for r in results:
-                if r.get("open_time") == target_time:
+                if r.get("open_time") in target_times:
                     twod = str(r.get("twod", "")).strip().zfill(2)
                     set_idx = str(r.get("set", "")).strip()
                     val = str(r.get("value", "")).strip()
-                    if twod and twod != "00" and set_idx != "0.00":
+                    if twod and twod not in ["00", "--"] and set_idx not in ["0.00", "--"]:
                         return {
                             "twod": twod,
                             "set_index": set_idx,
-                            "set_value": val
+                            "set_value": val,
+                            "source": "ThaiStock2D API (Result)"
                         }
 
-            # If matching time not settled in result array, check live field if after hours
+            # Check live field if market is active or right at close
             live = data.get("live", {})
-            if live and session_type == "evening":
+            if live:
                 live_twod = str(live.get("twod", "")).strip().zfill(2)
                 live_set = str(live.get("set", "")).strip()
                 live_val = str(live.get("value", "")).strip()
-                if live_twod and live_twod != "00" and live_set != "0.00":
+                if live_twod and live_twod not in ["00", "--"] and live_set not in ["0.00", "--"]:
                     return {
                         "twod": live_twod,
                         "set_index": live_set,
-                        "set_value": live_val
+                        "set_value": live_val,
+                        "source": "ThaiStock2D API (Live)"
                     }
     except Exception as e:
         logger.warning(f"Error fetching from ThaiStock2D API: {e}")
+    return None
+
+def get_live_twod_result(session_type: str = "morning") -> Optional[Dict[str, str]]:
+    """
+    Multi-source resolver for Myanmar 2D result:
+    1. First checks ThaiStock2D result array for locked settlement tick (12:01 / 16:30).
+    2. Falls back to direct https://set.or.th/en/home scraping.
+    3. Falls back to ThaiStock2D live tick.
+    """
+    # Check official locked settlement tick first
+    api_res = fetch_live_twod_from_api(session_type)
+    if api_res and api_res.get("twod") and len(api_res["twod"]) == 2:
+        return api_res
+
+    # Try set.or.th direct scraper
+    set_res = fetch_live_twod_from_set_official()
+    if set_res and set_res.get("twod") and len(set_res["twod"]) == 2:
+        return set_res
+
     return None
 
 
@@ -101,8 +161,7 @@ def settle_twod_draw_internal(
 
     slips = db.query(BetSlip).filter(
         BetSlip.game_type == "2D",
-        BetSlip.draw_id == draw.id,
-        BetSlip.status == BetSlipStatus.PENDING
+        BetSlip.draw_id == draw.id
     ).all()
 
     total_payout = 0.0
@@ -225,12 +284,10 @@ def poll_and_settle_2d_job():
                 TwoDDraw.draw_date == today_str,
                 TwoDDraw.session == "morning"
             ).first()
-            if morning and morning.status == "OPEN":
-                api_res = fetch_live_twod_from_api("morning")
-                win_num = api_res.get("twod") if api_res else "85"
-                s_idx = api_res.get("set_index") if api_res else "1,391.18"
-                s_val = api_res.get("set_value") if api_res else "31,492.35"
-                settle_twod_draw_internal(db, morning, win_num, s_idx, s_val)
+            if morning and (morning.status == "OPEN" or morning.winning_number in ["85", "00", None]):
+                api_res = get_live_twod_result("morning")
+                if api_res and api_res.get("twod"):
+                    settle_twod_draw_internal(db, morning, api_res["twod"], api_res.get("set_index"), api_res.get("set_value"))
 
         # 2. Check Evening Draw
         if is_past_evening:
@@ -238,13 +295,10 @@ def poll_and_settle_2d_job():
                 TwoDDraw.draw_date == today_str,
                 TwoDDraw.session == "evening"
             ).first()
-            if evening and evening.status == "OPEN":
-                api_res = fetch_live_twod_from_api("evening")
-                # If market was on holiday (King Chulalongkorn Day) or closed, settle with 84
-                win_num = api_res.get("twod") if api_res else "84"
-                s_idx = api_res.get("set_index") if api_res else "1,396.52"
-                s_val = api_res.get("set_value") if api_res else "48,310.84"
-                settle_twod_draw_internal(db, evening, win_num, s_idx, s_val)
+            if evening and (evening.status == "OPEN" or evening.winning_number in ["84", "00", None]):
+                api_res = get_live_twod_result("evening")
+                if api_res and api_res.get("twod"):
+                    settle_twod_draw_internal(db, evening, api_res["twod"], api_res.get("set_index"), api_res.get("set_value"))
 
         # 3. Check any overdue past unclosed draws from yesterday or earlier
         overdue_draws = db.query(TwoDDraw).filter(

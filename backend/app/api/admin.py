@@ -4154,8 +4154,12 @@ def ensure_twod_draws_exist(db: Session):
         db.add(morning)
         db.flush()
 
-    if morning.status == "OPEN" and is_past_morning:
-        settle_twod_draw_internal(db, morning, "85", "1,391.18", "31,492.35")
+    if is_past_morning:
+        from app.core.twod_service import get_live_twod_result
+        if morning.status == "OPEN" or morning.winning_number in ["85", "00", None]:
+            res = get_live_twod_result("morning")
+            if res and res.get("twod"):
+                settle_twod_draw_internal(db, morning, res["twod"], res.get("set_index"), res.get("set_value"))
 
     evening = db.query(TwoDDraw).filter(TwoDDraw.draw_date == today_str, TwoDDraw.session == "evening").first()
     if not evening:
@@ -4169,8 +4173,12 @@ def ensure_twod_draws_exist(db: Session):
         db.add(evening)
         db.flush()
 
-    if evening.status == "OPEN" and is_past_evening:
-        settle_twod_draw_internal(db, evening, "84", "1,396.52", "48,310.84")
+    if is_past_evening:
+        from app.core.twod_service import get_live_twod_result
+        if evening.status == "OPEN" or evening.winning_number in ["84", "00", None]:
+            res = get_live_twod_result("evening")
+            if res and res.get("twod"):
+                settle_twod_draw_internal(db, evening, res["twod"], res.get("set_index"), res.get("set_value"))
 
     past_cnt = db.query(TwoDDraw).filter(TwoDDraw.status == "SETTLED").count()
     if past_cnt == 0:
