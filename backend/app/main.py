@@ -102,6 +102,10 @@ async def lifespan(app: FastAPI):
                 ("threed_max_bet", "FLOAT DEFAULT 50000.0"),
                 ("threed_max_risk_per_number", "FLOAT DEFAULT 200000.0"),
                 ("threed_draw_cutoff", "VARCHAR(20) DEFAULT '02:30 PM'"),
+                ("is_mini_games_enabled", "BOOLEAN DEFAULT 1"),
+                ("minigames_rtp_rate", "FLOAT DEFAULT 95.0"),
+                ("minigames_min_bet", "FLOAT DEFAULT 50.0"),
+                ("minigames_max_bet", "FLOAT DEFAULT 50000.0"),
             ]
             for col_name, col_type in settings_cols:
                 try:

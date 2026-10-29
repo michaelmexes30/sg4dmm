@@ -781,6 +781,32 @@ export const apiClient = {
       method: 'POST',
       body: JSON.stringify({ choice, stake }),
     });
+  },
+
+  // Admin Mini-Games Management & Realtime Monitoring
+  getAdminMiniGamesOverview() {
+    return this.request('/admin/minigames/overview');
+  },
+
+  updateAdminMiniGamesSettings(payload) {
+    return this.request('/admin/minigames/settings', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  getAdminMiniGamesBets(params = {}) {
+    const q = new URLSearchParams();
+    if (params.page) q.append('page', params.page);
+    if (params.limit) q.append('limit', params.limit);
+    if (params.game_type) q.append('game_type', params.game_type);
+    if (params.is_win !== undefined && params.is_win !== '') q.append('is_win', params.is_win);
+    if (params.search) q.append('search', params.search);
+    if (params.from_date) q.append('from_date', params.from_date);
+    if (params.to_date) q.append('to_date', params.to_date);
+    const qs = q.toString();
+    const url = qs ? '/admin/minigames/bets?' + qs : '/admin/minigames/bets';
+    return this.request(url);
   }
 };
 

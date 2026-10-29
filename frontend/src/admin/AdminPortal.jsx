@@ -20,7 +20,8 @@ import {
   AlertCircle,
   Menu,
   X,
-  Lock
+  Lock,
+  Gamepad2
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -44,6 +45,7 @@ import AgentCommissionView from './views/AgentCommissionView';
 import WeeklyBonusView from './views/WeeklyBonusView';
 import DashboardOverviewView from './views/DashboardOverviewView';
 import DepositView from './views/DepositView';
+import MiniGamesAdminView from './views/MiniGamesAdminView';
 
 class ViewErrorBoundary extends React.Component {
   constructor(props) {
@@ -412,6 +414,26 @@ export default function AdminPortal({ onBackToApp }) {
               )}
             </div>
 
+            {/* Mini-Games (RTP Control & Real-time History) */}
+            <div>
+              <button
+                onClick={() => handleSelectMenu('minigames')}
+                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all cursor-pointer ${
+                  activeMenu === 'minigames'
+                    ? 'bg-gradient-to-r from-purple-600/30 to-amber-500/20 text-gold-300 font-bold border border-gold-500/40 shadow-lg'
+                    : 'text-slate-300 hover:bg-slate-800'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Gamepad2 className="w-4 h-4 text-gold-400" />
+                  <span>Mini-Games & RTP</span>
+                </div>
+                <span className="text-[9px] bg-gold-500/20 text-gold-300 font-mono font-bold px-1.5 py-0.5 rounded border border-gold-500/30">
+                  LIVE
+                </span>
+              </button>
+            </div>
+
             {/* 3. Balance (Deposit & Top Up, Withdraw Review) */}
             <div>
               <button
@@ -675,6 +697,10 @@ export default function AdminPortal({ onBackToApp }) {
 
             {activeMenu === 'settings' && (
               <SettingsView onNotify={showNotification} />
+            )}
+
+            {activeMenu === 'minigames' && (
+              <MiniGamesAdminView onNotify={showNotification} />
             )}
           </ViewErrorBoundary>
 

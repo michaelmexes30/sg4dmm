@@ -91,6 +91,12 @@ class SystemSetting(Base):
     threed_max_risk_per_number = Column(Float, default=200000.0) # 3D တစ်ကွက် အများဆုံး ထိုးငွေကန့်သတ်ချက် (Max Risk Cap)
     threed_draw_cutoff = Column(String(20), default="02:30 PM") # 3D ထိုးကြေးပိတ်ချိန် (၁ ရက် / ၁၆ ရက်)
 
+    # ---------------- Mini-Games Settings ----------------
+    is_mini_games_enabled = Column(Boolean, default=True)           # Mini-Games Master Toggle
+    minigames_rtp_rate = Column(Float, default=95.0)                # RTP % (e.g. 95% = 5% House Edge)
+    minigames_min_bet = Column(Float, default=50.0)                 # Min Bet (MMK)
+    minigames_max_bet = Column(Float, default=50000.0)              # Max Bet (MMK)
+
     updated_at = Column(DateTime, default=now_mmt, onupdate=now_mmt)
 
 class ApplicationRelease(Base):

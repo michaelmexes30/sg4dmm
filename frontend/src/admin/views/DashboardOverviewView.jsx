@@ -21,7 +21,8 @@ import {
   Users,
   UserCheck,
   Receipt,
-  AlertCircle
+  AlertCircle,
+  Gamepad2
 } from 'lucide-react';
 import { apiClient } from '../../api/client';
 
@@ -404,7 +405,7 @@ export default function DashboardOverviewView({ onNotify, onNavigate }) {
       </div>
 
       {/* Fast Operational Jump Hub */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <div 
           onClick={() => onNavigate && onNavigate('reports-financial')}
           className="p-4 rounded-2xl bg-navy-900/90 border border-gold-500/20 hover:border-gold-400/50 transition-all cursor-pointer group flex flex-col justify-between"
@@ -482,6 +483,26 @@ export default function DashboardOverviewView({ onNotify, onNavigate }) {
           </div>
           <span className="text-[11px] text-purple-400 font-semibold flex items-center gap-1 mt-3">
             Bonus Manager <ArrowRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
+          </span>
+        </div>
+
+        <div 
+          onClick={() => onNavigate && onNavigate('minigames')}
+          className="p-4 rounded-2xl bg-navy-900/90 border border-gold-500/20 hover:border-gold-400/50 transition-all cursor-pointer group flex flex-col justify-between"
+        >
+          <div>
+            <div className="w-8 h-8 rounded-xl bg-gold-500/10 border border-gold-500/20 flex items-center justify-center text-gold-400 mb-2.5 group-hover:scale-105 transition-transform">
+              <Gamepad2 className="w-4 h-4" />
+            </div>
+            <h4 className="text-xs font-bold text-white group-hover:text-gold-300 transition-colors">
+              🎮 Mini-Games & RTP
+            </h4>
+            <p className="text-[11px] text-slate-400 mt-1">
+              House Edge (RTP) control, live plays audit, and profit reconciliation.
+            </p>
+          </div>
+          <span className="text-[11px] text-gold-400 font-semibold flex items-center gap-1 mt-3">
+            Open Mini-Games <ArrowRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
           </span>
         </div>
       </div>

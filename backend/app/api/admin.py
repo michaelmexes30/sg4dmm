@@ -16,6 +16,7 @@ from app.models.transaction import TransactionArchive
 from app.models.ledger import FinancialLedger, LedgerEntryType, DailyLedgerSummary
 from app.models.bonus import WeeklyBonus
 from app.models.settings import SystemSetting, ApplicationRelease
+from app.models.mini_game import MiniGameBet
 from app.core.security import get_current_admin, get_current_user, hash_password
 from app.core.bonus_engine import (
     calculate_and_distribute_weekly_bonus,
@@ -1762,6 +1763,12 @@ class SystemSettingsUpdate(BaseModel):
     threed_max_risk_per_number: Optional[float] = None
     threed_draw_cutoff: Optional[str] = None
 
+    # Mini-Games Settings
+    is_mini_games_enabled: Optional[bool] = None
+    minigames_rtp_rate: Optional[float] = None
+    minigames_min_bet: Optional[float] = None
+    minigames_max_bet: Optional[float] = None
+
 class ToggleAgentCreditRequest(BaseModel):
     enabled: Optional[bool] = None
 
@@ -3490,6 +3497,12 @@ def get_reports_financial(
         if bd[0]:
             dates_query.add(str(bd[0]))
 
+    # Dates from MiniGameBet
+    mini_dates = db.query(MiniGameBet.date_str).distinct().all()
+    for md in mini_dates:
+        if md[0]:
+            dates_query.add(str(md[0]))
+
     if not dates_query:
         today_str = now_mmt().strftime("%Y-%m-%d")
         dates_query.add(today_str)
@@ -3511,6 +3524,9 @@ def get_reports_financial(
     tot_commission = 0.0
     tot_bonus = 0.0
     tot_profit = 0.0
+    tot_mini_stake = 0.0
+    tot_mini_payout = 0.0
+    tot_mini_net = 0.0
 
     for d_str in sorted_dates:
         d_bet = db.query(func.coalesce(func.sum(BetSlip.total_stake), 0.0)).filter(
@@ -3552,10 +3568,21 @@ def get_reports_financial(
             func.date(WeeklyBonus.credited_at) == d_str
         ).scalar() or 0.0
 
-        if d_bet == 0 and d_topup == 0 and d_withdraw == 0 and d_payout == 0 and d_comm == 0 and d_bonus == 0:
+        # Mini-Games Stake, Payout & Net P/L
+        d_mini_stake = db.query(func.coalesce(func.sum(MiniGameBet.stake_amount), 0.0)).filter(
+            MiniGameBet.date_str == d_str
+        ).scalar() or 0.0
+
+        d_mini_payout = db.query(func.coalesce(func.sum(MiniGameBet.payout_amount), 0.0)).filter(
+            MiniGameBet.date_str == d_str
+        ).scalar() or 0.0
+
+        d_mini_net = d_mini_stake - d_mini_payout
+
+        if d_bet == 0 and d_topup == 0 and d_withdraw == 0 and d_payout == 0 and d_comm == 0 and d_bonus == 0 and d_mini_stake == 0 and d_mini_payout == 0:
             continue
 
-        d_profit = d_bet - d_payout - d_comm - d_bonus
+        d_profit = (d_bet - d_payout - d_comm - d_bonus) + d_mini_net
         d_company_bal = d_profit
 
         tot_4d_bet += d_bet
@@ -3565,6 +3592,9 @@ def get_reports_financial(
         tot_commission += d_comm
         tot_bonus += d_bonus
         tot_profit += d_profit
+        tot_mini_stake += d_mini_stake
+        tot_mini_payout += d_mini_payout
+        tot_mini_net += d_mini_net
 
         reports.append({
             "report_date": d_str,
@@ -3575,6 +3605,9 @@ def get_reports_financial(
             "agent_commission": -float(d_comm) if d_comm > 0 else 0.0,
             "weekly_bonus": -float(d_bonus) if d_bonus > 0 else 0.0,
             "cash_back": -(float(d_comm) + float(d_bonus)),
+            "mini_game_stake": float(d_mini_stake),
+            "mini_game_payout": -float(d_mini_payout) if d_mini_payout > 0 else 0.0,
+            "mini_game_net": float(d_mini_net),
             "customer_balance": float(total_cust_bal),
             "profit": float(d_profit),
             "company_balance": float(d_company_bal)
@@ -3592,6 +3625,9 @@ def get_reports_financial(
             "agent_commission": -float(tot_commission),
             "weekly_bonus": -float(tot_bonus),
             "cash_back": -(float(tot_commission) + float(tot_bonus)),
+            "mini_game_stake": float(tot_mini_stake),
+            "mini_game_payout": -float(tot_mini_payout),
+            "mini_game_net": float(tot_mini_net),
             "customer_balance": float(total_cust_bal),
             "profit": float(tot_profit),
             "company_balance": float(company_net_balance)
@@ -3844,6 +3880,12 @@ def get_system_settings(
         "threed_max_risk_per_number": float(getattr(setting, "threed_max_risk_per_number", 200000.0) or 200000.0),
         "threed_draw_cutoff": getattr(setting, "threed_draw_cutoff", "02:30 PM") or "02:30 PM",
 
+        # Mini-Games Settings
+        "is_mini_games_enabled": bool(getattr(setting, "is_mini_games_enabled", True) if getattr(setting, "is_mini_games_enabled", True) is not None else True),
+        "minigames_rtp_rate": float(getattr(setting, "minigames_rtp_rate", 95.0) or 95.0),
+        "minigames_min_bet": float(getattr(setting, "minigames_min_bet", 50.0) or 50.0),
+        "minigames_max_bet": float(getattr(setting, "minigames_max_bet", 50000.0) or 50000.0),
+
         "company_balance_oct": float(setting.company_balance_oct or 4198200.0),
         "updated_at": setting.updated_at.strftime("%Y-%m-%d %H:%M:%S") if setting.updated_at else None
     }
@@ -3983,6 +4025,12 @@ def update_system_settings(
     if req.threed_max_bet is not None: setting.threed_max_bet = float(req.threed_max_bet)
     if req.threed_max_risk_per_number is not None: setting.threed_max_risk_per_number = float(req.threed_max_risk_per_number)
     if req.threed_draw_cutoff is not None: setting.threed_draw_cutoff = str(req.threed_draw_cutoff).strip()
+
+    # 11. Mini-Games Settings
+    if req.is_mini_games_enabled is not None: setting.is_mini_games_enabled = bool(req.is_mini_games_enabled)
+    if req.minigames_rtp_rate is not None: setting.minigames_rtp_rate = float(req.minigames_rtp_rate)
+    if req.minigames_min_bet is not None: setting.minigames_min_bet = float(req.minigames_min_bet)
+    if req.minigames_max_bet is not None: setting.minigames_max_bet = float(req.minigames_max_bet)
 
     setting.updated_at = now_mmt()
     db.commit()
@@ -5115,4 +5163,191 @@ def settle_3d_draw(
         "total_slips": len(slips),
         "winners_count": winners_count,
         "total_payout": total_payout
+    }
+
+
+# ==============================================================================
+# MINI-GAMES ADMINISTRATION & RTP MANAGEMENT
+# ==============================================================================
+
+class MiniGamesSettingsUpdateRequest(BaseModel):
+    is_mini_games_enabled: Optional[bool] = None
+    minigames_rtp_rate: Optional[float] = None
+    minigames_min_bet: Optional[float] = None
+    minigames_max_bet: Optional[float] = None
+
+@router.get("/minigames/overview")
+def get_minigames_admin_overview(
+    admin_user: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """Returns real-time KPIs, turnover, payout, House Edge/RTP, and game breakdown."""
+    setting = db.query(SystemSetting).first()
+    is_enabled = bool(getattr(setting, "is_mini_games_enabled", True) if setting else True)
+    rtp_rate = float(getattr(setting, "minigames_rtp_rate", 95.0) or 95.0) if setting else 95.0
+    min_stake = float(getattr(setting, "minigames_min_bet", 50.0) or 50.0) if setting else 50.0
+    max_stake = float(getattr(setting, "minigames_max_bet", 50000.0) or 50000.0) if setting else 50000.0
+
+    today_str = now_mmt().strftime("%Y-%m-%d")
+
+    # All-time aggregates
+    total_bets = db.query(func.count(MiniGameBet.id)).scalar() or 0
+    total_stake = db.query(func.coalesce(func.sum(MiniGameBet.stake_amount), 0.0)).scalar() or 0.0
+    total_payout = db.query(func.coalesce(func.sum(MiniGameBet.payout_amount), 0.0)).scalar() or 0.0
+    company_net = total_stake - total_payout
+    actual_rtp = (total_payout / total_stake * 100.0) if total_stake > 0 else 0.0
+
+    # Today's aggregates
+    today_bets = db.query(func.count(MiniGameBet.id)).filter(MiniGameBet.date_str == today_str).scalar() or 0
+    today_stake = db.query(func.coalesce(func.sum(MiniGameBet.stake_amount), 0.0)).filter(MiniGameBet.date_str == today_str).scalar() or 0.0
+    today_payout = db.query(func.coalesce(func.sum(MiniGameBet.payout_amount), 0.0)).filter(MiniGameBet.date_str == today_str).scalar() or 0.0
+    today_net = today_stake - today_payout
+    today_rtp = (today_payout / today_stake * 100.0) if today_stake > 0 else 0.0
+
+    # Breakdown by game
+    breakdown = []
+    game_configs = [
+        {"type": "WHEEL", "name": "Lucky Wheel", "icon": "🎡"},
+        {"type": "COIN_FLIP", "name": "Head or Tail", "icon": "🪙"},
+        {"type": "DICE", "name": "Dice Roll", "icon": "🎲"}
+    ]
+    for gc in game_configs:
+        g_type = gc["type"]
+        g_count = db.query(func.count(MiniGameBet.id)).filter(MiniGameBet.game_type == g_type).scalar() or 0
+        g_stake = db.query(func.coalesce(func.sum(MiniGameBet.stake_amount), 0.0)).filter(MiniGameBet.game_type == g_type).scalar() or 0.0
+        g_payout = db.query(func.coalesce(func.sum(MiniGameBet.payout_amount), 0.0)).filter(MiniGameBet.game_type == g_type).scalar() or 0.0
+        g_net = g_stake - g_payout
+        g_rtp = (g_payout / g_stake * 100.0) if g_stake > 0 else 0.0
+        breakdown.append({
+            "game_type": g_type,
+            "title": gc["name"],
+            "icon": gc["icon"],
+            "bets_count": g_count,
+            "stake_amount": float(g_stake),
+            "payout_amount": float(g_payout),
+            "net_profit": float(g_net),
+            "actual_rtp": round(g_rtp, 2)
+        })
+
+    return {
+        "status": "success",
+        "settings": {
+            "is_enabled": is_enabled,
+            "configured_rtp": rtp_rate,
+            "house_edge": round(100.0 - rtp_rate, 2),
+            "min_stake": min_stake,
+            "max_stake": max_stake
+        },
+        "all_time": {
+            "total_bets": total_bets,
+            "total_stake": float(total_stake),
+            "total_payout": float(total_payout),
+            "company_net_profit": float(company_net),
+            "actual_rtp": round(actual_rtp, 2)
+        },
+        "today": {
+            "date": today_str,
+            "bets_count": today_bets,
+            "stake_amount": float(today_stake),
+            "payout_amount": float(today_payout),
+            "net_profit": float(today_net),
+            "actual_rtp": round(today_rtp, 2)
+        },
+        "breakdown": breakdown
+    }
+
+@router.post("/minigames/settings")
+def update_minigames_settings(
+    req: MiniGamesSettingsUpdateRequest,
+    admin_user: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """Updates RTP rate, min/max stake limits, and master switch for Mini-Games."""
+    setting = db.query(SystemSetting).first()
+    if not setting:
+        setting = SystemSetting()
+        db.add(setting)
+
+    if req.is_mini_games_enabled is not None:
+        setting.is_mini_games_enabled = bool(req.is_mini_games_enabled)
+    if req.minigames_rtp_rate is not None:
+        rate = float(req.minigames_rtp_rate)
+        if rate < 50.0 or rate > 99.0:
+            raise HTTPException(status_code=400, detail="RTP % must be between 50.0% and 99.0%.")
+        setting.minigames_rtp_rate = rate
+    if req.minigames_min_bet is not None:
+        setting.minigames_min_bet = float(req.minigames_min_bet)
+    if req.minigames_max_bet is not None:
+        setting.minigames_max_bet = float(req.minigames_max_bet)
+
+    setting.updated_at = now_mmt()
+    db.commit()
+    db.refresh(setting)
+
+    return {
+        "status": "success",
+        "message": "Mini-Games settings updated successfully",
+        "settings": {
+            "is_enabled": setting.is_mini_games_enabled,
+            "configured_rtp": setting.minigames_rtp_rate,
+            "house_edge": round(100.0 - float(setting.minigames_rtp_rate or 95.0), 2),
+            "min_stake": setting.minigames_min_bet,
+            "max_stake": setting.minigames_max_bet
+        }
+    }
+
+@router.get("/minigames/bets")
+def get_minigames_admin_bets(
+    page: int = 1,
+    limit: int = 50,
+    game_type: Optional[str] = None,
+    is_win: Optional[bool] = None,
+    search: Optional[str] = None,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    admin_user: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """Returns paginated, filterable real-time log of mini-game plays with player details."""
+    query = db.query(MiniGameBet, User).join(User, MiniGameBet.user_id == User.id)
+
+    if game_type:
+        query = query.filter(MiniGameBet.game_type == game_type.upper())
+    if is_win is not None:
+        query = query.filter(MiniGameBet.is_win == is_win)
+    if from_date:
+        query = query.filter(MiniGameBet.date_str >= from_date)
+    if to_date:
+        query = query.filter(MiniGameBet.date_str <= to_date)
+    if search:
+        s = f"%{search.strip()}%"
+        query = query.filter(or_(User.phone.like(s), User.username.like(s)))
+
+    total_count = query.count()
+    bets = query.order_by(MiniGameBet.id.desc()).offset((page - 1) * limit).limit(limit).all()
+
+    items = []
+    for bet, user in bets:
+        items.append({
+            "id": bet.id,
+            "user_id": user.id,
+            "username": user.username,
+            "phone": user.phone,
+            "game_type": bet.game_type,
+            "stake_amount": float(bet.stake_amount),
+            "payout_multiplier": float(bet.payout_multiplier),
+            "payout_amount": float(bet.payout_amount),
+            "is_win": bool(bet.is_win),
+            "player_choice": bet.player_choice,
+            "result_data": bet.result_data,
+            "date_str": bet.date_str,
+            "created_at": bet.created_at.strftime("%Y-%m-%d %H:%M:%S") if bet.created_at else None
+        })
+
+    return {
+        "items": items,
+        "total": total_count,
+        "page": page,
+        "limit": limit,
+        "total_pages": (total_count + limit - 1) // limit if limit > 0 else 1
     }
