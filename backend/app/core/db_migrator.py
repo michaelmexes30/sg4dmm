@@ -105,22 +105,9 @@ def auto_migrate_sqlite_to_active_db(engine, force: bool = False):
     finally:
         db.close()
 
-    # 3. On PostgreSQL: drop rigid constraints and clean child tables first
+    # 3. On PostgreSQL: clean tables in child-to-parent order
     if is_postgres:
         with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as clean_conn:
-            # Drop constraints that block batch imports
-            for drop_sql in [
-                "ALTER TABLE bet_slips DROP CONSTRAINT IF EXISTS bet_slips_draw_id_fkey",
-                "ALTER TABLE users DROP CONSTRAINT IF EXISTS users_agent_id_fkey",
-                "ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_user_id_fkey",
-                "ALTER TABLE agent_commission_logs DROP CONSTRAINT IF EXISTS agent_commission_logs_agent_id_fkey",
-                "ALTER TABLE agent_level_logs DROP CONSTRAINT IF EXISTS agent_level_logs_agent_id_fkey"
-            ]:
-                try:
-                    clean_conn.execute(text(drop_sql))
-                except Exception:
-                    pass
-
             try:
                 clean_conn.execute(text("UPDATE users SET agent_id = NULL"))
             except Exception:
