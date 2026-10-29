@@ -70,6 +70,17 @@ def auto_migrate_sqlite_to_active_db(engine):
 
     print(f"db_migrator: Found historical SQLite database at {sqlite_file}")
 
+    is_postgres = not str(engine.url).startswith("sqlite")
+
+    # 1. First break any hanging PostgreSQL locks and drop fkey constraints
+    if is_postgres:
+        try:
+            with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as init_conn:
+                init_conn.execute(text("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND datname = current_database()"))
+                init_conn.execute(text("ALTER TABLE bet_slips DROP CONSTRAINT IF EXISTS bet_slips_draw_id_fkey"))
+        except Exception as init_ex:
+            print(f"db_migrator init notice: {init_ex}")
+
     from app.database import SessionLocal
     db: Session = SessionLocal()
     try:
@@ -88,23 +99,9 @@ def auto_migrate_sqlite_to_active_db(engine):
     sqlite_conn = sqlite3.connect(sqlite_file)
     sqlite_conn.row_factory = sqlite3.Row
 
-    is_postgres = not str(engine.url).startswith("sqlite")
-
     # If active database has < 50 users (initial seed), clean them up first so IDs map 1-to-1
     if is_postgres:
         with engine.begin() as cleanup_conn:
-            # Drop foreign key constraint on bet_slips.draw_id if it exists to allow 2D/3D draws
-            try:
-                cleanup_conn.execute(text("ALTER TABLE bet_slips DROP CONSTRAINT IF EXISTS bet_slips_draw_id_fkey"))
-            except Exception as fk_ex:
-                print(f"db_migrator: drop fkey notice: {fk_ex}")
-
-            # Terminate any previous hanging queries
-            try:
-                cleanup_conn.execute(text("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND datname = current_database() AND state in ('idle in transaction')"))
-            except Exception:
-                pass
-
             tables_to_clean = [
                 "bet_items", "bet_slips", "agent_commission_logs", "agent_level_logs",
                 "weekly_bonuses", "transactions", "financial_ledger", "users",
@@ -115,7 +112,6 @@ def auto_migrate_sqlite_to_active_db(engine):
                     cleanup_conn.execute(text(f"DELETE FROM {tbl}"))
                 except Exception as tr_ex:
                     print(f"db_migrator: Delete {tbl} notice: {tr_ex}")
-                    print(f"db_migrator: Truncate {tbl} notice: {tr_ex}")
 
     # Now migrate each table in its own transaction block to guarantee isolation
     for table_name, model in TABLE_MODEL_MAP:
