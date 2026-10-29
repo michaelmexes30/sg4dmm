@@ -193,7 +193,7 @@ async def lifespan(app: FastAPI):
         poll_and_settle_2d_job,
         "cron",
         hour="12,16",
-        minute="1,2,5,30,31,35,45",
+        minute="1,2,3,4,5,6,7,8,9,10,30,31,32,33,34,35,36,37,38,39,40,45",
         id="thai_2d_settlement_cron",
         replace_existing=True
     )
