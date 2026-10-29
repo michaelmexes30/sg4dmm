@@ -4137,45 +4137,60 @@ def create_admin_notification(
 def ensure_twod_draws_exist(db: Session):
     curr = now_mmt()
     today_str = curr.strftime("%Y-%m-%d")
+    is_weekend = curr.weekday() >= 5
     is_past_morning = curr.hour > 12 or (curr.hour == 12 and curr.minute >= 1)
     is_past_evening = curr.hour > 16 or (curr.hour == 16 and curr.minute >= 30)
 
-    from app.core.twod_service import settle_twod_draw_internal
+    from app.core.twod_service import settle_twod_draw_internal, get_live_twod_result
+
+    # On weekends (Saturday & Sunday), Thai Stock Exchange is closed
+    if is_weekend:
+        return
 
     morning = db.query(TwoDDraw).filter(TwoDDraw.draw_date == today_str, TwoDDraw.session == "morning").first()
     if not morning:
+        init_m_status = "OPEN" if (curr.hour >= 8 and not is_past_morning) else ("CLOSED" if is_past_morning else "UPCOMING")
         morning = TwoDDraw(
             draw_date=today_str,
             session="morning",
             draw_time_mmt="12:01 PM MMT",
             cutoff_time_mmt="11:30 AM MMT",
-            status="OPEN"
+            status=init_m_status
         )
         db.add(morning)
         db.flush()
+    else:
+        if morning.status == "UPCOMING" and curr.hour >= 8 and not is_past_morning:
+            morning.status = "OPEN"
+        elif morning.status == "OPEN" and (curr.hour > 11 or (curr.hour == 11 and curr.minute >= 30)) and not is_past_morning:
+            morning.status = "CLOSED"
 
     if is_past_morning:
-        from app.core.twod_service import get_live_twod_result
-        if morning.status == "OPEN" or morning.winning_number in ["85", "00", None]:
+        if morning.status in ["OPEN", "CLOSED", "UPCOMING"] or morning.winning_number in ["85", "00", None]:
             res = get_live_twod_result("morning")
             if res and res.get("twod"):
                 settle_twod_draw_internal(db, morning, res["twod"], res.get("set_index"), res.get("set_value"))
 
     evening = db.query(TwoDDraw).filter(TwoDDraw.draw_date == today_str, TwoDDraw.session == "evening").first()
     if not evening:
+        init_e_status = "OPEN" if (is_past_morning and curr.hour < 16) else ("CLOSED" if curr.hour >= 16 else "UPCOMING")
         evening = TwoDDraw(
             draw_date=today_str,
             session="evening",
             draw_time_mmt="04:30 PM MMT",
             cutoff_time_mmt="04:00 PM MMT",
-            status="OPEN"
+            status=init_e_status
         )
         db.add(evening)
         db.flush()
+    else:
+        if evening.status == "UPCOMING" and is_past_morning and curr.hour < 16:
+            evening.status = "OPEN"
+        elif evening.status == "OPEN" and curr.hour >= 16 and not is_past_evening:
+            evening.status = "CLOSED"
 
     if is_past_evening:
-        from app.core.twod_service import get_live_twod_result
-        if evening.status == "OPEN" or evening.winning_number in ["84", "00", None]:
+        if evening.status in ["OPEN", "CLOSED", "UPCOMING"] or evening.winning_number in ["84", "00", None]:
             res = get_live_twod_result("evening")
             if res and res.get("twod"):
                 settle_twod_draw_internal(db, evening, res["twod"], res.get("set_index"), res.get("set_value"))

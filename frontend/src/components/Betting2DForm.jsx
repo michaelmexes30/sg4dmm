@@ -330,6 +330,17 @@ export default function Betting2DForm({ onOpenDeposit, onBetPlaced }) {
               })}
             </div>
 
+            {/* Market Closed / Notice Banner */}
+            {activeDrawData?.market_status === 'CLOSED' && (
+              <div className="mt-3 bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 text-xs text-amber-300 font-sans flex items-center gap-3">
+                <span className="text-lg">🌙</span>
+                <div className="space-y-0.5">
+                  <div className="font-bold text-amber-200">{activeDrawData.market_message}</div>
+                  <div className="text-[11px] text-slate-400">ဖွင့်ချိန်: နံနက် ၀၈:၀၀ နာရီ မှ ၁၁:၃၀ AM / ၁၂:၀၁ PM မှ ၀၄:၀၀ PM</div>
+                </div>
+              </div>
+            )}
+
             {/* Live Thai SET Status Bar */}
             <div className="pt-3 border-t border-emerald-500/20 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
               <div className="flex items-center gap-2">
@@ -725,7 +736,14 @@ export default function Betting2DForm({ onOpenDeposit, onBetPlaced }) {
 
           {/* Submit Action */}
           <div className="mt-4">
-            {!hasSufficientFunds && totalStake > 0 ? (
+            {activeDrawData?.market_status === 'CLOSED' || (activeDrawData?.sessions && activeDrawData.sessions.every(s => s.status === 'SETTLED')) ? (
+              <button
+                disabled
+                className="w-full py-3.5 rounded-2xl bg-slate-800 text-slate-400 font-bold text-xs flex items-center justify-center gap-2 border border-slate-700 cursor-not-allowed shadow-inner"
+              >
+                <span>🔒 ယနေ့ 2D ပွဲစဉ်များ ပြီးဆုံးပါပြီ (နံနက် ၀၈:၀၀ နာရီတွင် ပြန်ဖွင့်ပါမည်)</span>
+              </button>
+            ) : !hasSufficientFunds && totalStake > 0 ? (
               <button
                 onClick={onOpenDeposit}
                 className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-sm uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-amber-950 cursor-pointer"

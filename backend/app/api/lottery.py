@@ -356,11 +356,41 @@ def get_2d_active_draw(db: Session = Depends(get_db)):
     if not active_session and draws_data:
         active_session = draws_data[-1]
 
+    curr_mmt = now_mmt()
+    is_weekend = curr_mmt.weekday() >= 5
+    if is_weekend:
+        market_status = "CLOSED"
+        next_open_time = "တနင်္လာနေ့ နံနက် ၀၈:၀၀ နာရီ"
+        market_message = "စနေ၊ တနင်္ဂနွေ ထိုင်းစတော့ဈေးကွက် ပိတ်ပါသဖြင့် 2D ပွဲစဉ် မရှိပါ။ တနင်္လာနေ့ နံနက် ၀၈:၀၀ နာရီတွင် ပြန်လည်ဖွင့်လှစ်ပါမည်။"
+    elif curr_mmt.hour > 16 or (curr_mmt.hour == 16 and curr_mmt.minute >= 30):
+        market_status = "CLOSED"
+        next_open_time = "တနင်္လာနေ့ နံနက် ၀၈:၀၀ နာရီ" if curr_mmt.weekday() == 4 else "မနက်ဖြန် နံနက် ၀၈:၀၀ နာရီ"
+        market_message = f"ယနေ့ 2D ပွဲစဉ်များ ပြီးဆုံးသွားပါပြီခင်ဗျာ။ နောက်ပွဲစဉ်ကို {next_open_time}တွင် ပြန်လည်ဖွင့်လှစ်ပေးပါမည်။"
+    elif curr_mmt.hour < 8:
+        market_status = "UPCOMING"
+        next_open_time = "ယနေ့ နံနက် ၀၈:၀၀ နာရီ"
+        market_message = "ယနေ့ 2D မနက်ပိုင်းပွဲစဉ်ကို နံနက် ၀၈:၀၀ နာရီတွင် စတင်ဖွင့်လှစ်ပေးပါမည်ခင်ဗျာ။"
+    elif curr_mmt.hour >= 16:
+        market_status = "WAITING_RESULT"
+        next_open_time = "၀၄:၃၀ PM အပြီး"
+        market_message = "ညနေပိုင်း ထိုးကြေးပိတ်ချိန် (04:00 PM) ကျော်လွန်သွားပါပြီ။ ၀၄:၃၀ PM ထွက်ဂဏန်း စောင့်ဆိုင်းနေပါသည်..."
+    elif curr_mmt.hour == 11 and curr_mmt.minute >= 30:
+        market_status = "WAITING_RESULT"
+        next_open_time = "၁၂:၀၁ PM အပြီး"
+        market_message = "မနက်ပိုင်း ထိုးကြေးပိတ်ချိန် (11:30 AM) ကျော်လွန်သွားပါပြီ။ ၁၂:၀၁ PM ထွက်ဂဏန်း စောင့်ဆိုင်းနေပါသည်..."
+    else:
+        market_status = "OPEN"
+        next_open_time = None
+        market_message = "2D ထိုးကြေး လက်ခံနေပါသည်"
+
     return {
         "is_enabled": is_enabled,
         "payout_multiplier": payout_mult,
         "min_bet": min_bet,
         "max_bet": max_bet,
+        "market_status": market_status,
+        "next_open_time_mmt": next_open_time,
+        "market_message": market_message,
         "sessions": draws_data,
         "active_session": active_session
     }

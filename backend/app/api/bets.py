@@ -556,6 +556,34 @@ def place_2d_bet_slip(
     if draw.status != "OPEN":
         raise HTTPException(status_code=400, detail=f"2D {draw.session} ပွဲစဉ်အား ပိတ်ထားပြီးဖြစ်ပါသည်")
 
+    curr_mmt = now_mmt()
+    today_str = curr_mmt.strftime("%Y-%m-%d")
+
+    # Time-based operational boundaries (Opens at 08:00 AM MMT, Cutoffs: 11:30 AM & 04:00 PM)
+    if draw.draw_date == today_str:
+        if curr_mmt.hour < 8:
+            raise HTTPException(
+                status_code=400,
+                detail="2D ထိုးကြေးကို နံနက် ၀၈:၀၀ နာရီတွင် စတင်ဖွင့်လှစ်ပေးပါမည် (Betting opens at 08:00 AM MMT)."
+            )
+        if draw.session == "morning":
+            if curr_mmt.hour > 11 or (curr_mmt.hour == 11 and curr_mmt.minute >= 30):
+                raise HTTPException(
+                    status_code=400,
+                    detail="မနက်ပိုင်း 2D ထိုးကြေးပိတ်ချိန် (11:30 AM) ကျော်လွန်သွားပါပြီ (Morning session betting closed)."
+                )
+        elif draw.session == "evening":
+            if curr_mmt.hour < 12 or (curr_mmt.hour == 12 and curr_mmt.minute < 1):
+                raise HTTPException(
+                    status_code=400,
+                    detail="ညနေပိုင်း 2D ပွဲစဉ်ကို မနက်ပိုင်း ထွက်ဂဏန်း ထွက်ပြီးနောက် ၁၂:၀၁ PM တွင် ဖွင့်လှစ်ပေးပါမည်။"
+                )
+            if curr_mmt.hour >= 16:
+                raise HTTPException(
+                    status_code=400,
+                    detail="ညနေပိုင်း 2D ထိုးကြေးပိတ်ချိန် (04:00 PM) ကျော်လွန်သွားပါပြီ (Evening session betting closed)."
+                )
+
     if not req.items or len(req.items) == 0:
         raise HTTPException(status_code=400, detail="ကျေးဇူးပြု၍ အနည်းဆုံး 2D ဂဏန်း ၁ လုံး ရွေးချယ်ပါ")
 
