@@ -5362,10 +5362,11 @@ def get_minigames_admin_bets(
 
 @router.post("/system/sync-sqlite-to-postgres")
 def sync_sqlite_to_postgres_endpoint(
+    force: bool = False,
     admin_user: User = Depends(get_current_admin)
 ):
     """Manually triggers migration of historical records and SLIP-2D-20261029-BB4D77 into PostgreSQL."""
     from app.database import engine
     from app.core.db_migrator import auto_migrate_sqlite_to_active_db
-    result = auto_migrate_sqlite_to_active_db(engine)
+    result = auto_migrate_sqlite_to_active_db(engine, force=force)
     return result

@@ -45,7 +45,7 @@ def parse_dt(v):
     except Exception:
         return None
 
-def auto_migrate_sqlite_to_active_db(engine):
+def auto_migrate_sqlite_to_active_db(engine, force: bool = False):
     """
     Automatically detects if the connected database (e.g. fresh PostgreSQL on Render)
     has zero or few users, and populates all historical data from backend/sg4dmyanmar.db.
@@ -93,8 +93,8 @@ def auto_migrate_sqlite_to_active_db(engine):
     try:
         current_users_count = db.query(func.count(User.id)).scalar() or 0
         current_bets_count = db.query(func.count(BetSlip.id)).scalar() or 0
-        if current_users_count >= 50 and current_bets_count >= 10:
-            diagnostic["restored_2d"] = _restore_2d_bet_slip(db)
+        if not force and current_users_count >= 50 and current_bets_count >= 10:
+            diagnostic["user_2d_slip_restored"] = _restore_2d_bet_slip(db)
             diagnostic["success"] = True
             diagnostic["message"] = f"DB already has {current_users_count} users."
             diagnostic["final_users_count"] = current_users_count
@@ -120,6 +120,11 @@ def auto_migrate_sqlite_to_active_db(engine):
                     clean_conn.execute(text(drop_sql))
                 except Exception:
                     pass
+
+            try:
+                clean_conn.execute(text("UPDATE users SET agent_id = NULL"))
+            except Exception:
+                pass
 
             tables_to_clean = [
                 "notifications", "telegram_verifications", "telegram_chat_mappings",
@@ -154,6 +159,7 @@ def auto_migrate_sqlite_to_active_db(engine):
 
             valid_cols = {col.name: col for col in model.__table__.columns}
             records = []
+            user_agent_map = {}
             for r in sqlite_rows:
                 d = dict(r)
                 clean = {}
@@ -167,6 +173,11 @@ def auto_migrate_sqlite_to_active_db(engine):
                                 clean[k] = v
                         except Exception:
                             clean[k] = v
+
+                if table_name == 'users' and clean.get('agent_id'):
+                    user_agent_map[clean['id']] = clean['agent_id']
+                    clean['agent_id'] = None
+
                 records.append(clean)
 
             chunk_size = 500
@@ -174,6 +185,13 @@ def auto_migrate_sqlite_to_active_db(engine):
                 for i in range(0, len(records), chunk_size):
                     chunk = records[i:i + chunk_size]
                     conn.execute(model.__table__.insert(), chunk)
+
+                if user_agent_map:
+                    for uid, aid in user_agent_map.items():
+                        try:
+                            conn.execute(text("UPDATE users SET agent_id = :aid WHERE id = :uid"), {"aid": aid, "uid": uid})
+                        except Exception:
+                            pass
 
                 if is_postgres:
                     try:
