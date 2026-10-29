@@ -165,6 +165,9 @@ def auto_migrate_sqlite_to_active_db(engine, force: bool = False):
                     user_agent_map[clean['id']] = clean['agent_id']
                     clean['agent_id'] = None
 
+                if table_name == 'lottery_draws' and clean.get('draw_time_mmt'):
+                    clean['draw_time_mmt'] = clean['draw_time_mmt'][:30]
+
                 records.append(clean)
 
             chunk_size = 500
@@ -264,11 +267,17 @@ def _restore_2d_bet_slip(db: Session):
             db.commit()
             db.refresh(draw)
 
-        # 3. Check if SLIP-2D-20261029-BB4D77 already exists
+        # 3. Check if SLIP-2D-20261029-BB4D77 already exists with all 20 items
         slip_code = "SLIP-2D-20261029-BB4D77"
         existing_slip = db.query(BetSlip).filter(BetSlip.slip_code == slip_code).first()
         if existing_slip:
-            return True
+            existing_items_count = db.query(func.count(BetItem.id)).filter(BetItem.slip_id == existing_slip.id).scalar() or 0
+            if existing_items_count >= 20:
+                return True
+            # Otherwise clean up incomplete slip and recreate cleanly with all 20 items
+            db.query(BetItem).filter(BetItem.slip_id == existing_slip.id).delete()
+            db.delete(existing_slip)
+            db.commit()
 
         # 4. Create BetSlip
         created_time = datetime(2026, 10, 29, 14, 56, 9)
