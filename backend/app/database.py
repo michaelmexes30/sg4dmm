@@ -4,22 +4,28 @@ from sqlalchemy.orm import sessionmaker
 from app.config import settings
 
 db_url = settings.DATABASE_URL
-# Render provides URLs starting with 'postgres://', which SQLAlchemy 2.0 requires to be 'postgresql://'
-if db_url.startswith("postgres://"):
-    db_url = db_url.replace("postgres://", "postgresql://", 1)
 
-# SQLite multi-threaded support vs PostgreSQL connection pooling
 if db_url.startswith("sqlite"):
     connect_args = {"check_same_thread": False}
     engine = create_engine(db_url, connect_args=connect_args, echo=False)
 else:
-    # PostgreSQL configuration on Render
-    engine = create_engine(
-        db_url,
-        pool_pre_ping=True,      # Automatically reconnects dropped connections
-        pool_recycle=300,        # Recycles connections every 5 minutes
-        echo=False
-    )
+    # Render provides URLs starting with 'postgres://', which SQLAlchemy 2.0 requires to be 'postgresql://'
+    clean_url = db_url
+    if clean_url.startswith("postgres://"):
+        clean_url = clean_url.replace("postgres://", "postgresql://", 1)
+
+    try:
+        # 1. Try modern psycopg (psycopg 3)
+        psycopg3_url = clean_url.replace("postgresql://", "postgresql+psycopg://", 1)
+        engine = create_engine(psycopg3_url, pool_pre_ping=True, pool_recycle=300, echo=False)
+    except Exception:
+        try:
+            # 2. Try psycopg2
+            psycopg2_url = clean_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+            engine = create_engine(psycopg2_url, pool_pre_ping=True, pool_recycle=300, echo=False)
+        except Exception:
+            # 3. Fallback to standard postgresql://
+            engine = create_engine(clean_url, pool_pre_ping=True, pool_recycle=300, echo=False)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

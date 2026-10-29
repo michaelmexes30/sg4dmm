@@ -35,32 +35,18 @@ scheduler = BackgroundScheduler(timezone=pytz.timezone(settings.TIMEZONE_MMT))
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Ensure DB schema and seeds
+    # Startup: 1. Ensure all tables are created cleanly with SQLAlchemy ORM (works across SQLite and PostgreSQL)
     from sqlalchemy import text
     try:
+        Base.metadata.create_all(bind=engine)
+    except Exception as create_ex:
+        print(f"Base.metadata.create_all notice: {create_ex}")
+
+    # 2. Schema compatibility and column auto-migrations
+    try:
         with engine.begin() as conn:
-            conn.execute(text("""
-                CREATE TABLE IF NOT EXISTS bet_edit_logs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    slip_id INTEGER NOT NULL,
-                    bet_item_id INTEGER NOT NULL,
-                    old_number VARCHAR(10) NOT NULL,
-                    new_number VARCHAR(10) NOT NULL,
-                    admin_id INTEGER NOT NULL,
-                    admin_name VARCHAR(100) NOT NULL,
-                    note VARCHAR(255),
-                    created_at DATETIME
-                )
-            """))
             try:
                 conn.execute(text("ALTER TABLE bet_items ADD COLUMN edit_logs_json TEXT DEFAULT '[]'"))
-            except Exception:
-                pass
-
-            try:
-                # Fix any previous duplicate-expanded bet item 11137
-                conn.execute(text("""UPDATE bet_items SET combination_count = 1, combinations_json = '["4440"]', item_stake = 1000.0 WHERE id = 11137 AND number = "4440" AND combination_count > 1"""))
-                conn.execute(text("UPDATE bet_slips SET total_stake = (SELECT SUM(item_stake) FROM bet_items WHERE slip_id = bet_slips.id) WHERE slip_code = 'SLIP-20261022-46DB76'"))
             except Exception:
                 pass
 
@@ -115,7 +101,6 @@ async def lifespan(app: FastAPI):
     except Exception as ddl_ex:
         print(f"Lifespan schema update notice: {ddl_ex}")
 
-    Base.metadata.create_all(bind=engine)
     seed_database()
     try:
         seed_admin_and_system_data()
