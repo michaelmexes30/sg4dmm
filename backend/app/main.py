@@ -135,8 +135,9 @@ async def lifespan(app: FastAPI):
         print(f"Lifespan schema update notice: {ddl_ex}")
 
     try:
+        import threading
         from app.core.db_migrator import auto_migrate_sqlite_to_active_db
-        auto_migrate_sqlite_to_active_db(engine)
+        threading.Thread(target=auto_migrate_sqlite_to_active_db, args=(engine,), daemon=True).start()
     except Exception as mig_ex:
         print(f"auto_migrate_sqlite_to_active_db notice: {mig_ex}")
 

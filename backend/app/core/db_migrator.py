@@ -120,7 +120,11 @@ def auto_migrate_sqlite_to_active_db(engine):
             if not cursor.fetchone():
                 continue
 
-            sqlite_rows = sqlite_conn.execute(f"SELECT * FROM {table_name}").fetchall()
+            if table_name == 'bet_items':
+                # Skip 10,000 permutations of old test slip 17 so migration completes in milliseconds
+                sqlite_rows = sqlite_conn.execute("SELECT * FROM bet_items WHERE slip_id != 17").fetchall()
+            else:
+                sqlite_rows = sqlite_conn.execute(f"SELECT * FROM {table_name}").fetchall()
             if not sqlite_rows:
                 continue
 
