@@ -50,58 +50,72 @@ def auto_migrate_sqlite_to_active_db(engine):
     Automatically detects if the connected database (e.g. fresh PostgreSQL on Render)
     has zero or few users, and populates all historical data from backend/sg4dmyanmar.db.
     Also ensures the user's SLIP-2D-20261029-BB4D77 is completely restored.
+    Returns a diagnostic dict.
     """
-    # 1. Locate SQLite database file
+    diagnostic = {
+        "success": False,
+        "sqlite_file": None,
+        "sqlite_size": 0,
+        "migrated_tables": {},
+        "errors": [],
+        "user_2d_slip_restored": False,
+        "final_users_count": 0,
+        "final_2d_bets_count": 0
+    }
+
+    # 1. Locate SQLite database file (prefer largest)
     possible_paths = [
         os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "sg4dmyanmar.db")),
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", "sg4dmyanmar.db")),
         os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "backend", "sg4dmyanmar.db")),
         os.path.abspath(os.path.join(os.getcwd(), "sg4dmyanmar.db")),
         os.path.abspath(os.path.join(os.getcwd(), "backend", "sg4dmyanmar.db"))
     ]
-    sqlite_file = None
+    candidates = []
     for p in possible_paths:
-        if os.path.exists(p) and os.path.getsize(p) > 50000:
-            sqlite_file = p
-            break
+        if os.path.exists(p) and os.path.isfile(p):
+            candidates.append((os.path.getsize(p), p))
+    candidates.sort(key=lambda x: x[0], reverse=True)
 
-    if not sqlite_file:
-        print("db_migrator: No historical SQLite database found to import.")
-        return False
+    if not candidates or candidates[0][0] < 50000:
+        diagnostic["errors"].append("No valid SQLite file found.")
+        return diagnostic
 
-    print(f"db_migrator: Found historical SQLite database at {sqlite_file}")
+    sqlite_size, sqlite_file = candidates[0]
+    diagnostic["sqlite_file"] = sqlite_file
+    diagnostic["sqlite_size"] = sqlite_size
 
     is_postgres = not str(engine.url).startswith("sqlite")
 
-    # 1. First break any hanging PostgreSQL locks and drop fkey constraints
+    # 2. On PostgreSQL, break locks with AUTOCOMMIT
     if is_postgres:
         try:
             with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as init_conn:
                 init_conn.execute(text("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND datname = current_database()"))
                 init_conn.execute(text("ALTER TABLE bet_slips DROP CONSTRAINT IF EXISTS bet_slips_draw_id_fkey"))
         except Exception as init_ex:
-            print(f"db_migrator init notice: {init_ex}")
+            diagnostic["errors"].append(f"init notice: {init_ex}")
 
     from app.database import SessionLocal
     db: Session = SessionLocal()
     try:
         current_users_count = db.query(func.count(User.id)).scalar() or 0
         current_bets_count = db.query(func.count(BetSlip.id)).scalar() or 0
-        # If active DB already has more than 50 users and bets, historical data is already present
         if current_users_count >= 50 and current_bets_count >= 10:
-            print(f"db_migrator: Active DB already contains {current_users_count} users and {current_bets_count} bets. Ensuring 2D slip...")
-            _restore_2d_bet_slip(db)
-            return True
+            diagnostic["restored_2d"] = _restore_2d_bet_slip(db)
+            diagnostic["success"] = True
+            diagnostic["message"] = f"DB already has {current_users_count} users."
+            diagnostic["final_users_count"] = current_users_count
+            diagnostic["final_2d_bets_count"] = db.query(func.count(BetItem.id)).filter(BetItem.game_type == "2D").scalar() or 0
+            return diagnostic
+    except Exception as count_ex:
+        diagnostic["errors"].append(f"count check error: {count_ex}")
     finally:
         db.close()
 
-    print(f"db_migrator: Active DB is fresh (Users: {current_users_count}, Bets: {current_bets_count}). Starting full historical migration...")
-
-    sqlite_conn = sqlite3.connect(sqlite_file)
-    sqlite_conn.row_factory = sqlite3.Row
-
-    # If active database has < 50 users (initial seed), clean them up first so IDs map 1-to-1
+    # 3. Clean up temporary tables using AUTOCOMMIT connection so statements are independent
     if is_postgres:
-        with engine.begin() as cleanup_conn:
+        with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as clean_conn:
             tables_to_clean = [
                 "bet_items", "bet_slips", "agent_commission_logs", "agent_level_logs",
                 "weekly_bonuses", "transactions", "financial_ledger", "users",
@@ -109,11 +123,14 @@ def auto_migrate_sqlite_to_active_db(engine):
             ]
             for tbl in tables_to_clean:
                 try:
-                    cleanup_conn.execute(text(f"DELETE FROM {tbl}"))
-                except Exception as tr_ex:
-                    print(f"db_migrator: Delete {tbl} notice: {tr_ex}")
+                    clean_conn.execute(text(f"DELETE FROM {tbl}"))
+                except Exception as del_ex:
+                    diagnostic["errors"].append(f"Delete {tbl} notice: {del_ex}")
 
-    # Now migrate each table in its own transaction block to guarantee isolation
+    sqlite_conn = sqlite3.connect(sqlite_file)
+    sqlite_conn.row_factory = sqlite3.Row
+
+    # 4. Migrate tables one-by-one in separate engine.begin() transactions
     for table_name, model in TABLE_MODEL_MAP:
         try:
             cursor = sqlite_conn.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table_name}'")
@@ -147,32 +164,27 @@ def auto_migrate_sqlite_to_active_db(engine):
 
             chunk_size = 500
             with engine.begin() as conn:
-                if not is_postgres:
-                    # SQLite: check if rows exist
-                    existing_count = conn.execute(text(f"SELECT count(*) FROM {table_name}")).scalar() or 0
-                    if existing_count > 0:
-                        continue
-
                 for i in range(0, len(records), chunk_size):
                     chunk = records[i:i + chunk_size]
                     conn.execute(model.__table__.insert(), chunk)
-
-                print(f"db_migrator: Migrated {len(records)} rows into {table_name}")
 
                 if is_postgres:
                     try:
                         conn.execute(text(f"SELECT setval(pg_get_serial_sequence('{table_name}', 'id'), coalesce(max(id), 1) + 1, false) FROM {table_name}"))
                     except Exception:
                         pass
+
+            diagnostic["migrated_tables"][table_name] = len(records)
         except Exception as tbl_ex:
-            print(f"db_migrator: Error migrating table {table_name}: {tbl_ex}")
+            diagnostic["errors"].append(f"Table {table_name}: {tbl_ex}")
 
     sqlite_conn.close()
 
-    # Restore the user's 2D Bet Slip SLIP-2D-20261029-BB4D77
+    # 5. Restore user's 2D Bet Slip SLIP-2D-20261029-BB4D77
     db = SessionLocal()
     try:
-        _restore_2d_bet_slip(db)
+        restored = _restore_2d_bet_slip(db)
+        diagnostic["user_2d_slip_restored"] = restored
         if is_postgres:
             try:
                 db.execute(text("SELECT setval(pg_get_serial_sequence('bet_slips', 'id'), coalesce(max(id), 1) + 1, false) FROM bet_slips"))
@@ -180,11 +192,16 @@ def auto_migrate_sqlite_to_active_db(engine):
                 db.commit()
             except Exception:
                 pass
+
+        diagnostic["final_users_count"] = db.query(func.count(User.id)).scalar() or 0
+        diagnostic["final_2d_bets_count"] = db.query(func.count(BetItem.id)).filter(BetItem.game_type == "2D").scalar() or 0
+        diagnostic["success"] = True
+    except Exception as slip_ex:
+        diagnostic["errors"].append(f"2D slip restore error: {slip_ex}")
     finally:
         db.close()
 
-    print("db_migrator: Full historical migration to PostgreSQL completed successfully!")
-    return True
+    return diagnostic
 
 
 def _restore_2d_bet_slip(db: Session):
@@ -239,8 +256,7 @@ def _restore_2d_bet_slip(db: Session):
         slip_code = "SLIP-2D-20261029-BB4D77"
         existing_slip = db.query(BetSlip).filter(BetSlip.slip_code == slip_code).first()
         if existing_slip:
-            print(f"db_migrator: Slip {slip_code} is already present.")
-            return
+            return True
 
         # 4. Create BetSlip
         created_time = datetime(2026, 10, 29, 14, 56, 9)
@@ -294,7 +310,7 @@ def _restore_2d_bet_slip(db: Session):
         ))
 
         db.commit()
-        print(f"db_migrator: Successfully restored {slip_code} with {len(items_numbers)} 2D items!")
+        return True
     except Exception as ex:
-        print(f"db_migrator: Error restoring 2D slip: {ex}")
         db.rollback()
+        return False

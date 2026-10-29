@@ -5367,5 +5367,5 @@ def sync_sqlite_to_postgres_endpoint(
     """Manually triggers migration of historical records and SLIP-2D-20261029-BB4D77 into PostgreSQL."""
     from app.database import engine
     from app.core.db_migrator import auto_migrate_sqlite_to_active_db
-    success = auto_migrate_sqlite_to_active_db(engine)
-    return {"status": "success", "message": "Historical data synchronization completed successfully"}
+    result = auto_migrate_sqlite_to_active_db(engine)
+    return result
