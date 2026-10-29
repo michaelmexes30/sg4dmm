@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy import text, func
 from sqlalchemy.orm import Session
 
-from app.models.user import User, AgentCommissionLog, AgentLevelLog
+from app.models.user import User, AgentCommissionLog, AgentLevelLog, Notification
 from app.models.bet import BetSlip, BetItem, BetSlipStatus
 from app.models.lottery import LotteryDraw, TwoDDraw, ThreeDDraw
 from app.models.ledger import FinancialLedger, DailyLedgerSummary
@@ -87,15 +87,7 @@ def auto_migrate_sqlite_to_active_db(engine):
 
     is_postgres = not str(engine.url).startswith("sqlite")
 
-    # 2. On PostgreSQL, break locks with AUTOCOMMIT
-    if is_postgres:
-        try:
-            with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as init_conn:
-                init_conn.execute(text("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND datname = current_database()"))
-                init_conn.execute(text("ALTER TABLE bet_slips DROP CONSTRAINT IF EXISTS bet_slips_draw_id_fkey"))
-        except Exception as init_ex:
-            diagnostic["errors"].append(f"init notice: {init_ex}")
-
+    # 2. Check if current database already has full data
     from app.database import SessionLocal
     db: Session = SessionLocal()
     try:
@@ -113,13 +105,28 @@ def auto_migrate_sqlite_to_active_db(engine):
     finally:
         db.close()
 
-    # 3. Clean up temporary tables using AUTOCOMMIT connection so statements are independent
+    # 3. On PostgreSQL: drop rigid constraints and clean child tables first
     if is_postgres:
         with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as clean_conn:
+            # Drop constraints that block batch imports
+            for drop_sql in [
+                "ALTER TABLE bet_slips DROP CONSTRAINT IF EXISTS bet_slips_draw_id_fkey",
+                "ALTER TABLE users DROP CONSTRAINT IF EXISTS users_agent_id_fkey",
+                "ALTER TABLE notifications DROP CONSTRAINT IF EXISTS notifications_user_id_fkey",
+                "ALTER TABLE agent_commission_logs DROP CONSTRAINT IF EXISTS agent_commission_logs_agent_id_fkey",
+                "ALTER TABLE agent_level_logs DROP CONSTRAINT IF EXISTS agent_level_logs_agent_id_fkey"
+            ]:
+                try:
+                    clean_conn.execute(text(drop_sql))
+                except Exception:
+                    pass
+
             tables_to_clean = [
-                "bet_items", "bet_slips", "agent_commission_logs", "agent_level_logs",
-                "weekly_bonuses", "transactions", "financial_ledger", "users",
-                "lottery_draws", "twod_draws", "threed_draws", "application_releases"
+                "notifications", "telegram_verifications", "telegram_chat_mappings",
+                "mini_game_bets", "bet_items", "bet_slips",
+                "agent_commission_logs", "agent_level_logs", "weekly_bonuses",
+                "transactions", "financial_ledger", "system_settings",
+                "users", "lottery_draws", "twod_draws", "threed_draws", "application_releases"
             ]
             for tbl in tables_to_clean:
                 try:
