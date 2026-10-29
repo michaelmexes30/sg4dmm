@@ -50,6 +50,31 @@ async def lifespan(app: FastAPI):
             except Exception:
                 pass
 
+            # Column size expansion for PostgreSQL
+            try:
+                conn.execute(text("ALTER TABLE lottery_draws ALTER COLUMN draw_time_mmt TYPE VARCHAR(100)"))
+                conn.execute(text("ALTER TABLE lottery_draws ALTER COLUMN draw_number TYPE VARCHAR(50)"))
+                conn.execute(text("ALTER TABLE lottery_draws ALTER COLUMN draw_date TYPE VARCHAR(50)"))
+            except Exception:
+                pass
+
+            try:
+                conn.execute(text("ALTER TABLE twod_draws ALTER COLUMN draw_time_mmt TYPE VARCHAR(100)"))
+                conn.execute(text("ALTER TABLE twod_draws ALTER COLUMN cutoff_time_mmt TYPE VARCHAR(100)"))
+            except Exception:
+                pass
+
+            try:
+                conn.execute(text("ALTER TABLE threed_draws ALTER COLUMN draw_time_mmt TYPE VARCHAR(100)"))
+                conn.execute(text("ALTER TABLE threed_draws ALTER COLUMN cutoff_time_mmt TYPE VARCHAR(100)"))
+            except Exception:
+                pass
+
+            try:
+                conn.execute(text("ALTER TABLE financial_ledger ALTER COLUMN reference_type TYPE VARCHAR(100)"))
+            except Exception:
+                pass
+
             try:
                 conn.execute(text("ALTER TABLE bet_slips ADD COLUMN game_type VARCHAR(10) DEFAULT '4D'"))
             except Exception:

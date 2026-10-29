@@ -130,7 +130,7 @@ def seed_database():
         active_draw = LotteryDraw(
             draw_number="5422/26",
             draw_date="2026-10-14",
-            draw_time_mmt="06:00 PM MMT (Singapore 4D Wed)",
+            draw_time_mmt="06:00 PM MMT",
             status=DrawStatus.OPEN,
             total_pool_stake=1250000.0,
             total_payout=0.0

@@ -15,9 +15,9 @@ class LotteryDraw(Base):
     __tablename__ = "lottery_draws"
 
     id = Column(Integer, primary_key=True, index=True)
-    draw_number = Column(String(20), unique=True, index=True, nullable=False) # e.g. "5422/26"
-    draw_date = Column(String(20), nullable=False) # e.g. "2026-10-14"
-    draw_time_mmt = Column(String(30), default="06:00 PM MMT") # Singapore draw 6:30 PM SGT = 5:00 PM MMT
+    draw_number = Column(String(50), unique=True, index=True, nullable=False) # e.g. "5422/26"
+    draw_date = Column(String(50), nullable=False) # e.g. "2026-10-14"
+    draw_time_mmt = Column(String(100), default="06:00 PM MMT") # Singapore draw 6:30 PM SGT = 5:00 PM MMT
     status = Column(Enum(DrawStatus), default=DrawStatus.OPEN, nullable=False)
     
     # Official Singapore 4D Results
@@ -77,10 +77,10 @@ class TwoDDraw(Base):
     __tablename__ = "twod_draws"
 
     id = Column(Integer, primary_key=True, index=True)
-    draw_date = Column(String(20), nullable=False, index=True) # e.g. "2026-10-23"
+    draw_date = Column(String(50), nullable=False, index=True) # e.g. "2026-10-23"
     session = Column(String(20), nullable=False, default="morning") # "morning" (12:01 PM) or "evening" (04:30 PM)
-    draw_time_mmt = Column(String(30), default="12:01 PM MMT")
-    cutoff_time_mmt = Column(String(30), default="11:30 AM MMT")
+    draw_time_mmt = Column(String(100), default="12:01 PM MMT")
+    cutoff_time_mmt = Column(String(100), default="11:30 AM MMT")
     status = Column(String(20), default="OPEN", nullable=False) # UPCOMING, OPEN, CLOSED, SETTLED
     
     # Official Thai SET Results
@@ -107,9 +107,9 @@ class ThreeDDraw(Base):
     __tablename__ = "threed_draws"
 
     id = Column(Integer, primary_key=True, index=True)
-    draw_date = Column(String(20), nullable=False, index=True) # e.g. "2026-11-01"
-    draw_time_mmt = Column(String(30), default="03:30 PM MMT")
-    cutoff_time_mmt = Column(String(30), default="02:30 PM MMT")
+    draw_date = Column(String(50), nullable=False, index=True) # e.g. "2026-11-01"
+    draw_time_mmt = Column(String(100), default="03:30 PM MMT")
+    cutoff_time_mmt = Column(String(100), default="02:30 PM MMT")
     status = Column(String(20), default="OPEN", nullable=False) # UPCOMING, OPEN, CLOSED, SETTLED
     
     # Official Thai Government Results

@@ -23,7 +23,7 @@ class FinancialLedger(Base):
     running_balance = Column(Float, default=0.0)
     
     reference_id = Column(String(64), nullable=True, index=True) # slip_code or transaction_id
-    reference_type = Column(String(30), nullable=True) # "TRANSACTION", "BET_SLIP", "COMMISSION", "BONUS"
+    reference_type = Column(String(100), nullable=True) # "TRANSACTION", "BET_SLIP", "COMMISSION", "BONUS"
     
     description = Column(Text, nullable=False)
     logged_at_mmt = Column(DateTime, default=now_mmt, index=True)
