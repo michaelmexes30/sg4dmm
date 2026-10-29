@@ -10,14 +10,12 @@ from app.core.security import hash_password
 from app.core.timezone_utils import now_mmt
 
 def seed_database():
-    Base.metadata.create_all(bind=engine)
     db = SessionLocal()
-
-    # Check if already seeded
-    if db.query(User).filter(User.phone == "09777777777").first():
-        print("Database already contains up-to-date agent seed data.")
-        db.close()
-        return
+    try:
+        # Check if already seeded
+        if db.query(User).filter(User.phone == "09777777777").first():
+            print("Database already contains up-to-date agent seed data.")
+            return
 
     print("Seeding updated SG4DMyanmar v2.0 data with Referral & Agent codes...")
 
@@ -150,8 +148,12 @@ def seed_database():
         db.add(welcome_notif)
 
     db.commit()
-    db.close()
-    print("Seed data successfully updated!")
+        print("Seed data successfully updated!")
+    except Exception as e:
+        db.rollback()
+        raise e
+    finally:
+        db.close()
 
 if __name__ == "__main__":
     seed_database()

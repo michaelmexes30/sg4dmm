@@ -132,7 +132,10 @@ async def lifespan(app: FastAPI):
     except Exception as mig_ex:
         print(f"auto_migrate_sqlite_to_active_db notice: {mig_ex}")
 
-    seed_database()
+    try:
+        seed_database()
+    except Exception as seed_ex:
+        print(f"seed_database warning: {seed_ex}")
 
     try:
         seed_admin_and_system_data()
