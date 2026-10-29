@@ -126,7 +126,14 @@ async def lifespan(app: FastAPI):
     except Exception as ddl_ex:
         print(f"Lifespan schema update notice: {ddl_ex}")
 
+    try:
+        from app.core.db_migrator import auto_migrate_sqlite_to_active_db
+        auto_migrate_sqlite_to_active_db(engine)
+    except Exception as mig_ex:
+        print(f"auto_migrate_sqlite_to_active_db notice: {mig_ex}")
+
     seed_database()
+
     try:
         seed_admin_and_system_data()
     except Exception as e:
