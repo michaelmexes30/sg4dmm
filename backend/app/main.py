@@ -249,7 +249,7 @@ os.makedirs(uploads_dir, exist_ok=True)
 os.makedirs(qr_dir, exist_ok=True)
 os.makedirs(releases_dir, exist_ok=True)
 
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, Response
 
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
@@ -304,12 +304,22 @@ def serve_legacy_admin():
         return FileResponse(legacy_file)
     return FileResponse(os.path.join(static_dir, "admin_dashboard.html"))
 
+# Head route handlers for uptime monitors (UptimeRobot, BetterUptime, Render health check)
+@app.head("/")
+@app.head("/api/health")
+@app.head("/backend")
+def uptime_head_check():
+    return Response(
+        status_code=200,
+        headers={"Content-Type": "application/json", "X-Health-Status": "healthy"}
+    )
+
 # Backend Admin Web UI Routes (Directly serves the Admin Backend Portal)
-@app.get("/")
-@app.get("/backend")
-@app.get("/backend/dashboard")
-@app.get("/backend/login")
-@app.get("/backend/{full_path:path}")
+@app.api_route("/", methods=["GET", "HEAD"])
+@app.api_route("/backend", methods=["GET", "HEAD"])
+@app.api_route("/backend/dashboard", methods=["GET", "HEAD"])
+@app.api_route("/backend/login", methods=["GET", "HEAD"])
+@app.api_route("/backend/{full_path:path}", methods=["GET", "HEAD"])
 def serve_backend_admin(full_path: str = ""):
     headers = {
         "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
@@ -320,8 +330,8 @@ def serve_backend_admin(full_path: str = ""):
         return FileResponse(frontend_index, headers=headers)
     return FileResponse(os.path.join(static_dir, "admin_dashboard.html"), headers=headers)
 
-@app.get("/admin")
-@app.get("/admin/{full_path:path}")
+@app.api_route("/admin", methods=["GET", "HEAD"])
+@app.api_route("/admin/{full_path:path}", methods=["GET", "HEAD"])
 def serve_admin(full_path: str = ""):
     headers = {
         "Cache-Control": "no-cache, no-store, must-revalidate, max-age=0",
@@ -342,7 +352,7 @@ app.include_router(lottery_router, prefix="/api")
 app.include_router(admin_router, prefix="/api")
 app.include_router(notifications_router, prefix="/api")
 
-@app.get("/api/health")
+@app.api_route("/api/health", methods=["GET", "HEAD"])
 def health_check():
     current_time = now_mmt()
     return {
