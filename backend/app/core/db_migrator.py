@@ -105,7 +105,7 @@ def auto_migrate_sqlite_to_active_db(engine, force: bool = False):
     finally:
         db.close()
 
-    # 3. On PostgreSQL: clean tables in child-to-parent order
+    # 3. On PostgreSQL: clean tables in child-to-parent order using TRUNCATE CASCADE
     if is_postgres:
         with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as clean_conn:
             try:
@@ -114,17 +114,24 @@ def auto_migrate_sqlite_to_active_db(engine, force: bool = False):
                 pass
 
             tables_to_clean = [
-                "notifications", "telegram_verifications", "telegram_chat_mappings",
-                "mini_game_bets", "bet_items", "bet_slips",
-                "agent_commission_logs", "agent_level_logs", "weekly_bonuses",
-                "transactions", "financial_ledger", "system_settings",
-                "users", "lottery_draws", "twod_draws", "threed_draws", "application_releases"
+                "agent_commission_logs", "agent_level_logs", "mini_game_bets",
+                "bet_items", "bet_slips", "notifications", "telegram_verifications",
+                "telegram_chat_mappings", "weekly_bonuses", "transactions",
+                "financial_ledger", "system_settings", "users",
+                "lottery_draws", "twod_draws", "threed_draws", "application_releases"
             ]
-            for tbl in tables_to_clean:
-                try:
-                    clean_conn.execute(text(f"DELETE FROM {tbl}"))
-                except Exception as del_ex:
-                    diagnostic["errors"].append(f"Delete {tbl} notice: {del_ex}")
+            try:
+                clean_conn.execute(text(f"TRUNCATE TABLE {', '.join(tables_to_clean)} CASCADE"))
+            except Exception as trunc_ex:
+                diagnostic["errors"].append(f"Truncate notice: {trunc_ex}")
+                for tbl in tables_to_clean:
+                    try:
+                        clean_conn.execute(text(f"TRUNCATE TABLE {tbl} CASCADE"))
+                    except Exception:
+                        try:
+                            clean_conn.execute(text(f"DELETE FROM {tbl}"))
+                        except Exception as del_ex:
+                            diagnostic["errors"].append(f"Delete {tbl} notice: {del_ex}")
 
     sqlite_conn = sqlite3.connect(sqlite_file)
     sqlite_conn.row_factory = sqlite3.Row
@@ -328,16 +335,18 @@ def _restore_2d_bet_slip(db: Session):
             db.add(item)
 
         # 6. Record in Financial Ledger
-        db.add(FinancialLedger(
-            entry_type="BET_REVENUE",
-            amount=tot_stake,
-            running_balance=float(user.balance or 0.0),
-            reference_id=slip_code,
-            reference_type="BET_SLIP_2D",
-            description=f"2D ထိုးကြေး ({slip_code}) - {len(items_numbers)} ကွက်",
-            logged_at_mmt=created_time,
-            date_str="2026-10-29"
-        ))
+        existing_ledger = db.query(FinancialLedger).filter(FinancialLedger.reference_id == slip_code).first()
+        if not existing_ledger:
+            db.add(FinancialLedger(
+                entry_type="BET_REVENUE",
+                amount=tot_stake,
+                running_balance=float(user.balance or 0.0),
+                reference_id=slip_code,
+                reference_type="BET_SLIP_2D",
+                description=f"2D ထိုးကြေး ({slip_code}) - {len(items_numbers)} ကွက်",
+                logged_at_mmt=created_time,
+                date_str="2026-10-29"
+            ))
 
         db.commit()
         return True
