@@ -129,6 +129,12 @@ def auto_migrate_sqlite_to_active_db(engine, force: bool = False):
     sqlite_conn = sqlite3.connect(sqlite_file)
     sqlite_conn.row_factory = sqlite3.Row
 
+    valid_user_ids = set()
+    try:
+        valid_user_ids = set(r[0] for r in sqlite_conn.execute("SELECT id FROM users").fetchall())
+    except Exception:
+        pass
+
     # 4. Migrate tables one-by-one in separate engine.begin() transactions
     for table_name, model in TABLE_MODEL_MAP:
         try:
@@ -167,6 +173,9 @@ def auto_migrate_sqlite_to_active_db(engine, force: bool = False):
 
                 if table_name == 'lottery_draws' and clean.get('draw_time_mmt'):
                     clean['draw_time_mmt'] = clean['draw_time_mmt'][:30]
+
+                if table_name == 'bet_slips' and clean.get('agent_id') and clean['agent_id'] not in valid_user_ids:
+                    clean['agent_id'] = None
 
                 records.append(clean)
 
