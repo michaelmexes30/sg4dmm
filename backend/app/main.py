@@ -36,14 +36,6 @@ scheduler = BackgroundScheduler(timezone=pytz.timezone(settings.TIMEZONE_MMT))
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     from sqlalchemy import text
-    # 0. PostgreSQL lock-breaker and timeout protection
-    if not str(engine.url).startswith("sqlite"):
-        try:
-            with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as term_conn:
-                term_conn.execute(text("SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE pid <> pg_backend_pid() AND datname = current_database()"))
-        except Exception as term_ex:
-            print(f"pg_terminate_backend startup notice: {term_ex}")
-
     # Startup: 1. Ensure all tables are created cleanly with SQLAlchemy ORM (works across SQLite and PostgreSQL)
     try:
         Base.metadata.create_all(bind=engine)
@@ -135,9 +127,8 @@ async def lifespan(app: FastAPI):
         print(f"Lifespan schema update notice: {ddl_ex}")
 
     try:
-        import threading
         from app.core.db_migrator import auto_migrate_sqlite_to_active_db
-        threading.Thread(target=auto_migrate_sqlite_to_active_db, args=(engine,), daemon=True).start()
+        auto_migrate_sqlite_to_active_db(engine)
     except Exception as mig_ex:
         print(f"auto_migrate_sqlite_to_active_db notice: {mig_ex}")
 
