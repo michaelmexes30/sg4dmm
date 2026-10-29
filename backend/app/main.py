@@ -29,6 +29,7 @@ from app.api.payments import router as payments_router
 from app.api.lottery import router as lottery_router
 from app.api.admin import router as admin_router
 from app.api.notifications import router as notifications_router
+from app.api.minigames import router as minigames_router
 
 scheduler = BackgroundScheduler(timezone=pytz.timezone(settings.TIMEZONE_MMT))
 
@@ -351,6 +352,7 @@ app.include_router(payments_router, prefix="/api")
 app.include_router(lottery_router, prefix="/api")
 app.include_router(admin_router, prefix="/api")
 app.include_router(notifications_router, prefix="/api")
+app.include_router(minigames_router, prefix="/api")
 
 @app.api_route("/api/health", methods=["GET", "HEAD"])
 def health_check():

@@ -3,6 +3,7 @@ import Navbar from './components/Navbar';
 import BettingForm from './components/BettingForm';
 import Betting2DForm from './components/Betting2DForm';
 import Betting3DForm from './components/Betting3DForm';
+import MiniGamesHub from './components/minigames/MiniGamesHub';
 import LiveSlip from './components/LiveSlip';
 import DepositModal from './components/DepositModal';
 import ResultsBoard from './components/ResultsBoard';
@@ -184,7 +185,7 @@ export default function App() {
           <div className="space-y-6">
             
             {/* Master Game Selector Tabs: 4D (Gold), 2D (Emerald), 3D (Purple) */}
-            <div className="bg-dark-card/90 backdrop-blur-xl border border-dark-border p-1.5 sm:p-2 rounded-3xl shadow-xl flex items-center justify-between gap-1.5 sm:gap-2">
+            <div className="bg-dark-card/90 backdrop-blur-xl border border-dark-border p-1.5 sm:p-2 rounded-3xl shadow-xl grid grid-cols-2 md:grid-cols-4 gap-1.5 sm:gap-2">
               
               {/* 4D Button (Gold Theme) */}
               <button
@@ -246,6 +247,26 @@ export default function App() {
                 </div>
               </button>
 
+              {/* Mini-Games Button (Exciting Gaming Crimson/Amber Theme) */}
+              <button
+                onClick={() => setActiveGame('GAMES')}
+                className={`flex-1 py-3 sm:py-3.5 px-3 rounded-2xl flex items-center justify-center gap-2 transition-all cursor-pointer relative overflow-hidden ${
+                  activeGame === 'GAMES'
+                    ? 'bg-gradient-to-r from-amber-500 via-rose-500 to-amber-600 text-white font-black shadow-lg shadow-rose-950/40 scale-[1.01] border border-amber-300'
+                    : 'bg-dark-bg/60 text-slate-400 hover:text-amber-300 hover:bg-dark-card border border-slate-800'
+                }`}
+              >
+                <span className="text-base sm:text-lg">🎮</span>
+                <div className="text-left leading-tight">
+                  <span className="block text-xs sm:text-sm font-black tracking-wide">
+                    Mini-Games
+                  </span>
+                  <span className={`text-[9px] sm:text-[10px] font-bold block ${activeGame === 'GAMES' ? 'text-amber-200' : 'text-amber-400/80'}`}>
+                    မီနီဂိမ်းများ (ချက်ချင်းပေါက်)
+                  </span>
+                </div>
+              </button>
+
             </div>
 
             {/* Active Game Content */}
@@ -296,6 +317,12 @@ export default function App() {
                 onBetPlaced={() => {
                   loadDraws();
                 }}
+              />
+            )}
+
+            {activeGame === 'GAMES' && (
+              <MiniGamesHub
+                onOpenDeposit={() => setIsDepositOpen(true)}
               />
             )}
 

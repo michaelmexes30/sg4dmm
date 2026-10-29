@@ -751,6 +751,36 @@ export const apiClient = {
 
   getAdminDashboardStats() {
     return this.request('/admin/dashboard-stats');
+  },
+
+  // Mini-Games API (Phase 1)
+  getMiniGamesConfig() {
+    return this.request('/minigames/config');
+  },
+
+  getMiniGamesHistory(limit = 20) {
+    return this.request(`/minigames/history?limit=${limit}`);
+  },
+
+  spinWheel(stake) {
+    return this.request('/minigames/wheel/spin', {
+      method: 'POST',
+      body: JSON.stringify({ stake }),
+    });
+  },
+
+  flipCoin(choice, stake) {
+    return this.request('/minigames/coin/flip', {
+      method: 'POST',
+      body: JSON.stringify({ choice, stake }),
+    });
+  },
+
+  rollDice(choice, stake) {
+    return this.request('/minigames/dice/roll', {
+      method: 'POST',
+      body: JSON.stringify({ choice, stake }),
+    });
   }
 };
 

@@ -6,6 +6,7 @@ from app.models.transaction import Transaction, TransactionType, GatewayType, Tr
 from app.models.ledger import FinancialLedger, LedgerEntryType, DailyLedgerSummary
 from app.models.bonus import WeeklyBonus
 from app.models.settings import SystemSetting, ApplicationRelease
+from app.models.mini_game import MiniGameBet
 
 __all__ = [
     "Base",
@@ -30,5 +31,6 @@ __all__ = [
     "DailyLedgerSummary",
     "WeeklyBonus",
     "SystemSetting",
-    "ApplicationRelease"
+    "ApplicationRelease",
+    "MiniGameBet"
 ]
