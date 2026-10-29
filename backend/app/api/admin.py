@@ -3468,9 +3468,19 @@ def get_reports_financial(
         if bd[0]:
             dates_query.add(str(bd[0]))
             
-    # Dates from LotteryDraws (Draw Dates for Payouts)
+    # Dates from LotteryDraws (4D, 2D, 3D Draw Dates for Payouts)
     draw_dates = db.query(LotteryDraw.draw_date).distinct().all()
     for dd in draw_dates:
+        if dd[0]:
+            dates_query.add(str(dd[0]))
+
+    twod_draw_dates = db.query(TwoDDraw.draw_date).distinct().all()
+    for dd in twod_draw_dates:
+        if dd[0]:
+            dates_query.add(str(dd[0]))
+
+    threed_draw_dates = db.query(ThreeDDraw.draw_date).distinct().all()
+    for dd in threed_draw_dates:
         if dd[0]:
             dates_query.add(str(dd[0]))
 
@@ -3536,44 +3546,84 @@ def get_reports_financial(
     tot_mini_net = 0.0
 
     for d_str in sorted_dates:
-        d_bet = db.query(func.coalesce(func.sum(BetSlip.total_stake), 0.0)).filter(
-            func.date(BetSlip.created_at) == d_str
-        ).scalar() or 0.0
+        try:
+            d_dt = datetime.strptime(d_str, "%Y-%m-%d")
+            d_start = d_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+            d_end = d_start + timedelta(days=1)
+        except Exception:
+            d_start = None
+            d_end = None
 
-        d_topup = db.query(func.coalesce(func.sum(Transaction.amount), 0.0)).filter(
-            Transaction.tx_type == TransactionType.DEPOSIT,
-            Transaction.status.in_([TransactionStatus.AUTO_APPROVED, TransactionStatus.COMPLETED]),
-            func.date(Transaction.created_at) == d_str
-        ).scalar() or 0.0
+        if d_start and d_end:
+            d_bet = db.query(func.coalesce(func.sum(BetSlip.total_stake), 0.0)).filter(
+                BetSlip.created_at >= d_start,
+                BetSlip.created_at < d_end
+            ).scalar() or 0.0
 
-        d_withdraw = db.query(func.coalesce(func.sum(Transaction.amount), 0.0)).filter(
-            Transaction.tx_type == TransactionType.WITHDRAWAL,
-            Transaction.status == TransactionStatus.COMPLETED,
-            func.date(Transaction.created_at) == d_str
-        ).scalar() or 0.0
+            d_topup = db.query(func.coalesce(func.sum(Transaction.amount), 0.0)).filter(
+                Transaction.tx_type == TransactionType.DEPOSIT,
+                Transaction.status.in_([TransactionStatus.AUTO_APPROVED, TransactionStatus.COMPLETED]),
+                Transaction.created_at >= d_start,
+                Transaction.created_at < d_end
+            ).scalar() or 0.0
 
-        # Payout is strictly calculated by the official DRAW DATE (not ticket creation date)
-        d_payout = (
+            d_withdraw = db.query(func.coalesce(func.sum(Transaction.amount), 0.0)).filter(
+                Transaction.tx_type == TransactionType.WITHDRAWAL,
+                Transaction.status == TransactionStatus.COMPLETED,
+                Transaction.created_at >= d_start,
+                Transaction.created_at < d_end
+            ).scalar() or 0.0
+
+            d_comm = db.query(func.coalesce(func.sum(AgentCommissionLog.commission_amount), 0.0)).filter(
+                AgentCommissionLog.is_settled == True,
+                AgentCommissionLog.settled_at >= d_start,
+                AgentCommissionLog.settled_at < d_end
+            ).scalar() or 0.0
+
+            d_bonus = db.query(func.coalesce(func.sum(WeeklyBonus.bonus_amount), 0.0)).filter(
+                WeeklyBonus.is_credited == True,
+                WeeklyBonus.credited_at >= d_start,
+                WeeklyBonus.credited_at < d_end
+            ).scalar() or 0.0
+        else:
+            d_bet = 0.0
+            d_topup = 0.0
+            d_withdraw = 0.0
+            d_comm = 0.0
+            d_bonus = 0.0
+
+        # Payout is strictly calculated by official DRAW DATE across all game types
+        d_payout_4d = (
             db.query(func.coalesce(func.sum(BetSlip.total_payout), 0.0))
             .join(LotteryDraw, BetSlip.draw_id == LotteryDraw.id)
             .filter(
+                BetSlip.game_type == "4D",
                 LotteryDraw.draw_date == d_str,
                 BetSlip.total_payout > 0
             )
             .scalar() or 0.0
         )
-
-        # 30% Agent Commission is strictly calculated on the date it is credited to the agent's balance
-        d_comm = db.query(func.coalesce(func.sum(AgentCommissionLog.commission_amount), 0.0)).filter(
-            AgentCommissionLog.is_settled == True,
-            func.date(AgentCommissionLog.settled_at) == d_str
-        ).scalar() or 0.0
-
-        # 10% Weekly Bonus is strictly calculated on the date it is credited to the user's balance
-        d_bonus = db.query(func.coalesce(func.sum(WeeklyBonus.bonus_amount), 0.0)).filter(
-            WeeklyBonus.is_credited == True,
-            func.date(WeeklyBonus.credited_at) == d_str
-        ).scalar() or 0.0
+        d_payout_2d = (
+            db.query(func.coalesce(func.sum(BetSlip.total_payout), 0.0))
+            .join(TwoDDraw, BetSlip.draw_id == TwoDDraw.id)
+            .filter(
+                BetSlip.game_type == "2D",
+                TwoDDraw.draw_date == d_str,
+                BetSlip.total_payout > 0
+            )
+            .scalar() or 0.0
+        )
+        d_payout_3d = (
+            db.query(func.coalesce(func.sum(BetSlip.total_payout), 0.0))
+            .join(ThreeDDraw, BetSlip.draw_id == ThreeDDraw.id)
+            .filter(
+                BetSlip.game_type == "3D",
+                ThreeDDraw.draw_date == d_str,
+                BetSlip.total_payout > 0
+            )
+            .scalar() or 0.0
+        )
+        d_payout = d_payout_4d + d_payout_2d + d_payout_3d
 
         # Mini-Games Stake, Payout & Net P/L
         d_mini_stake = db.query(func.coalesce(func.sum(MiniGameBet.stake_amount), 0.0)).filter(
