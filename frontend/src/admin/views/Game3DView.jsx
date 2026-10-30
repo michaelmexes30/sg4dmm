@@ -834,10 +834,15 @@ export default function Game3DView({ onNotify, mode = 'live' }) {
 
                         <div className="text-right font-mono">
                           <div className="text-sm font-black text-emerald-400">
-                            Ks {bet.stake.toLocaleString()}
+                            Ks {(bet.stake || 0).toLocaleString()}
                           </div>
+                          {bet.total_slip_stake && bet.total_slip_stake !== bet.stake && (
+                            <div className="text-[10px] text-slate-400 font-sans">
+                              Total Slip: Ks {bet.total_slip_stake.toLocaleString()}
+                            </div>
+                          )}
                           <div className="text-[10px] text-rose-400">
-                            Pay: Ks {bet.payout.toLocaleString()}
+                            Pay: Ks {(bet.payout || 0).toLocaleString()}
                           </div>
                         </div>
                       </div>

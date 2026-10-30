@@ -4703,26 +4703,52 @@ def get_3d_game_monitor(
 
     top_numbers = []
     total_staked = 0.0
+    number_exposure = {}
+
     if selected_draw:
-        bets_items = (
-            db.query(BetItem.number, func.sum(BetItem.item_stake))
+        # Sum total stake directly from all 3D bet slips for this draw
+        slips_total = db.query(func.sum(BetSlip.total_stake)).filter(
+            BetSlip.game_type == "3D",
+            BetSlip.draw_id == selected_draw.id
+        ).scalar()
+        total_staked = float(slips_total or 0.0)
+
+        # Retrieve all items to accurately compute unit stake and exposure per 3D combination
+        bet_items = (
+            db.query(BetItem)
             .join(BetSlip, BetItem.slip_id == BetSlip.id)
             .filter(BetSlip.game_type == "3D", BetSlip.draw_id == selected_draw.id)
-            .group_by(BetItem.number)
-            .order_by(func.sum(BetItem.item_stake).desc())
-            .limit(20)
             .all()
         )
-        for num, total_stk in bets_items:
-            clean_n = str(num).strip().zfill(3)
-            val = float(total_stk or 0.0)
+
+        for bi in bet_items:
+            btype = (bi.bet_type or "STRAIGHT").upper()
+            if btype in ["R", "BOX"]:
+                combos = []
+                try:
+                    combos = json.loads(bi.combinations_json) if bi.combinations_json else [bi.number]
+                except Exception:
+                    combos = [bi.number]
+                combo_count = max(1, len(combos))
+                unit_stake = float(bi.big_amount or 0.0)
+                if unit_stake <= 0:
+                    unit_stake = float(bi.item_stake or 0.0) / combo_count
+                for c in combos:
+                    clean_c = str(c).strip().zfill(3)
+                    number_exposure[clean_c] = number_exposure.get(clean_c, 0.0) + unit_stake
+            else:
+                clean_n = str(bi.number).strip().zfill(3)
+                stk = float(bi.big_amount or bi.item_stake or 0.0)
+                number_exposure[clean_n] = number_exposure.get(clean_n, 0.0) + stk
+
+        sorted_numbers = sorted(number_exposure.items(), key=lambda x: x[1], reverse=True)[:20]
+        for num, exp_stk in sorted_numbers:
             top_numbers.append({
-                "number": clean_n,
-                "staked": val,
-                "is_closed": clean_n in closed_nums,
-                "liability": val * straight_payout
+                "number": num,
+                "staked": exp_stk,
+                "is_closed": num in closed_nums,
+                "liability": exp_stk * straight_payout
             })
-            total_staked += val
 
     return {
         "mode": "live",
@@ -4802,31 +4828,55 @@ def get_3d_number_audit(
         db.query(BetItem, BetSlip, User)
         .join(BetSlip, BetItem.slip_id == BetSlip.id)
         .join(User, BetSlip.user_id == User.id)
-        .filter(BetSlip.game_type == "3D", BetItem.number == clean_num)
+        .filter(BetSlip.game_type == "3D")
     )
     if draw_id:
         query = query.filter(BetSlip.draw_id == draw_id)
-    items = query.order_by(BetItem.id.desc()).all()
+    all_draw_items = query.order_by(BetItem.id.desc()).all()
 
-    total_staked = sum(float(bi.item_stake or 0.0) for bi, bs, u in items)
     bets_list = []
-    for bi, bs, u in items:
-        bets_list.append({
-            "item_id": bi.id,
-            "voucher": bs.slip_code,
-            "nickname": u.nickname or u.username,
-            "phone": u.phone,
-            "number": bi.number,
-            "bet_type": bi.bet_type or "Straight",
-            "stake": float(bi.item_stake or 0.0),
-            "payout": float(bi.item_stake or 0.0) * straight_payout,
-            "created_at": bs.created_at.strftime("%d/%m/%Y %I:%M:%S %p") if bs.created_at else ""
-        })
+    total_staked_on_num = 0.0
+
+    for bi, bs, u in all_draw_items:
+        clean_bi_num = str(bi.number).strip().zfill(3)
+        combos = []
+        try:
+            combos = json.loads(bi.combinations_json) if bi.combinations_json else [clean_bi_num]
+        except Exception:
+            combos = [clean_bi_num]
+
+        btype = (bi.bet_type or "STRAIGHT").upper()
+        combo_count = max(1, len(combos))
+
+        if btype in ["R", "BOX"]:
+            unit_stake = float(bi.big_amount or 0.0)
+            if unit_stake <= 0:
+                unit_stake = float(bi.item_stake or 0.0) / combo_count
+        else:
+            unit_stake = float(bi.big_amount or bi.item_stake or 0.0)
+
+        # Check if the audited number matches or is in combinations
+        norm_combos = [str(c).strip().zfill(3) for c in combos]
+        if clean_num in norm_combos:
+            total_staked_on_num += unit_stake
+            bets_list.append({
+                "item_id": bi.id,
+                "voucher": bs.slip_code,
+                "nickname": u.nickname or u.username,
+                "phone": u.phone,
+                "number": bi.number,
+                "bet_type": f"{btype} ({combo_count} လုံး)" if combo_count > 1 else btype,
+                "total_slip_stake": float(bi.item_stake or 0.0),
+                "unit_stake": unit_stake,
+                "stake": unit_stake,
+                "payout": unit_stake * straight_payout,
+                "created_at": bs.created_at.strftime("%d/%m/%Y %I:%M:%S %p") if bs.created_at else ""
+            })
 
     return {
         "number": clean_num,
-        "total_staked": total_staked,
-        "peak_liability": total_staked * straight_payout,
+        "total_staked": total_staked_on_num,
+        "peak_liability": total_staked_on_num * straight_payout,
         "bet_count": len(bets_list),
         "bets": bets_list
     }
@@ -4889,6 +4939,17 @@ def get_3d_bets_history(
         except Exception:
             pass
 
+        btype = (bi.bet_type or "straight").upper()
+        combo_count = max(1, getattr(bi, "combination_count", 1) or 1)
+        if btype in ["R", "BOX"]:
+            unit_stake = float(bi.big_amount or 0.0)
+            if unit_stake <= 0:
+                unit_stake = float(bi.item_stake or 0.0) / combo_count
+            potential_win = unit_stake * straight_payout
+        else:
+            unit_stake = float(bi.big_amount or bi.item_stake or 0.0)
+            potential_win = unit_stake * straight_payout
+
         results.append({
             "id": bi.id,
             "item_id": bi.id,
@@ -4897,10 +4958,12 @@ def get_3d_bets_history(
             "nickname": u.nickname or u.username or "Player",
             "phone": u.phone,
             "number": bi.number,
-            "bet_type": (bi.bet_type or "straight").upper(),
+            "bet_type": btype,
             "amount": float(bi.item_stake or 0.0),
+            "unit_amount": unit_stake,
+            "combination_count": combo_count,
             "multiplier": straight_payout,
-            "potential_win": float(bi.item_stake or 0.0) * straight_payout,
+            "potential_win": potential_win,
             "status": "Won" if bi.is_won > 0 else ("Lost" if d.status == "SETTLED" else "Pending"),
             "voucher": bs.slip_code,
             "created_at": bs.created_at.strftime("%d/%m/%Y %I:%M:%S %p") if bs.created_at else "",

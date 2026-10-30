@@ -169,8 +169,17 @@ def settle_threed_draw_internal(
             except Exception:
                 combos = [clean_item_num]
 
+            combo_count = max(1, len(combos))
+            btype = (item.bet_type or "STRAIGHT").upper()
+            if btype in ["R", "BOX"]:
+                unit_stake = float(item.big_amount or 0.0)
+                if unit_stake <= 0:
+                    unit_stake = float(item.item_stake or 0.0) / combo_count
+            else:
+                unit_stake = float(item.big_amount or item.item_stake or 0.0)
+
             if clean_win in combos:
-                item_win = float(item.big_amount or item.item_stake or 0.0) * straight_payout
+                item_win = unit_stake * straight_payout
                 item.is_won = 1
                 item.item_payout = item_win
                 item.win_details_json = json.dumps([{"winning_number": clean_win, "payout": item_win}])

@@ -371,7 +371,12 @@ export default function BetHistory3DView({ onNotify }) {
 
                     {/* Stake */}
                     <td className="py-3 px-4 text-right font-black text-white">
-                      Ks {(b.amount || 0).toLocaleString()}
+                      <div>Ks {(b.amount || 0).toLocaleString()}</div>
+                      {b.combination_count > 1 && (
+                        <div className="text-[10px] text-purple-300 font-sans font-normal">
+                          (Ks {(b.unit_amount || Math.round(b.amount / b.combination_count) || 0).toLocaleString()} × {b.combination_count} ကွက်)
+                        </div>
+                      )}
                     </td>
 
                     {/* Multiplier */}
@@ -381,7 +386,12 @@ export default function BetHistory3DView({ onNotify }) {
 
                     {/* Potential Win */}
                     <td className="py-3 px-4 text-right font-black text-emerald-400">
-                      Ks {(b.potential_win || 0).toLocaleString()}
+                      <div>Ks {(b.potential_win || 0).toLocaleString()}</div>
+                      {b.combination_count > 1 && (
+                        <div className="text-[10px] text-slate-500 font-sans font-normal">
+                          (ပေါက်ကွက် ၁ ကွက်စာ)
+                        </div>
+                      )}
                     </td>
 
                     {/* Status */}
