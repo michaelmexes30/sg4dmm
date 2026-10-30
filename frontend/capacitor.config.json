@@ -3,7 +3,8 @@
   "appName": "SG4D Myanmar",
   "webDir": "dist",
   "server": {
-    "androidScheme": "https",
-    "cleartext": true
+    "url": "https://sg4dmm.onrender.com",
+    "cleartext": true,
+    "androidScheme": "https"
   }
 }
