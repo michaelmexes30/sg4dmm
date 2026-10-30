@@ -98,32 +98,54 @@ def get_available_draws(db: Session = Depends(get_db)):
     results = []
     for item in upcoming_schedule:
         draw = db.query(LotteryDraw).filter(LotteryDraw.draw_date == item["draw_date"]).first()
+        draw_num_seq = f"54{item['draw_date'].replace('-', '')[-4:]}/26"
+        draw_time = (item.get("draw_time_mmt") or "06:00 PM MMT")[:30]
+
         if not draw:
-            # Generate draw number based on date
-            draw_num_seq = f"54{item['draw_date'].replace('-', '')[-4:]}/26"
-            draw = LotteryDraw(
-                draw_number=draw_num_seq,
-                draw_date=item["draw_date"],
-                draw_time_mmt=item["draw_time_mmt"],
-                status=DrawStatus.OPEN,
-                total_pool_stake=0.0,
-                total_payout=0.0
-            )
-            db.add(draw)
-            db.commit()
-            db.refresh(draw)
-        
-        results.append({
-            "id": draw.id,
-            "draw_number": draw.draw_number,
-            "draw_date": draw.draw_date,
-            "day_name": item["day_name"],
-            "day_short": item["day_short"],
-            "draw_time_mmt": item["draw_time_mmt"],
-            "cutoff_time": item.get("cutoff_time", "04:30 PM MMT"),
-            "is_today": item["is_today"],
-            "status": draw.status
-        })
+            draw = db.query(LotteryDraw).filter(LotteryDraw.draw_number == draw_num_seq).first()
+
+        if not draw:
+            try:
+                draw = LotteryDraw(
+                    draw_number=draw_num_seq,
+                    draw_date=item["draw_date"],
+                    draw_time_mmt=draw_time,
+                    status=DrawStatus.OPEN,
+                    total_pool_stake=0.0,
+                    total_payout=0.0
+                )
+                db.add(draw)
+                db.commit()
+                db.refresh(draw)
+            except Exception as add_ex:
+                db.rollback()
+                draw = db.query(LotteryDraw).filter(LotteryDraw.draw_date == item["draw_date"]).first()
+
+        if draw:
+            status_val = draw.status.value if hasattr(draw.status, 'value') else str(draw.status or "OPEN")
+            results.append({
+                "id": draw.id,
+                "draw_number": draw.draw_number,
+                "draw_date": draw.draw_date,
+                "day_name": item["day_name"],
+                "day_short": item["day_short"],
+                "draw_time_mmt": draw.draw_time_mmt or draw_time,
+                "cutoff_time": item.get("cutoff_time", "04:30 PM MMT"),
+                "is_today": item["is_today"],
+                "status": status_val
+            })
+        else:
+            results.append({
+                "id": 9990 + len(results),
+                "draw_number": draw_num_seq,
+                "draw_date": item["draw_date"],
+                "day_name": item["day_name"],
+                "day_short": item["day_short"],
+                "draw_time_mmt": draw_time,
+                "cutoff_time": item.get("cutoff_time", "04:30 PM MMT"),
+                "is_today": item["is_today"],
+                "status": "OPEN"
+            })
         
     return results
 
@@ -139,18 +161,18 @@ def get_active_draw(db: Session = Depends(get_db)):
 
     upcoming_schedule = get_upcoming_week_draws(current_time, cutoff_time_str=cutoff_str, result_time_str=result_str)
     if not upcoming_schedule:
-        # Fallback to the latest open draw in db
         draw = db.query(LotteryDraw).filter(LotteryDraw.status == DrawStatus.OPEN).first()
         if not draw:
             draw = db.query(LotteryDraw).order_by(LotteryDraw.id.desc()).first()
         if not draw:
             raise HTTPException(status_code=404, detail="No active draw found.")
+        raw_status = draw.status.value if hasattr(draw.status, 'value') else str(draw.status or "OPEN")
         return {
             "id": draw.id,
             "draw_number": draw.draw_number,
             "draw_date": draw.draw_date,
             "draw_time_mmt": draw.draw_time_mmt,
-            "status": draw.status,
+            "status": raw_status,
             "is_past_cutoff": False,
             "cutoff_time": "04:30 PM MMT",
             "cutoff_message": "Betting is open.",
@@ -160,34 +182,64 @@ def get_active_draw(db: Session = Depends(get_db)):
     
     first_item = upcoming_schedule[0]
     draw = db.query(LotteryDraw).filter(LotteryDraw.draw_date == first_item["draw_date"]).first()
-    if not draw:
-        draw_num_seq = f"54{first_item['draw_date'].replace('-', '')[-4:]}/26"
-        draw = LotteryDraw(
-            draw_number=draw_num_seq,
-            draw_date=first_item["draw_date"],
-            draw_time_mmt=first_item["draw_time_mmt"],
-            status=DrawStatus.OPEN,
-            total_pool_stake=0.0,
-            total_payout=0.0
-        )
-        db.add(draw)
-        db.commit()
-        db.refresh(draw)
-        
-    is_closed_cutoff, cutoff_msg = is_past_betting_cutoff(draw.draw_date, current_time, cutoff_time_str=cutoff_str)
+    draw_num_seq = f"54{first_item['draw_date'].replace('-', '')[-4:]}/26"
+    draw_time = (first_item.get("draw_time_mmt") or "06:00 PM MMT")[:30]
 
-    return {
-        "id": draw.id,
-        "draw_number": draw.draw_number,
-        "draw_date": draw.draw_date,
-        "draw_time_mmt": draw.draw_time_mmt,
-        "status": DrawStatus.CLOSED if is_closed_cutoff else draw.status,
-        "is_past_cutoff": is_closed_cutoff,
-        "cutoff_time": first_item.get("cutoff_time", "04:30 PM MMT"),
-        "cutoff_message": cutoff_msg,
-        "min_bet": min_bet_val,
-        "max_bet": max_bet_val
-    }
+    if not draw:
+        draw = db.query(LotteryDraw).filter(LotteryDraw.draw_number == draw_num_seq).first()
+
+    if not draw:
+        try:
+            draw = LotteryDraw(
+                draw_number=draw_num_seq,
+                draw_date=first_item["draw_date"],
+                draw_time_mmt=draw_time,
+                status=DrawStatus.OPEN,
+                total_pool_stake=0.0,
+                total_payout=0.0
+            )
+            db.add(draw)
+            db.commit()
+            db.refresh(draw)
+        except Exception as add_ex:
+            db.rollback()
+            draw = db.query(LotteryDraw).filter(LotteryDraw.draw_date == first_item["draw_date"]).first()
+            if not draw:
+                draw = db.query(LotteryDraw).filter(LotteryDraw.status == DrawStatus.OPEN).first()
+            if not draw:
+                draw = db.query(LotteryDraw).order_by(LotteryDraw.id.desc()).first()
+        
+    draw_date_val = draw.draw_date if draw else first_item["draw_date"]
+    is_closed_cutoff, cutoff_msg = is_past_betting_cutoff(draw_date_val, current_time, cutoff_time_str=cutoff_str)
+
+    if draw:
+        raw_status = draw.status.value if hasattr(draw.status, 'value') else str(draw.status or "OPEN")
+        status_val = "CLOSED" if is_closed_cutoff else raw_status
+        return {
+            "id": draw.id,
+            "draw_number": draw.draw_number,
+            "draw_date": draw.draw_date,
+            "draw_time_mmt": draw.draw_time_mmt or draw_time,
+            "status": status_val,
+            "is_past_cutoff": is_closed_cutoff,
+            "cutoff_time": first_item.get("cutoff_time", "04:30 PM MMT"),
+            "cutoff_message": cutoff_msg,
+            "min_bet": min_bet_val,
+            "max_bet": max_bet_val
+        }
+    else:
+        return {
+            "id": 9991,
+            "draw_number": draw_num_seq,
+            "draw_date": first_item["draw_date"],
+            "draw_time_mmt": draw_time,
+            "status": "OPEN",
+            "is_past_cutoff": False,
+            "cutoff_time": first_item.get("cutoff_time", "04:30 PM MMT"),
+            "cutoff_message": "Betting is open.",
+            "min_bet": min_bet_val,
+            "max_bet": max_bet_val
+        }
 
 @router.post("/place", response_model=BetSlipResponse)
 def place_bet_slip(

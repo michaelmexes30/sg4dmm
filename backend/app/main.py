@@ -84,6 +84,29 @@ async def lifespan(app: FastAPI):
             except Exception:
                 pass
 
+            # Expand lottery_draws columns to prevent any truncation
+            for col_sql in [
+                "ALTER TABLE lottery_draws ALTER COLUMN draw_time_mmt TYPE VARCHAR(100)",
+                "ALTER TABLE lottery_draws ALTER COLUMN draw_number TYPE VARCHAR(100)",
+                "ALTER TABLE lottery_draws ALTER COLUMN draw_date TYPE VARCHAR(100)",
+                "ALTER TABLE lottery_draws ALTER COLUMN status TYPE VARCHAR(20)"
+            ]:
+                try:
+                    conn.execute(text(col_sql))
+                except Exception:
+                    pass
+
+            # Sync primary key sequences for PostgreSQL
+            for seq_tbl in ["lottery_draws", "twod_draws", "threed_draws", "bet_slips", "bet_items", "users"]:
+                try:
+                    conn.execute(text(f"SELECT setval(pg_get_serial_sequence('{seq_tbl}', 'id'), coalesce(max(id), 1) + 1, false) FROM {seq_tbl}"))
+                except Exception:
+                    pass
+                try:
+                    conn.execute(text(f"SELECT setval('{seq_tbl}_id_seq', coalesce(max(id), 1) + 1, false) FROM {seq_tbl}"))
+                except Exception:
+                    pass
+
             # System Settings Columns Auto-migration
             settings_cols = [
                 ("agent_tier1_turnover", "FLOAT DEFAULT 0.0"),
