@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Sparkles, Plus, Info, Dices, Clock, Gift, Award, Calendar, CheckSquare, Square } from 'lucide-react';
+import { Sparkles, Plus, Info, Dices, Clock, Award, Calendar, CheckSquare, Square } from 'lucide-react';
 import { useLanguage, toMyanmarDigits, toEnglishDigits } from '../context/LanguageContext';
 import { apiClient } from '../api/client';
 import ReviewBetModal from './ReviewBetModal';
@@ -192,8 +192,8 @@ export default function BettingForm({
       {/* Background golden ambient highlight */}
       <div className="absolute top-0 right-0 -mr-16 -mt-16 w-56 h-56 bg-gold-500/10 rounded-full blur-3xl pointer-events-none" />
 
-      {/* 4:30 PM Cut-off Warning & 10% Weekly Bonus Alert Banner */}
-      <div className="mb-5 space-y-2.5">
+      {/* 4:30 PM Cut-off Warning */}
+      <div className="mb-5">
         {/* Cut-off Notice */}
         <div className="p-3 rounded-xl bg-dark-card border border-gold-600/60 text-gold-200 text-xs flex items-center justify-between">
           <div className="flex items-center space-x-2">
@@ -206,16 +206,6 @@ export default function BettingForm({
             {t('singaporePoolsBrand')}
           </span>
         </div>
-
-        {/* 10% Weekly Bonus Tracker Banner */}
-        <div className="p-3 rounded-xl bg-gold-950/70 border border-gold-500/50 text-gold-200 text-xs flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <Gift className="w-4 h-4 text-gold-400 shrink-0" />
-            <span>
-              <strong>{t('weeklyBonusTitle')}:</strong> {t('weeklyBonusSub')}
-            </span>
-          </div>
-        </div>
       </div>
 
       {/* Header */}
@@ -227,9 +217,6 @@ export default function BettingForm({
               {t('minMaxLimits')}
             </span>
           </h2>
-          <p className="text-xs text-gold-400/80 mt-1 font-medium">
-            {t('officialDrawsSchedule')}
-          </p>
         </div>
       </div>
 
