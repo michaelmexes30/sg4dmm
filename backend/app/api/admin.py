@@ -5097,6 +5097,30 @@ class Settle3DRequest(BaseModel):
     thai_first_prize: Optional[str] = ""
     winning_number: str
 
+@router.get("/3d/scraped-preview")
+def get_3d_scraped_preview(
+    admin_user: User = Depends(get_current_admin)
+):
+    """Fetches real-time preview of Thai Government Lottery results from Sanook/MThai scraper."""
+    from app.core.threed_service import get_latest_threed_results
+    try:
+        results = get_latest_threed_results()
+        return {"status": "success", "results": results}
+    except Exception as e:
+        return {"status": "error", "message": str(e), "results": []}
+
+@router.post("/3d/trigger-auto-scraper")
+def trigger_3d_auto_scraper(
+    admin_user: User = Depends(get_current_admin)
+):
+    """Manually triggers the Thai 3D background polling and settlement job."""
+    from app.core.threed_service import poll_and_settle_3d_job
+    try:
+        res = poll_and_settle_3d_job()
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"3D Auto-scraper failed: {str(e)}")
+
 @router.post("/3d/settle")
 def settle_3d_draw(
     req: Settle3DRequest,
@@ -5111,116 +5135,18 @@ def settle_3d_draw(
     if not clean_win.isdigit() or len(clean_win) != 3:
         raise HTTPException(status_code=400, detail="3D ပေါက်ဂဏန်းသည် 000 မှ 999 အတွင်း ဂဏန်း ၃ လုံး ဖြစ်ရပါမည်")
 
-    setting = db.query(SystemSetting).first()
-    straight_payout = float(getattr(setting, "threed_straight_payout", 700.0) or 700.0)
-
-    draw.thai_first_prize = req.thai_first_prize.strip() if req.thai_first_prize else draw.thai_first_prize
-    draw.winning_number = clean_win
-    draw.status = "SETTLED"
-    draw.settled_at = now_mmt()
-
-    slips = db.query(BetSlip).filter(
-        BetSlip.game_type == "3D",
-        BetSlip.draw_id == draw.id,
-        BetSlip.status == BetSlipStatus.PENDING
-    ).all()
-
-    total_payout = 0.0
-    total_staked = 0.0
-    winners_count = 0
-    today_str = now_mmt().strftime("%Y-%m-%d")
-
-    for slip in slips:
-        slip_payout = 0.0
-        has_win = False
-        total_staked += float(slip.total_stake or 0.0)
-
-        for item in slip.items:
-            clean_item_num = str(item.number).strip().zfill(3)
-            combos = []
-            try:
-                combos = json.loads(item.combinations_json) if item.combinations_json else [clean_item_num]
-            except Exception:
-                combos = [clean_item_num]
-
-            if clean_win in combos:
-                item_win = float(item.big_amount or item.item_stake or 0.0) * straight_payout
-                item.is_won = 1
-                item.item_payout = item_win
-                item.win_details_json = json.dumps([{"winning_number": clean_win, "payout": item_win}])
-                slip_payout += item_win
-                has_win = True
-            else:
-                item.is_won = 0
-                item.item_payout = 0.0
-
-        if has_win:
-            slip.status = BetSlipStatus.WON
-            slip.total_payout = slip_payout
-            total_payout += slip_payout
-            winners_count += 1
-
-            slip.settled_at = now_mmt()
-            player = db.query(User).filter(User.id == slip.user_id).first()
-            if player:
-                player.balance = float(player.balance or 0.0) + slip_payout
-                win_tx = Transaction(
-                    user_id=player.id,
-                    tx_type=TransactionType.WIN_PAYOUT,
-                    gateway="SG4D 2D",
-                    transaction_id=slip.slip_code,
-                    receiver_id=f"Player #{player.id} ({player.phone})",
-                    amount=slip_payout,
-                    slip_image_url=None,
-                    client_timezone="MMT",
-                    tx_timestamp_mmt=now_mmt(),
-                    submission_timestamp_mmt=now_mmt(),
-                    delta_minutes=0.0,
-                    is_time_valid=True,
-                    is_receiver_valid=True,
-                    is_tx_unique=True,
-                    status=TransactionStatus.COMPLETED,
-                    verification_notes=f"2D Prize payout for ticket {slip.slip_code} ({clean_win}) - {draw.session.capitalize()} {draw.draw_date}",
-                    created_at=now_mmt()
-                )
-                db.add(win_tx)
-
-                win_ledger = FinancialLedger(
-                    entry_type=LedgerEntryType.PAYOUT_EXPENSE,
-                    amount=slip_payout,
-                    running_balance=player.balance,
-                    reference_id=slip.slip_code,
-                    reference_type="BET_SLIP_3D_WIN",
-                    description=f"3D အနိုင်ရငွေ ({clean_win}) - Draw {draw.draw_date}",
-                    logged_at_mmt=now_mmt(),
-                    date_str=today_str
-                )
-                db.add(win_ledger)
-
-                notif = Notification(
-                    user_id=player.id,
-                    title="🎉 ဂုဏ်ယူပါသည်! 3D ထီပေါက်ပါသည်",
-                    message=f"သင်ထိုးထားသော 3D ဂဏန်း '{clean_win}' သည် {draw.draw_date} ပွဲစဉ်တွင် ပေါက်ပြီး အနိုင်ရငွေ +{slip_payout:,.0f} ကျပ် အား လက်ကျန်ငွေထဲ ထည့်သွင်းပေးပြီးပါပြီ။",
-                    notif_type="LOTTERY_WIN",
-                    is_read=False
-                )
-                db.add(notif)
-        else:
-            slip.status = BetSlipStatus.LOST
-            slip.total_payout = 0.0
-
-    draw.total_staked = total_staked
-    draw.total_payout = total_payout
-    db.commit()
-
-    return {
-        "status": "success",
-        "draw_id": draw.id,
-        "winning_number": clean_win,
-        "total_slips": len(slips),
-        "winners_count": winners_count,
-        "total_payout": total_payout
-    }
+    from app.core.threed_service import settle_threed_draw_internal
+    try:
+        res = settle_threed_draw_internal(
+            db=db,
+            draw=draw,
+            winning_number=clean_win,
+            thai_first_prize=req.thai_first_prize
+        )
+        return res
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"3D ပွဲစဉ်ပိတ်သိမ်းခြင်း မအောင်မြင်ပါ: {str(e)}")
 
 
 # ==============================================================================

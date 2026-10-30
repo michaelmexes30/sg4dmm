@@ -460,6 +460,17 @@ export const apiClient = {
     });
   },
 
+  triggerAdmin3DScraper() {
+    return this.request('/admin/3d/trigger-auto-scraper', {
+      method: 'POST',
+    });
+  },
+
+  getAdmin3DScrapedPreview() {
+    return this.request('/admin/3d/scraped-preview');
+  },
+
+
   editAdminBetNumber(itemId, data) {
     return this.request(`/admin/bets/${itemId}/edit-number`, {
       method: 'PUT',

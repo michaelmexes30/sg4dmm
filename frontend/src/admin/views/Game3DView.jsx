@@ -40,6 +40,15 @@ export default function Game3DView({ onNotify, mode = 'live' }) {
   const [newNumber, setNewNumber] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  // Auto-Scraper & Settle Modal States
+  const [scraping, setScraping] = useState(false);
+  const [isSettleModalOpen, setIsSettleModalOpen] = useState(false);
+  const [settling, setSettling] = useState(false);
+  const [settleWinNum, setSettleWinNum] = useState('');
+  const [settleFirstPrize, setSettleFirstPrize] = useState('');
+  const [scrapedList, setScrapedList] = useState([]);
+  const [loadingScraped, setLoadingScraped] = useState(false);
+
   // Number Bet History Audit Popup Modal
   const [auditNumber, setAuditNumber] = useState(null);
   const [auditData, setAuditData] = useState(null);
@@ -97,6 +106,81 @@ export default function Game3DView({ onNotify, mode = 'live' }) {
       loadGameData(selectedDrawId);
     } catch (err) {
       if (onNotify) onNotify(err.message || 'Failed to re-open 3D number', 'error');
+    }
+  };
+
+  const handleTriggerAutoScraper = async () => {
+    try {
+      setScraping(true);
+      const res = await apiClient.triggerAdmin3DScraper();
+      if (res?.status === 'success') {
+        const count = res.settled_count || 0;
+        if (count > 0) {
+          if (onNotify) onNotify(`Auto-settled ${count} 3D draw(s) from Thai GLO feed!`, 'success');
+        } else {
+            if (onNotify) onNotify("3D Scraper ran: No unclosed draws matched today's GLO draw.", "info");
+        }
+      } else {
+        if (onNotify) onNotify(res?.message || '3D Scraper finished with notice', 'info');
+      }
+      loadGameData(selectedDrawId);
+    } catch (err) {
+      console.error('3D Auto-scraper failed:', err);
+      if (onNotify) onNotify(err.message || 'Failed to run 3D auto-scraper', 'error');
+    } finally {
+      setScraping(false);
+    }
+  };
+
+  const handleOpenSettleModal = async () => {
+    setIsSettleModalOpen(true);
+    setSettleWinNum('');
+    setSettleFirstPrize('');
+    setLoadingScraped(true);
+    try {
+      const res = await apiClient.getAdmin3DScrapedPreview();
+      if (res?.status === 'success' && res.results?.length > 0) {
+        setScrapedList(res.results);
+        // Pre-fill if draw matches
+        const matched = res.results.find(r => r.draw_date === currentDraw?.draw_date) || res.results[0];
+        if (matched) {
+          setSettleWinNum(matched.winning_number || '');
+          setSettleFirstPrize(matched.thai_first_prize || '');
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load scraped preview:', err);
+    } finally {
+      setLoadingScraped(false);
+    }
+  };
+
+  const handleConfirmSettle = async (e) => {
+    e.preventDefault();
+    const clean = settleWinNum.trim().padStart(3, '0');
+    if (!clean || clean.length !== 3 || isNaN(clean)) {
+      alert('3D ပေါက်ဂဏန်းသည် 000 မှ 999 အတွင်း ဂဏန်း ၃ လုံး ဖြစ်ရပါမည်');
+      return;
+    }
+    if (!window.confirm(`Draw ${currentDraw?.draw_date} အား 3D ပေါက်ဂဏန်း [${clean}] (Thai 1st Prize: ${settleFirstPrize || '-'}) ဖြင့် ပွဲစဉ်ပိတ်သိမ်းပြီး ကစားသူများထံ ဆုကြေး အလိုအလျောက် ထုတ်ပေးရန် သေချာပါသလား?`)) {
+      return;
+    }
+
+    try {
+      setSettling(true);
+      const res = await apiClient.settleAdmin3DDraw({
+        draw_id: selectedDrawId,
+        winning_number: clean,
+        thai_first_prize: settleFirstPrize.trim() || undefined
+      });
+      if (onNotify) onNotify(`Draw ${currentDraw?.draw_date} settled! Winners: ${res.winners_count || 0}, Total Payout: Ks ${(res.total_payout || 0).toLocaleString()}`, 'success');
+      setIsSettleModalOpen(false);
+      loadGameData(selectedDrawId);
+    } catch (err) {
+      console.error('Failed to settle 3D draw:', err);
+      if (onNotify) onNotify(err.message || 'Failed to settle 3D draw', 'error');
+    } finally {
+      setSettling(false);
     }
   };
 
@@ -269,6 +353,25 @@ export default function Game3DView({ onNotify, mode = 'live' }) {
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             <span>Refresh</span>
+          </button>
+
+          <button
+            onClick={handleTriggerAutoScraper}
+            disabled={scraping}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-purple-950/60 transition-all cursor-pointer disabled:opacity-50"
+            title="Auto scrape Thai Government Lottery results from Sanook/GLO feed and settle"
+          >
+            <Sparkles className={`w-4 h-4 ${scraping ? 'animate-spin' : ''}`} />
+            <span>{scraping ? 'Scraping Live GLO...' : 'Auto-Fetch Live 3D'}</span>
+          </button>
+
+          <button
+            onClick={handleOpenSettleModal}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-950/60 transition-all cursor-pointer"
+            title="Settle this 3D Draw"
+          >
+            <Award className="w-4 h-4" />
+            <span>Settle Draw</span>
           </button>
 
           <button
@@ -474,6 +577,135 @@ export default function Game3DView({ onNotify, mode = 'live' }) {
           </div>
         )}
       </div>
+
+      {/* Settle 3D Draw Modal with Live Scraper Preview */}
+      {isSettleModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-navy-900 border border-gold-500/30 rounded-3xl p-6 max-w-lg w-full space-y-5 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Award className="w-5 h-5 text-emerald-400" />
+                <h3 className="font-extrabold text-white text-base">
+                  Settle 3D Draw ({currentDraw?.draw_date})
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsSettleModalOpen(false)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Live Scraped Suggestions from Thai GLO / Sanook */}
+            <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-extrabold text-purple-300 flex items-center gap-1.5 uppercase tracking-wider">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Live Official Thai GLO Results (Sanook Feed)</span>
+                </span>
+                {loadingScraped && <RefreshCw className="w-3 h-3 animate-spin text-purple-400" />}
+              </div>
+
+              {scrapedList.length === 0 ? (
+                <p className="text-xs text-slate-500">
+                  {loadingScraped ? 'ရလဒ်များ ရယူနေပါသည်...' : 'လတ်တလော အွန်လိုင်း ရလဒ်များ မတွေ့ရှိပါ။ လက်ဖြင့် ရိုက်ထည့်နိုင်ပါသည်။'}
+                </p>
+              ) : (
+                <div className="space-y-1.5 pt-1">
+                  {scrapedList.slice(0, 3).map((item, i) => (
+                    <div
+                      key={i}
+                      onClick={() => {
+                        setSettleWinNum(item.winning_number);
+                        setSettleFirstPrize(item.thai_first_prize || '');
+                      }}
+                      className="p-2.5 rounded-xl bg-navy-900 hover:bg-purple-950/40 border border-slate-800 hover:border-purple-500/50 flex items-center justify-between cursor-pointer transition-all"
+                    >
+                      <div>
+                        <div className="text-xs font-bold text-white flex items-center gap-2">
+                          <span>{item.draw_date}</span>
+                          <span className="text-[10px] text-slate-400">1st Prize: <strong className="text-slate-200 font-mono">{item.thai_first_prize}</strong></span>
+                        </div>
+                        <div className="text-[10px] text-slate-500 font-mono">{item.source}</div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="px-2.5 py-1 rounded-lg bg-purple-500/20 text-purple-300 font-black font-mono text-sm border border-purple-500/40">
+                          {item.winning_number}
+                        </span>
+                        <span className="text-[10px] text-gold-400 underline font-bold">Use</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Manual Entry Form */}
+            <form onSubmit={handleConfirmSettle} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-bold text-slate-300 block mb-1">
+                    Thai 1st Prize (6 Digits)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 011781"
+                    maxLength={6}
+                    value={settleFirstPrize}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, '').slice(0, 6);
+                      setSettleFirstPrize(val);
+                      if (val.length === 6) {
+                        setSettleWinNum(val.slice(-3));
+                      }
+                    }}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-sm font-mono font-bold text-center text-white focus:outline-none focus:border-purple-500"
+                  />
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">ရိုက်ထည့်ပါက နောက် ၃ လုံး အလိုအလျောက် ရွေးပေးမည်</span>
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-300 block mb-1">
+                    Winning 3D (3 Digits) *
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 781"
+                    maxLength={3}
+                    value={settleWinNum}
+                    onChange={(e) => setSettleWinNum(e.target.value.replace(/\D/g, '').slice(0, 3))}
+                    required
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-lg font-black font-mono text-center tracking-widest text-purple-300 focus:outline-none focus:border-purple-500"
+                  />
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">တရားဝင် မြန်မာ 3D ပေါက်ဂဏန်း</span>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-[11px] leading-relaxed">
+                ⚠️ <strong>သတိပေးချက်:</strong> အတည်ပြုပြီးသည်နှင့် ထီပေါက်သူအားလုံးထံ ဆုကြေး ({straightPayout}x) အား အလိုအလျောက် ထည့်သွင်းပေးမည်ဖြစ်ပြီး နောက်ပွဲစဉ်အသစ်အား စနစ်မှ အလိုအလျောက် ဖွင့်လှစ်ပေးမည်ဖြစ်ပါသည်။
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsSettleModalOpen(false)}
+                  className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={settling || !settleWinNum || settleWinNum.length !== 3}
+                  className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-lg shadow-emerald-950 cursor-pointer disabled:opacity-50"
+                >
+                  {settling ? 'Settling Slips & Balance...' : 'Confirm & Settle'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Lock 3D Number Modal */}
       {isAddModalOpen && (
