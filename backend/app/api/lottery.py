@@ -434,7 +434,20 @@ def get_3d_active_draw(db: Session = Depends(get_db)):
     min_bet = float(getattr(setting, "threed_min_bet", 100.0) or 100.0)
     max_bet = float(getattr(setting, "threed_max_bet", 50000.0) or 50000.0)
 
-    upcoming = db.query(ThreeDDraw).filter(ThreeDDraw.status == "OPEN").order_by(ThreeDDraw.id.asc()).first()
+    from app.core.timezone_utils import is_past_threed_cutoff
+    now_dt = now_mmt()
+
+    open_draws = db.query(ThreeDDraw).filter(ThreeDDraw.status == "OPEN").order_by(ThreeDDraw.draw_date.asc(), ThreeDDraw.id.asc()).all()
+    upcoming = None
+    for d in open_draws:
+        is_cutoff, _ = is_past_threed_cutoff(d.draw_date, dt=now_dt, cutoff_time_str=d.cutoff_time_mmt)
+        if not is_cutoff:
+            upcoming = d
+            break
+        else:
+            d.status = "CLOSED"
+            db.commit()
+
     return {
         "is_enabled": is_enabled,
         "straight_payout": straight_payout,
@@ -446,7 +459,7 @@ def get_3d_active_draw(db: Session = Depends(get_db)):
             "draw_date": upcoming.draw_date if upcoming else None,
             "draw_time_mmt": upcoming.draw_time_mmt if upcoming else "03:30 PM MMT",
             "cutoff_time_mmt": upcoming.cutoff_time_mmt if upcoming else "02:30 PM MMT",
-            "status": upcoming.status if upcoming else "OPEN",
+            "status": upcoming.status if upcoming else "CLOSED",
             "closed_numbers": upcoming.closed_numbers if upcoming else []
         } if upcoming else None
     }

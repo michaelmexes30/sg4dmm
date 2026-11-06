@@ -612,6 +612,21 @@ def place_2d_bet_slip(
     today_str = curr_mmt.strftime("%Y-%m-%d")
 
     # Time-based operational boundaries (Opens at 08:00 AM MMT, Cutoffs: 11:30 AM & 04:00 PM)
+    if draw.draw_date < today_str:
+        if draw.status == "OPEN":
+            draw.status = "CLOSED"
+            db.commit()
+        raise HTTPException(
+            status_code=400,
+            detail=f"2D {draw.session} ပွဲစဉ် ({draw.draw_date}) သည် ကျော်လွန်သွားပြီးဖြစ်ပါသည် (Draw date has passed)."
+        )
+
+    if draw.draw_date > today_str:
+        raise HTTPException(
+            status_code=400,
+            detail="2D ထီကို ယနေ့ပွဲစဉ်အတွက်သာ ထိုးနိုင်ပါသည် (2D bets only accepted on draw day)."
+        )
+
     if draw.draw_date == today_str:
         if curr_mmt.hour < 8:
             raise HTTPException(
@@ -620,6 +635,9 @@ def place_2d_bet_slip(
             )
         if draw.session == "morning":
             if curr_mmt.hour > 11 or (curr_mmt.hour == 11 and curr_mmt.minute >= 30):
+                if draw.status == "OPEN":
+                    draw.status = "CLOSED"
+                    db.commit()
                 raise HTTPException(
                     status_code=400,
                     detail="မနက်ပိုင်း 2D ထိုးကြေးပိတ်ချိန် (11:30 AM) ကျော်လွန်သွားပါပြီ (Morning session betting closed)."
@@ -631,6 +649,9 @@ def place_2d_bet_slip(
                     detail="ညနေပိုင်း 2D ပွဲစဉ်ကို မနက်ပိုင်း ထွက်ဂဏန်း ထွက်ပြီးနောက် ၁၂:၀၁ PM တွင် ဖွင့်လှစ်ပေးပါမည်။"
                 )
             if curr_mmt.hour >= 16:
+                if draw.status == "OPEN":
+                    draw.status = "CLOSED"
+                    db.commit()
                 raise HTTPException(
                     status_code=400,
                     detail="ညနေပိုင်း 2D ထိုးကြေးပိတ်ချိန် (04:00 PM) ကျော်လွန်သွားပါပြီ (Evening session betting closed)."
@@ -777,8 +798,21 @@ def place_3d_bet_slip(
     draw = db.query(ThreeDDraw).filter(ThreeDDraw.id == req.draw_id).first()
     if not draw:
         raise HTTPException(status_code=404, detail="3D Draw မတွေ့ရှိပါ")
+
+    from app.core.timezone_utils import is_past_threed_cutoff
+    is_cutoff, cutoff_reason = is_past_threed_cutoff(
+        draw_date_str=draw.draw_date,
+        dt=now_mmt(),
+        cutoff_time_str=draw.cutoff_time_mmt
+    )
+    if is_cutoff:
+        if draw.status == "OPEN":
+            draw.status = "CLOSED"
+            db.commit()
+        raise HTTPException(status_code=400, detail=cutoff_reason)
+
     if draw.status != "OPEN":
-        raise HTTPException(status_code=400, detail="3D ပွဲစဉ်အား ပိတ်ထားပြီးဖြစ်ပါသည်")
+        raise HTTPException(status_code=400, detail=f"3D ပွဲစဉ် ({draw.draw_date}) အား ထိုးကြေးပိတ်ထားပြီးဖြစ်ပါသည် (Draw is closed)")
 
     if not req.items or len(req.items) == 0:
         raise HTTPException(status_code=400, detail="ကျေးဇူးပြု၍ အနည်းဆုံး 3D ဂဏန်း ၁ လုံး ရွေးချယ်ပါ")

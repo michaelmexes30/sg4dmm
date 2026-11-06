@@ -4637,14 +4637,33 @@ def edit_2d_bet_number(
 # =========================================================================
 
 def ensure_threed_draws_exist(db: Session):
-    upcoming = db.query(ThreeDDraw).filter(ThreeDDraw.status == "OPEN").first()
-    if not upcoming:
-        db.add(ThreeDDraw(
-            draw_date="2026-11-01",
+    now_dt = now_mmt()
+    from app.core.timezone_utils import is_past_threed_cutoff, get_current_or_next_3d_draw_date
+
+    # 1. Close any expired OPEN draws whose cutoff has elapsed
+    open_draws = db.query(ThreeDDraw).filter(ThreeDDraw.status == "OPEN").all()
+    for d in open_draws:
+        is_cutoff, _ = is_past_threed_cutoff(d.draw_date, dt=now_dt, cutoff_time_str=d.cutoff_time_mmt)
+        if is_cutoff:
+            d.status = "CLOSED"
+
+    # 2. Determine target active/upcoming 3D draw date dynamically
+    target_date = get_current_or_next_3d_draw_date(now_dt)
+
+    # 3. Ensure target draw exists and is OPEN (if not settled)
+    target_draw = db.query(ThreeDDraw).filter(ThreeDDraw.draw_date == target_date).first()
+    if not target_draw:
+        target_draw = ThreeDDraw(
+            draw_date=target_date,
             draw_time_mmt="03:30 PM MMT",
             cutoff_time_mmt="02:30 PM MMT",
             status="OPEN"
-        ))
+        )
+        db.add(target_draw)
+    elif target_draw.status != "SETTLED":
+        is_cutoff, _ = is_past_threed_cutoff(target_date, dt=now_dt, cutoff_time_str=target_draw.cutoff_time_mmt)
+        if not is_cutoff:
+            target_draw.status = "OPEN"
 
     past_cnt = db.query(ThreeDDraw).filter(ThreeDDraw.status == "SETTLED").count()
     if past_cnt == 0:
@@ -4950,6 +4969,17 @@ def get_3d_bets_history(
             unit_stake = float(bi.big_amount or bi.item_stake or 0.0)
             potential_win = unit_stake * straight_payout
 
+        # Check if bet was placed after draw cutoff time
+        is_late_bet = False
+        if bs.created_at and d.draw_date:
+            try:
+                cut_dt = datetime.strptime(f"{d.draw_date} 14:30:00", "%Y-%m-%d %H:%M:%S")
+                created_raw = bs.created_at.replace(tzinfo=None) if hasattr(bs.created_at, 'tzinfo') and bs.created_at.tzinfo else bs.created_at
+                if created_raw > cut_dt:
+                    is_late_bet = True
+            except Exception:
+                pass
+
         results.append({
             "id": bi.id,
             "item_id": bi.id,
@@ -4964,12 +4994,13 @@ def get_3d_bets_history(
             "combination_count": combo_count,
             "multiplier": straight_payout,
             "potential_win": potential_win,
-            "status": "Won" if bi.is_won > 0 else ("Lost" if d.status == "SETTLED" else "Pending"),
+            "status": bs.status.value if hasattr(bs.status, 'value') else str(bs.status),
             "voucher": bs.slip_code,
             "created_at": bs.created_at.strftime("%d/%m/%Y %I:%M:%S %p") if bs.created_at else "",
             "is_edited": len(edit_history) > 0,
             "edit_history": edit_history,
-            "is_editable": d.status == "OPEN"
+            "is_editable": d.status == "OPEN" and not is_late_bet,
+            "is_late_bet": is_late_bet
         })
 
     return {
@@ -5171,6 +5202,95 @@ def get_3d_scraped_preview(
         return {"status": "success", "results": results}
     except Exception as e:
         return {"status": "error", "message": str(e), "results": []}
+
+
+@router.post("/3d/bets/{slip_id}/void-and-refund")
+def void_and_refund_3d_bet_slip(
+    slip_id: int,
+    admin_user: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Voids an invalid or late 3D bet slip and refunds the stake to the player's balance.
+    Logs a Transaction, FinancialLedger record, and dispatches an In-App Notification.
+    """
+    slip = db.query(BetSlip).filter(BetSlip.id == slip_id, BetSlip.game_type == "3D").first()
+    if not slip:
+        raise HTTPException(status_code=404, detail="3D Bet Slip မတွေ့ရှိပါ")
+
+    if slip.status in [BetSlipStatus.VOID, BetSlipStatus.CANCELLED]:
+        raise HTTPException(status_code=400, detail="ဤဘောင်ချာအား ပယ်ဖျက်/ငွေပြန်အမ်းပြီး ဖြစ်ပါသည်")
+
+    if slip.status == BetSlipStatus.WON:
+        raise HTTPException(status_code=400, detail="ပေါက်ပြီးသား ဘောင်ချာအား ပယ်ဖျက်၍ မရပါ")
+
+    now = now_mmt()
+    today_str = now.strftime("%Y-%m-%d")
+    refund_amount = float(slip.total_stake or 0.0)
+
+    # 1. Update slip status
+    slip.status = BetSlipStatus.VOID
+    for item in slip.items:
+        item.is_won = 0
+        item.item_payout = 0.0
+
+    # 2. Refund player balance
+    player = db.query(User).filter(User.id == slip.user_id).first()
+    if player and refund_amount > 0:
+        player.balance = float(player.balance or 0.0) + refund_amount
+
+        # Record Refund Transaction
+        tx = Transaction(
+            user_id=player.id,
+            tx_type=TransactionType.DEPOSIT,
+            gateway="SG4D 3D",
+            transaction_id=f"REFUND-{slip.slip_code}",
+            receiver_id=f"Player #{player.id} ({player.phone})",
+            amount=refund_amount,
+            slip_image_url=None,
+            client_timezone="MMT",
+            tx_timestamp_mmt=now,
+            submission_timestamp_mmt=now,
+            delta_minutes=0.0,
+            is_time_valid=True,
+            is_receiver_valid=True,
+            is_tx_unique=True,
+            status=TransactionStatus.COMPLETED,
+            verification_notes=f"Void & Refund late 3D ticket {slip.slip_code} by Admin {admin_user.username or 'Admin'}",
+            created_at=now
+        )
+        db.add(tx)
+
+        # Financial Ledger Record
+        ledger = FinancialLedger(
+            entry_type=LedgerEntryType.DEPOSIT,
+            amount=refund_amount,
+            running_balance=player.balance,
+            reference_id=slip.slip_code,
+            reference_type="3D_BET_REFUND",
+            description=f"3D ပွဲစဉ်ပိတ်ချိန်ကျော်လွန်သဖြင့် ထိုးကြေးပြန်အမ်းငွေ (Voucher: {slip.slip_code})",
+            logged_at_mmt=now,
+            date_str=today_str
+        )
+        db.add(ledger)
+
+        # Player Notification
+        notif = Notification(
+            user_id=player.id,
+            title="⚠️ 3D ထိုးကြေး ပြန်အမ်းငွေ ရရှိပါသည် (Bet Refunded)",
+            message=f"သင်ထိုးထားသော 3D ဘောင်ချာ ({slip.slip_code}) သည် ပွဲစဉ်ပိတ်ချိန်ကျော်လွန်၍ ထိုးထားမိသဖြင့် ထိုးကြေး +{refund_amount:,.0f} ကျပ် အား သင့်လက်ကျန်ငွေထဲသို့ အပြည့်အဝ ပြန်လည်ထည့်သွင်းပေးပြီးဖြစ်ပါသည်။",
+            notif_type="TRANSACTION",
+            is_read=False
+        )
+        db.add(notif)
+
+    db.commit()
+    return {
+        "status": "success",
+        "message": f"ဘောင်ချာ {slip.slip_code} အား ပယ်ဖျက်ပြီး ကစားသူထံ ထိုးကြေး {refund_amount:,.0f} ကျပ် အား အောင်မြင်စွာ ပြန်အမ်းပေးပြီးပါပြီ",
+        "refund_amount": refund_amount,
+        "slip_code": slip.slip_code
+    }
 
 @router.post("/3d/trigger-auto-scraper")
 def trigger_3d_auto_scraper(

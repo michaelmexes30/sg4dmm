@@ -187,6 +187,80 @@ def is_past_betting_cutoff(
 
     return False, "Betting is open."
 
+def is_past_threed_cutoff(
+    draw_date_str: str, 
+    dt: Optional[datetime] = None, 
+    cutoff_time_str: Optional[str] = "02:30 PM"
+) -> Tuple[bool, str]:
+    """
+    Validates cutoff for Thai 3D (1st and 16th of each month).
+    Cutoff time is strictly 02:30 PM MMT on draw day.
+    If draw_date is in the past, or if today is draw_date and current time > cutoff, returns (True, reason).
+    """
+    current = convert_to_mmt(dt or now_mmt())
+    today_str = current.strftime("%Y-%m-%d")
+    
+    cut_h, cut_m = parse_time_string(cutoff_time_str, 14, 30)
+
+    # 1. Draw date has already passed
+    if draw_date_str < today_str:
+        return (
+            True,
+            f"3D ပွဲစဉ် ({draw_date_str}) သည် ထီဖွင့်ရက် ကျော်လွန်သွားပြီးဖြစ်သောကြောင့် ထိုး၍မရတော့ပါ (Draw date is in the past)."
+        )
+
+    # 2. Today is the draw day
+    if draw_date_str == today_str:
+        cutoff_time = current.replace(
+            hour=cut_h,
+            minute=cut_m,
+            second=0,
+            microsecond=0
+        )
+        if current > cutoff_time:
+            display_cutoff = cutoff_time.strftime("%I:%M %p MMT")
+            return (
+                True,
+                f"3D ထိုးကြေးပိတ်ချိန် ({display_cutoff}) ကျော်လွန်သွားပါပြီ (Current time: {current.strftime('%I:%M %p MMT')})."
+            )
+
+    return False, "Betting is open."
+
+def get_current_or_next_3d_draw_date(now_dt: Optional[datetime] = None) -> str:
+    """
+    Calculates the currently active or next upcoming 3D draw date:
+    - On 1st before 02:30 PM MMT -> 1st of current month
+    - On 1st after 02:30 PM MMT, or 2nd-15th -> 16th of current month
+    - On 16th before 02:30 PM MMT -> 16th of current month
+    - On 16th after 02:30 PM MMT, or 17th-end of month -> 1st of next month
+    """
+    current = convert_to_mmt(now_dt or now_mmt())
+    y = current.year
+    m = current.month
+    d = current.day
+
+    is_past_today_cutoff = (current.hour > 14) or (current.hour == 14 and current.minute >= 30)
+
+    if d == 1:
+        if not is_past_today_cutoff:
+            return f"{y:04d}-{m:02d}-01"
+        else:
+            return f"{y:04d}-{m:02d}-16"
+    elif 1 < d < 16:
+        return f"{y:04d}-{m:02d}-16"
+    elif d == 16:
+        if not is_past_today_cutoff:
+            return f"{y:04d}-{m:02d}-16"
+        else:
+            next_m = 1 if m == 12 else m + 1
+            next_y = y + 1 if m == 12 else y
+            return f"{next_y:04d}-{next_m:02d}-01"
+    else: # d > 16
+        next_m = 1 if m == 12 else m + 1
+        next_y = y + 1 if m == 12 else y
+        return f"{next_y:04d}-{next_m:02d}-01"
+
+
 def get_previous_calendar_week_dates(ref_dt: Optional[datetime] = None) -> Tuple[str, str, str]:
     """
     Returns (prev_monday_str, prev_sunday_str, settle_monday_str)

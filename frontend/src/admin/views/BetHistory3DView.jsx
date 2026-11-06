@@ -103,6 +103,23 @@ export default function BetHistory3DView({ onNotify }) {
     setTimeout(() => setCopiedVoucher(null), 2000);
   };
 
+  const handleVoidAndRefund = async (bet) => {
+    if (!bet?.slip_id) return;
+    const confirmMsg = `ဘောင်ချာ [${bet.voucher}] (ထိုးကြေး Ks ${(bet.amount || 0).toLocaleString()}) အား ပယ်ဖျက်ပြီး ကစားသူ [${bet.nickname || bet.phone}] ထံ ငွေအပြည့် ပြန်အမ်းပေးရန် သေချာပါသလား?`;
+    if (!window.confirm(confirmMsg)) {
+      return;
+    }
+
+    try {
+      const res = await apiClient.voidAndRefund3DBet(bet.slip_id);
+      if (onNotify) onNotify(res.message || 'ဘောင်ချာအား ပယ်ဖျက်ပြီး ငွေပြန်အမ်းပေးပြီးပါပြီ', 'success');
+      loadBets();
+    } catch (err) {
+      console.error('Failed to void and refund 3D bet:', err);
+      if (onNotify) onNotify(err.message || 'ငွေပြန်အမ်းရာတွင် အမှားဖြစ်ပေါ်ပါသည်', 'error');
+    }
+  };
+
   const openEditModal = (bet) => {
     setEditingBet(bet);
     setNewNumber(bet.number);
@@ -326,6 +343,11 @@ export default function BetHistory3DView({ onNotify }) {
                     <td className="py-3 px-4 font-mono">
                       <div className="flex items-center gap-1.5">
                         <span className="font-bold text-slate-300">{b.voucher}</span>
+                        {b.is_late_bet && (
+                          <span className="px-1.5 py-0.2 rounded text-[9px] bg-red-950 text-red-300 border border-red-700 font-bold" title="ပွဲစဉ်ပိတ်ချိန် (၀၂:၃၀ PM) ကျော်လွန်ပြီးမှ ထိုးထားသော ဘောင်ချာ">
+                            LATE BET (ရက်ကျော်)
+                          </span>
+                        )}
                         <button
                           onClick={() => handleCopyVoucher(b.voucher)}
                           className="text-slate-500 hover:text-purple-400 cursor-pointer"
@@ -410,6 +432,18 @@ export default function BetHistory3DView({ onNotify }) {
                     {/* Actions */}
                     <td className="py-3 px-4 text-center">
                       <div className="flex items-center justify-center gap-1.5">
+                        {/* Void & Refund Button */}
+                        {(b.status === 'Pending' || b.status === 'PENDING') && (
+                          <button
+                            onClick={() => handleVoidAndRefund(b)}
+                            className="p-1.5 rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-600 hover:text-white transition-all cursor-pointer flex items-center gap-1"
+                            title="ဘောင်ချာပယ်ဖျက်ပြီး ကစားသူထံ ထိုးကြေးငွေ ပြန်အမ်းမည် (Void & Refund)"
+                          >
+                            <XCircle className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline">Void</span>
+                          </button>
+                        )}
+
                         {/* Edit Button */}
                         <button
                           onClick={() => openEditModal(b)}

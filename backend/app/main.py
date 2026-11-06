@@ -282,6 +282,31 @@ async def lifespan(app: FastAPI):
         replace_existing=True
     )
 
+        # 9. Auto-Close Expired 3D & 2D Draws and Advance Next Upcoming Draws
+    def auto_close_and_advance_draws_job():
+        db = SessionLocal()
+        try:
+            from app.api.admin import ensure_threed_draws_exist, ensure_twod_draws_exist
+            ensure_threed_draws_exist(db)
+            ensure_twod_draws_exist(db)
+        except Exception as e:
+            print(f"auto_close_and_advance_draws_job notice: {e}")
+        finally:
+            db.close()
+
+    try:
+        auto_close_and_advance_draws_job()
+    except Exception as e:
+        print(f"Startup draw cutoff notice: {e}")
+
+    scheduler.add_job(
+        auto_close_and_advance_draws_job,
+        "interval",
+        minutes=5,
+        id="auto_close_and_advance_draws_interval",
+        replace_existing=True
+    )
+
     scheduler.start()
     print("APScheduler started: Active schedules:")
     print("  - Nightly 02:00 AM MMT 3-month Data Archiving")

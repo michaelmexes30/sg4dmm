@@ -103,6 +103,11 @@ export default function Betting3DForm({ onOpenDeposit, onBetPlaced }) {
       return;
     }
 
+    if (currentDraw?.status !== 'OPEN') {
+      setErrorMsg(`3D ပွဲစဉ် (${currentDraw?.draw_date || ''}) အား ထိုးကြေးပိတ်ထားပြီးဖြစ်ပါသည် (Betting is closed)`);
+      return;
+    }
+
     if (closedSet.has(clean)) {
       setErrorMsg(`ဂဏန်း '${clean}' သည် ယခုပွဲစဉ်အတွက် ထိုးကြေးပိတ်ထားသော Closed Number ဖြစ်ပါသည်`);
       return;
@@ -229,15 +234,24 @@ export default function Betting3DForm({ onOpenDeposit, onBetPlaced }) {
           </div>
 
           {/* Draw Date & Cutoff Info */}
-          <div className="pt-4 relative z-10 flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
-            <div className="flex items-center gap-2 text-slate-300">
-              <Calendar className="w-4 h-4 text-purple-400" />
-              <span>ထွက်မည့်ရက်စွဲ: <strong className="text-white">{currentDraw?.draw_date || 'Upcoming'}</strong></span>
+          <div className="pt-4 relative z-10 space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-3 text-xs font-mono">
+              <div className="flex items-center gap-2 text-slate-300">
+                <Calendar className="w-4 h-4 text-purple-400" />
+                <span>ထွက်မည့်ရက်စွဲ: <strong className="text-white">{currentDraw?.draw_date || 'Upcoming'}</strong></span>
+              </div>
+              <div className="flex items-center gap-2 text-slate-300">
+                <Clock className="w-4 h-4 text-purple-400" />
+                <span>ထိုးကြေးပိတ်ချိန်: <strong className="text-amber-300">{currentDraw?.cutoff_time_mmt || '02:30 PM'}</strong></span>
+              </div>
             </div>
-            <div className="flex items-center gap-2 text-slate-300">
-              <Clock className="w-4 h-4 text-purple-400" />
-              <span>ထိုးကြေးပိတ်ချိန်: <strong className="text-amber-300">{currentDraw?.cutoff_time_mmt || '02:30 PM'}</strong></span>
-            </div>
+
+            {currentDraw && currentDraw.status !== 'OPEN' && (
+              <div className="p-2.5 rounded-xl bg-rose-950/70 border border-rose-500/50 text-rose-300 text-xs font-sans font-bold flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>ယခုပွဲစဉ် ({currentDraw.draw_date}) အား ထိုးကြေးပိတ်ထားပြီး ဖြစ်ပါသည် (Betting is closed).</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -375,9 +389,14 @@ export default function Betting3DForm({ onOpenDeposit, onBetPlaced }) {
 
             <button
               type="submit"
-              className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-purple-600 via-fuchsia-600 to-purple-600 text-white font-black text-xs uppercase tracking-wider transition-all shadow-lg shadow-purple-950 hover:brightness-110 cursor-pointer"
+              disabled={currentDraw?.status !== 'OPEN'}
+              className={`w-full py-3.5 rounded-2xl font-black text-xs uppercase tracking-wider transition-all shadow-lg ${
+                currentDraw?.status === 'OPEN'
+                  ? 'bg-gradient-to-r from-purple-600 via-fuchsia-600 to-purple-600 text-white shadow-purple-950 hover:brightness-110 cursor-pointer'
+                  : 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed opacity-60'
+              }`}
             >
-              + 3D ဂဏန်း ထည့်သွင်းမည် (Add to Slip)
+              {currentDraw?.status === 'OPEN' ? '+ 3D ဂဏန်း ထည့်သွင်းမည် (Add to Slip)' : 'ထိုးကြေးပိတ်ထားပါသည် (Betting Closed)'}
             </button>
           </form>
 

@@ -470,6 +470,13 @@ export const apiClient = {
     return this.request('/admin/3d/scraped-preview');
   },
 
+  voidAndRefund3DBet(slipId) {
+    return this.request(`/admin/3d/bets/${slipId}/void-and-refund`, {
+      method: 'POST',
+    });
+  },
+
+
 
   editAdminBetNumber(itemId, data) {
     return this.request(`/admin/bets/${itemId}/edit-number`, {
