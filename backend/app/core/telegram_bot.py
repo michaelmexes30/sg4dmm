@@ -601,10 +601,10 @@ def _calc_minutes_elapsed(ts) -> int:
         return 0
     now = now_mmt()
     try:
-        if ts.tzinfo is None:
-            ts = MMT_TZ.localize(ts)
-        else:
-            ts = ts.astimezone(MMT_TZ)
+        if hasattr(ts, 'tzinfo') and ts.tzinfo is not None:
+            ts = ts.astimezone(MMT_TZ).replace(tzinfo=None)
+        if hasattr(now, 'tzinfo') and now.tzinfo is not None:
+            now = now.replace(tzinfo=None)
         return max(0, int((now - ts).total_seconds() / 60))
     except Exception:
         return 0

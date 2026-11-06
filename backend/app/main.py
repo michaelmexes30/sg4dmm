@@ -45,6 +45,34 @@ async def lifespan(app: FastAPI):
     # 2. Schema compatibility and column auto-migrations
     try:
         with engine.begin() as conn:
+            # One-time automated migration to shift legacy UTC timestamps to Myanmar Standard Time (+06:30)
+            try:
+                conn.execute(text("CREATE TABLE IF NOT EXISTS system_migrations (name VARCHAR(100) PRIMARY KEY, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"))
+                applied = conn.execute(text("SELECT name FROM system_migrations WHERE name = 'fix_mmt_timestamps_v1'")).fetchone()
+                if not applied:
+                    is_pg = (engine.dialect.name == "postgresql")
+                    cols_to_shift = [
+                        ("bet_slips", "created_at"),
+                        ("bet_slips", "settled_at"),
+                        ("bet_items", "created_at"),
+                        ("transactions", "created_at"),
+                        ("transactions", "submission_timestamp_mmt"),
+                        ("financial_ledger", "created_at"),
+                        ("agent_commission_logs", "created_at"),
+                        ("notifications", "created_at"),
+                    ]
+                    for tbl, col in cols_to_shift:
+                        try:
+                            if is_pg:
+                                conn.execute(text(f"UPDATE {tbl} SET {col} = {col} + INTERVAL '6 hours 30 minutes' WHERE {col} IS NOT NULL"))
+                            else:
+                                conn.execute(text(f"UPDATE {tbl} SET {col} = datetime({col}, '+390 minutes') WHERE {col} IS NOT NULL"))
+                        except Exception as shift_ex:
+                            print(f"Notice on shifting {tbl}.{col}: {shift_ex}")
+                    conn.execute(text("INSERT INTO system_migrations (name) VALUES ('fix_mmt_timestamps_v1')"))
+                    print("SUCCESS: Migrated historical timestamps to MMT (+06:30)")
+            except Exception as mig_init_ex:
+                print(f"system_migrations notice: {mig_init_ex}")
             try:
                 conn.execute(text("ALTER TABLE bet_items ADD COLUMN edit_logs_json TEXT DEFAULT '[]'"))
             except Exception:

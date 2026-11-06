@@ -594,19 +594,50 @@ export function LanguageProvider({ children }) {
     return String(val ?? '');
   };
 
-  // Format date/time with full localization
+  // Format date/time with full localization strictly in Myanmar Standard Time (MMT UTC+6:30)
   const formatDateTime = (dateVal) => {
     if (!dateVal) return '';
-    const d = new Date(dateVal);
-    if (isNaN(d.getTime())) return formatDigits(dateVal);
-    
     const pad = (n) => n.toString().padStart(2, '0');
-    const year = d.getFullYear();
-    const month = pad(d.getMonth() + 1);
-    const day = pad(d.getDate());
-    const hour = d.getHours();
-    const minute = pad(d.getMinutes());
-    const second = pad(d.getSeconds());
+    let year, month, day, hour, minute, second;
+
+    if (typeof dateVal === 'string') {
+      // If it ends with 'Z' (pure UTC timestamp), convert to MMT (+6 hours 30 mins)
+      if (dateVal.endsWith('Z')) {
+        const utcDate = new Date(dateVal);
+        if (!isNaN(utcDate.getTime())) {
+          const mmtDate = new Date(utcDate.getTime() + (6.5 * 60 * 60 * 1000));
+          year = mmtDate.getUTCFullYear();
+          month = pad(mmtDate.getUTCMonth() + 1);
+          day = pad(mmtDate.getUTCDate());
+          hour = mmtDate.getUTCHours();
+          minute = pad(mmtDate.getUTCMinutes());
+          second = pad(mmtDate.getUTCSeconds());
+        }
+      } else {
+        // Direct string parse for ISO YYYY-MM-DD[T ]HH:mm:ss without timezone offset issues
+        const match = dateVal.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})[T ](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/);
+        if (match) {
+          year = parseInt(match[1], 10);
+          month = pad(parseInt(match[2], 10));
+          day = pad(parseInt(match[3], 10));
+          hour = parseInt(match[4], 10);
+          minute = pad(parseInt(match[5], 10));
+          second = pad(parseInt(match[6] || 0, 10));
+        }
+      }
+    }
+
+    if (!year) {
+      const d = new Date(dateVal);
+      if (isNaN(d.getTime())) return formatDigits(dateVal);
+      year = d.getFullYear();
+      month = pad(d.getMonth() + 1);
+      day = pad(d.getDate());
+      hour = d.getHours();
+      minute = pad(d.getMinutes());
+      second = pad(d.getSeconds());
+    }
+
     const isPm = hour >= 12;
     const hour12 = pad(hour % 12 || 12);
 

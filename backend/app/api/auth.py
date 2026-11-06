@@ -83,11 +83,14 @@ def verify_telegram_otp(req: TelegramOtpVerifyRequest, db: Session = Depends(get
     if not record:
         raise HTTPException(status_code=400, detail="Invalid OTP verification code.")
 
-    # Convert expires_at to aware if naive for safe comparison
+    # Safely compare expires_at against now_mmt
     exp = record.expires_at
-    if exp.tzinfo is None:
-        exp = exp.replace(tzinfo=MMT_TZ)
-    if exp < now_mmt():
+    now = now_mmt()
+    if hasattr(exp, 'tzinfo') and exp.tzinfo is not None:
+        exp = exp.replace(tzinfo=None)
+    if hasattr(now, 'tzinfo') and now.tzinfo is not None:
+        now = now.replace(tzinfo=None)
+    if exp < now:
         raise HTTPException(status_code=400, detail="Verification code has expired. Please request a new one.")
 
     record.is_used = True
@@ -137,9 +140,12 @@ def reset_password(req: ResetPasswordRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Invalid OTP verification code.")
 
     exp = record.expires_at
-    if exp.tzinfo is None:
-        exp = exp.replace(tzinfo=MMT_TZ)
-    if exp < now_mmt():
+    now = now_mmt()
+    if hasattr(exp, 'tzinfo') and exp.tzinfo is not None:
+        exp = exp.replace(tzinfo=None)
+    if hasattr(now, 'tzinfo') and now.tzinfo is not None:
+        now = now.replace(tzinfo=None)
+    if exp < now:
         raise HTTPException(status_code=400, detail="Verification code has expired. Please request a new one.")
 
     record.is_used = True

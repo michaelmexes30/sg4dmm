@@ -16,26 +16,28 @@ SUPPORTED_TIMEZONES = {
 }
 
 def now_mmt() -> datetime:
-    """Returns current datetime in Myanmar Standard Time (UTC+6:30)."""
-    return datetime.now(MMT_TZ)
+    """Returns current datetime in Myanmar Standard Time (UTC+6:30) as naive datetime for DB consistency."""
+    return datetime.now(MMT_TZ).replace(tzinfo=None)
 
 def now_utc() -> datetime:
-    """Returns current datetime in UTC."""
-    return datetime.now(timezone.utc)
+    """Returns current datetime in UTC as naive datetime."""
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 def convert_to_mmt(dt: datetime, source_tz_name: Optional[str] = None) -> datetime:
     """
-    Converts any datetime to Myanmar Standard Time (UTC+6:30).
+    Converts any datetime to Myanmar Standard Time (UTC+6:30) as a naive datetime.
     If dt is naive and source_tz_name is given, localizes to source first.
     """
+    if dt is None:
+        return now_mmt()
     if dt.tzinfo is None:
         if source_tz_name and source_tz_name.upper() in SUPPORTED_TIMEZONES:
             tz = SUPPORTED_TIMEZONES[source_tz_name.upper()]
             dt = tz.localize(dt)
         else:
             # Default naive assumption: already MMT
-            dt = MMT_TZ.localize(dt)
-    return dt.astimezone(MMT_TZ)
+            return dt
+    return dt.astimezone(MMT_TZ).replace(tzinfo=None)
 
 def parse_slip_timestamp(timestamp_str: str, client_tz: Optional[str] = "MMT") -> datetime:
     """
