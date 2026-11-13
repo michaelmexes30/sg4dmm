@@ -157,7 +157,7 @@ def settle_twod_draw_internal(
         raise ValueError(f"Invalid 2D winning number: {winning_number}")
 
     setting = db.query(SystemSetting).first()
-    payout_multiplier = float(getattr(setting, "twod_payout_multiplier", 85.0) or 85.0)
+    payout_multiplier = float(setting.twod_payout_multiplier) if getattr(setting, "twod_payout_multiplier", None) is not None else 80.0
 
     draw.winning_number = clean_win
     if set_index:

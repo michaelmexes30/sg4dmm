@@ -327,7 +327,7 @@ def get_2d_active_draw(db: Session = Depends(get_db)):
 
     setting = db.query(SystemSetting).first()
     is_enabled = bool(getattr(setting, "is_2d_enabled", True) if getattr(setting, "is_2d_enabled", True) is not None else True)
-    payout_mult = float(getattr(setting, "twod_payout_multiplier", 85.0) or 85.0)
+    payout_mult = float(setting.twod_payout_multiplier) if getattr(setting, "twod_payout_multiplier", None) is not None else 80.0
     min_bet = float(getattr(setting, "twod_min_bet", 100.0) or 100.0)
     max_bet = float(getattr(setting, "twod_max_bet", 50000.0) or 50000.0)
 

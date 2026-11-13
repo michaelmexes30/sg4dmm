@@ -73,8 +73,8 @@ class SystemSetting(Base):
 
     # ---------------- 2D Lottery Settings ----------------
     is_2d_enabled = Column(Boolean, default=True)           # 2D ယာယီ ပိတ်/ဖွင့် (True = ဖွင့်, False = ယာယီပိတ်)
-    twod_payout_multiplier = Column(Float, default=85.0)    # 2D ပေါက်ဆ (default 85 ဆ e.g. 1 ကျပ်ထိုးလျှင် 85 ကျပ်)
-    twod_commission_rate = Column(Float, default=15.0)      # 2D Agent Commission % (default 15%)
+    twod_payout_multiplier = Column(Float, default=80.0)    # 2D ပေါက်ဆ (default 85 ဆ e.g. 1 ကျပ်ထိုးလျှင် 85 ကျပ်)
+    twod_commission_rate = Column(Float, default=0.0)      # 2D Agent Commission % (default 15%)
     twod_min_bet = Column(Float, default=100.0)             # 2D အနည်းဆုံးထိုးကြေး (MMK)
     twod_max_bet = Column(Float, default=50000.0)           # 2D အများဆုံးထိုးကြေး (MMK)
     twod_max_risk_per_number = Column(Float, default=100000.0) # 2D တစ်ကွက် အများဆုံး ထိုးငွေကန့်သတ်ချက် (Max Risk Cap)

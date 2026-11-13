@@ -59,8 +59,8 @@ export default function SettingsView({ onNotify }) {
 
     // 2D Lottery Settings
     is_2d_enabled: true,
-    twod_payout_multiplier: 85,
-    twod_commission_rate: 15,
+    twod_payout_multiplier: 80,
+    twod_commission_rate: 0,
     twod_min_bet: 100,
     twod_max_bet: 50000,
     twod_max_risk_per_number: 100000,
@@ -112,8 +112,8 @@ export default function SettingsView({ onNotify }) {
             result_time: res.result_time ?? res.result_confirm_time ?? '18:00',
             reward_percentage: res.reward_percentage ?? res.consecutive_reward_percent ?? 20,
             is_2d_enabled: res.is_2d_enabled ?? true,
-            twod_payout_multiplier: res.twod_payout_multiplier ?? 85,
-            twod_commission_rate: res.twod_commission_rate ?? 15,
+            twod_payout_multiplier: res.twod_payout_multiplier ?? 80,
+            twod_commission_rate: res.twod_commission_rate ?? 0,
             twod_min_bet: res.twod_min_bet ?? 100,
             twod_max_bet: res.twod_max_bet ?? 50000,
             twod_max_risk_per_number: res.twod_max_risk_per_number ?? 100000,
@@ -167,8 +167,8 @@ export default function SettingsView({ onNotify }) {
         is_withdraw_hours_enabled: Boolean(systemSettings.is_withdraw_hours_enabled),
 
         is_2d_enabled: Boolean(systemSettings.is_2d_enabled),
-        twod_payout_multiplier: Number(systemSettings.twod_payout_multiplier || 85),
-        twod_commission_rate: Number(systemSettings.twod_commission_rate || 15),
+        twod_payout_multiplier: Number(systemSettings.twod_payout_multiplier ?? 80),
+        twod_commission_rate: Number(systemSettings.twod_commission_rate ?? 0),
         twod_min_bet: Number(systemSettings.twod_min_bet || 100),
         twod_max_bet: Number(systemSettings.twod_max_bet || 50000),
         twod_max_risk_per_number: Number(systemSettings.twod_max_risk_per_number || 100000),

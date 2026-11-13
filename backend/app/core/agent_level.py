@@ -7,19 +7,22 @@ from app.models.settings import SystemSetting
 
 def get_agent_turnover_stats(agent: User, db: Session) -> Dict[str, float]:
     """
-    Computes Agent's combined turnover:
-    - self_turnover: Bets placed directly by the agent
-    - downline_turnover: Bets placed by downline players referred by this agent
-    - total_turnover: self_turnover + downline_turnover
+    Computes Agent's combined turnover for 4D and 3D games:
+    - 4D and 3D stakes (both Agent self-bets and Downline player bets) count towards the Agent's Tier turnover.
+    - 2D is excluded from Tier turnover (0% commission).
     """
+    valid_game_types = ["4D", "3D"]
+
     self_turnover = db.query(func.coalesce(func.sum(BetSlip.total_stake), 0.0)).filter(
-        BetSlip.user_id == agent.id
+        BetSlip.user_id == agent.id,
+        BetSlip.game_type.in_(valid_game_types)
     ).scalar() or 0.0
 
     downline_turnover = db.query(func.coalesce(func.sum(BetSlip.total_stake), 0.0)).outerjoin(
         User, BetSlip.user_id == User.id
     ).filter(
         BetSlip.user_id != agent.id,
+        BetSlip.game_type.in_(valid_game_types),
         or_(
             BetSlip.agent_id == agent.id,
             User.agent_id == agent.id,

@@ -83,6 +83,12 @@ async def lifespan(app: FastAPI):
                     print("SUCCESS: Verified and migrated 2026-11-12 morning 2D draw to 00")
             except Exception as d26_ex:
                 print(f"Migration notice for 2026-11-12 2D draw: {d26_ex}")
+
+            # Update default 2D payout (80x), 2D commission (0%), and 3D commission (15%)
+            try:
+                conn.execute(text("UPDATE system_settings SET twod_commission_rate = 0.0, twod_payout_multiplier = 80.0, threed_commission_rate = 15.0"))
+            except Exception as set_upd_ex:
+                print(f"System settings update notice: {set_upd_ex}")
             try:
                 conn.execute(text("ALTER TABLE bet_items ADD COLUMN edit_logs_json TEXT DEFAULT '[]'"))
             except Exception:

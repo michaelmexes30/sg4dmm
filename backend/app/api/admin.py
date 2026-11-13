@@ -3919,8 +3919,8 @@ def get_system_settings(
 
         # 2D Lottery Settings
         "is_2d_enabled": bool(getattr(setting, "is_2d_enabled", True) if getattr(setting, "is_2d_enabled", True) is not None else True),
-        "twod_payout_multiplier": float(getattr(setting, "twod_payout_multiplier", 85.0) or 85.0),
-        "twod_commission_rate": float(getattr(setting, "twod_commission_rate", 15.0) or 15.0),
+        "twod_payout_multiplier": float(setting.twod_payout_multiplier) if getattr(setting, "twod_payout_multiplier", None) is not None else 80.0,
+        "twod_commission_rate": float(setting.twod_commission_rate) if getattr(setting, "twod_commission_rate", None) is not None else 0.0,
         "twod_min_bet": float(getattr(setting, "twod_min_bet", 100.0) or 100.0),
         "twod_max_bet": float(getattr(setting, "twod_max_bet", 50000.0) or 50000.0),
         "twod_max_risk_per_number": float(getattr(setting, "twod_max_risk_per_number", 100000.0) or 100000.0),
@@ -3931,7 +3931,7 @@ def get_system_settings(
         "is_3d_enabled": bool(getattr(setting, "is_3d_enabled", True) if getattr(setting, "is_3d_enabled", True) is not None else True),
         "threed_straight_payout": float(getattr(setting, "threed_straight_payout", 700.0) or 700.0),
         "threed_tote_payout": float(getattr(setting, "threed_tote_payout", 10.0) or 10.0),
-        "threed_commission_rate": float(getattr(setting, "threed_commission_rate", 15.0) or 15.0),
+        "threed_commission_rate": float(setting.threed_commission_rate) if getattr(setting, "threed_commission_rate", None) is not None else 15.0,
         "threed_min_bet": float(getattr(setting, "threed_min_bet", 100.0) or 100.0),
         "threed_max_bet": float(getattr(setting, "threed_max_bet", 50000.0) or 50000.0),
         "threed_max_risk_per_number": float(getattr(setting, "threed_max_risk_per_number", 200000.0) or 200000.0),
@@ -4331,7 +4331,7 @@ def get_2d_game_monitor(
 ):
     ensure_twod_draws_exist(db)
     setting = db.query(SystemSetting).first()
-    payout_multiplier = float(getattr(setting, "twod_payout_multiplier", 85.0) or 85.0)
+    payout_multiplier = float(setting.twod_payout_multiplier) if getattr(setting, "twod_payout_multiplier", None) is not None else 80.0
     risk_cap = float(getattr(setting, "twod_max_risk_per_number", 100000.0) or 100000.0)
 
     if mode == "past":
@@ -4465,7 +4465,7 @@ def get_2d_number_audit(
 ):
     clean_num = str(number).strip().zfill(2)
     setting = db.query(SystemSetting).first()
-    payout_mult = float(getattr(setting, "twod_payout_multiplier", 85.0) or 85.0)
+    payout_mult = float(setting.twod_payout_multiplier) if getattr(setting, "twod_payout_multiplier", None) is not None else 80.0
 
     query = (
         db.query(BetItem, BetSlip, User)
@@ -4546,7 +4546,7 @@ def get_2d_bets_history(
     items = query.order_by(BetItem.id.desc()).offset((page - 1) * limit).limit(limit).all()
 
     setting = db.query(SystemSetting).first()
-    payout_mult = float(getattr(setting, "twod_payout_multiplier", 85.0) or 85.0)
+    payout_mult = float(setting.twod_payout_multiplier) if getattr(setting, "twod_payout_multiplier", None) is not None else 80.0
 
     results = []
     for bi, bs, u, d in items:
@@ -5081,7 +5081,7 @@ def settle_2d_draw(
 def _unused_legacy_settle_2d_draw():
 
     setting = db.query(SystemSetting).first()
-    payout_multiplier = float(getattr(setting, "twod_payout_multiplier", 85.0) or 85.0)
+    payout_multiplier = float(setting.twod_payout_multiplier) if getattr(setting, "twod_payout_multiplier", None) is not None else 80.0
 
     draw.set_index = req.set_index.strip() if req.set_index else draw.set_index
     draw.set_value = req.set_value.strip() if req.set_value else draw.set_value

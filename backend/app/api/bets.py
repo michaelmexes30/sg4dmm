@@ -597,10 +597,10 @@ def place_2d_bet_slip(
     if not is_2d_enabled:
         raise HTTPException(status_code=400, detail="2D ထီထိုးခြင်းအား ယာယီပိတ်ထားပါသည် (2D lottery is temporarily disabled).")
 
-    payout_multiplier = float(getattr(setting, "twod_payout_multiplier", 85.0) or 85.0)
+    payout_multiplier = float(setting.twod_payout_multiplier) if getattr(setting, "twod_payout_multiplier", None) is not None else 80.0
     min_bet_val = float(getattr(setting, "twod_min_bet", 100.0) or 100.0)
     max_bet_val = float(getattr(setting, "twod_max_bet", 50000.0) or 50000.0)
-    comm_rate = float(getattr(setting, "twod_commission_rate", 15.0) or 15.0) / 100.0
+    comm_rate = float(setting.twod_commission_rate) / 100.0 if getattr(setting, "twod_commission_rate", None) is not None else 0.0
 
     draw = db.query(TwoDDraw).filter(TwoDDraw.id == req.draw_id).first()
     if not draw:
@@ -756,6 +756,15 @@ def place_2d_bet_slip(
     bet_slip._custom_draw_date = draw.draw_date
     bet_slip._custom_draw_session = getattr(draw, 'session', None)
     bet_slip._custom_draw_time = getattr(draw, 'draw_time_mmt', None)
+
+    # 4D Commission Tier evaluation: Player & Agent 3D bets count towards Agent's 4D Tier Turnover!
+    from app.core.agent_level import evaluate_and_update_agent_level
+    if current_user.role == UserRole.AGENT:
+        evaluate_and_update_agent_level(current_user, db, commit=False)
+    if agent:
+        evaluate_and_update_agent_level(agent, db, commit=False)
+    db.commit()
+
     return bet_slip
 
 
@@ -793,7 +802,7 @@ def place_3d_bet_slip(
     tote_payout = float(getattr(setting, "threed_tote_payout", 10.0) or 10.0)
     min_bet_val = float(getattr(setting, "threed_min_bet", 100.0) or 100.0)
     max_bet_val = float(getattr(setting, "threed_max_bet", 50000.0) or 50000.0)
-    comm_rate = float(getattr(setting, "threed_commission_rate", 15.0) or 15.0) / 100.0
+    comm_rate = float(setting.threed_commission_rate) / 100.0 if getattr(setting, "threed_commission_rate", None) is not None else 0.15
 
     draw = db.query(ThreeDDraw).filter(ThreeDDraw.id == req.draw_id).first()
     if not draw:
@@ -923,4 +932,13 @@ def place_3d_bet_slip(
     bet_slip._custom_draw_date = draw.draw_date
     bet_slip._custom_draw_session = getattr(draw, 'session', None)
     bet_slip._custom_draw_time = getattr(draw, 'draw_time_mmt', None)
+
+    # 4D Commission Tier evaluation: Player & Agent 3D bets count towards Agent's 4D Tier Turnover!
+    from app.core.agent_level import evaluate_and_update_agent_level
+    if current_user.role == UserRole.AGENT:
+        evaluate_and_update_agent_level(current_user, db, commit=False)
+    if agent:
+        evaluate_and_update_agent_level(agent, db, commit=False)
+    db.commit()
+
     return bet_slip

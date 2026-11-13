@@ -67,7 +67,7 @@ export default function Betting2DForm({ onOpenDeposit, onBetPlaced }) {
 
   const currentSession = activeDrawData?.sessions?.find(s => s.id === selectedSessionId) || activeDrawData?.sessions?.[0];
   const closedSet = new Set(currentSession?.closed_numbers || []);
-  const payoutMultiplier = activeDrawData?.payout_multiplier || 85.0;
+  const payoutMultiplier = activeDrawData?.payout_multiplier || 80.0;
   const minBet = activeDrawData?.min_bet || 100.0;
   const maxBet = activeDrawData?.max_bet || 50000.0;
   const isEnabled = activeDrawData?.is_enabled ?? true;
@@ -602,7 +602,7 @@ export default function Betting2DForm({ onOpenDeposit, onBetPlaced }) {
                       {isClosed ? (
                         <span className="text-[8px] text-rose-400 block font-sans">ပိတ်</span>
                       ) : (
-                        <span className="text-[8px] opacity-70 block font-mono">85x</span>
+                        <span className="text-[8px] opacity-70 block font-mono">{payoutMultiplier}x</span>
                       )}
                     </button>
                   );
@@ -670,7 +670,7 @@ export default function Betting2DForm({ onOpenDeposit, onBetPlaced }) {
                     <span className="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 font-black text-sm tracking-widest border border-emerald-500/30">
                       {item.number}
                     </span>
-                    <span className="text-slate-400 text-[11px] font-sans">ပေါက်ဆ: 85ဆ</span>
+                    <span className="text-slate-400 text-[11px] font-sans">ပေါက်ဆ: {payoutMultiplier}ဆ</span>
                   </div>
 
                   <div className="flex items-center gap-3">
