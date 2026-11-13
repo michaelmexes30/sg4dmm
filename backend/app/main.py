@@ -96,83 +96,95 @@ async def lifespan(app: FastAPI):
                 conn.execute(text("ALTER TABLE bet_items ADD COLUMN edit_logs_json TEXT DEFAULT '[]'"))
             except Exception:
                 pass
-            # Ensure mini_game_bets table exists across PostgreSQL and SQLite
+            # Autocommit DDL executions (isolated so individual notifications/errors never abort other migrations)
+            is_pg = (engine.dialect.name == "postgresql")
             try:
-                is_pg = (engine.dialect.name == "postgresql")
-                if is_pg:
-                    conn.execute(text("""
-                        CREATE TABLE IF NOT EXISTS mini_game_bets (
-                            id SERIAL PRIMARY KEY,
-                            user_id INTEGER NOT NULL REFERENCES users(id),
-                            game_type VARCHAR(30) NOT NULL,
-                            stake_amount FLOAT NOT NULL,
-                            payout_multiplier FLOAT DEFAULT 0.0,
-                            payout_amount FLOAT DEFAULT 0.0,
-                            is_win BOOLEAN DEFAULT FALSE,
-                            player_choice VARCHAR(50),
-                            result_data JSON,
-                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            date_str VARCHAR(10),
-                            is_archived BOOLEAN DEFAULT FALSE
-                        )
-                    """))
-                    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_mini_game_bets_user_id ON mini_game_bets (user_id)"))
-                    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_mini_game_bets_game_type ON mini_game_bets (game_type)"))
-                    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_mini_game_bets_date_str ON mini_game_bets (date_str)"))
-                    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_mini_game_bets_is_archived ON mini_game_bets (is_archived)"))
-                else:
-                    conn.execute(text("""
-                        CREATE TABLE IF NOT EXISTS mini_game_bets (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            user_id INTEGER NOT NULL REFERENCES users(id),
-                            game_type VARCHAR(30) NOT NULL,
-                            stake_amount FLOAT NOT NULL,
-                            payout_multiplier FLOAT DEFAULT 0.0,
-                            payout_amount FLOAT DEFAULT 0.0,
-                            is_win BOOLEAN DEFAULT FALSE,
-                            player_choice VARCHAR(50),
-                            result_data JSON,
-                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            date_str VARCHAR(10),
-                            is_archived BOOLEAN DEFAULT FALSE
-                        )
-                    """))
-            except Exception as mgb_ex:
-                print(f"Notice creating mini_game_bets: {mgb_ex}")
-
-            try:
-                conn.execute(text("ALTER TABLE mini_game_bets ADD COLUMN is_archived BOOLEAN DEFAULT FALSE"))
-            except Exception:
-                pass
-            try:
-                conn.execute(text("""
-                    CREATE TABLE IF NOT EXISTS mini_game_daily_statements (
-                        id SERIAL PRIMARY KEY,
-                        date_str VARCHAR(10) NOT NULL,
-                        game_type VARCHAR(50) NOT NULL,
-                        bets_count INTEGER DEFAULT 0,
-                        stake_amount FLOAT DEFAULT 0.0,
-                        payout_amount FLOAT DEFAULT 0.0,
-                        net_profit FLOAT DEFAULT 0.0,
-                        actual_rtp FLOAT DEFAULT 0.0,
-                        created_at TIMESTAMP,
-                        updated_at TIMESTAMP
-                    )
-                """))
-                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_mini_game_daily_date ON mini_game_daily_statements (date_str)"))
-                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_mini_game_daily_game ON mini_game_daily_statements (game_type)"))
-            except Exception as tbl_ex:
-                print(f"Notice creating mini_game_daily_statements: {tbl_ex}")
-
-            # Ensure PostgreSQL enum and column expansions
-            try:
-                conn.execute(text("ALTER TYPE transactiontype ADD VALUE IF NOT EXISTS 'WIN_PAYOUT'"))
-            except Exception:
-                pass
-            try:
-                conn.execute(text("ALTER TABLE transactions ALTER COLUMN gateway TYPE VARCHAR(50)"))
-            except Exception:
-                pass
+                with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as ac_conn:
+                    if is_pg:
+                        for ddl in [
+                            """CREATE TABLE IF NOT EXISTS mini_game_bets (
+                                id SERIAL PRIMARY KEY,
+                                user_id INTEGER NOT NULL REFERENCES users(id),
+                                game_type VARCHAR(30) NOT NULL,
+                                stake_amount FLOAT NOT NULL,
+                                payout_multiplier FLOAT DEFAULT 0.0,
+                                payout_amount FLOAT DEFAULT 0.0,
+                                is_win BOOLEAN DEFAULT FALSE,
+                                player_choice VARCHAR(50),
+                                result_data JSON,
+                                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                date_str VARCHAR(10),
+                                is_archived BOOLEAN DEFAULT FALSE
+                            )""",
+                            "ALTER TABLE mini_game_bets ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT FALSE",
+                            "ALTER TABLE mini_game_bets ADD COLUMN IF NOT EXISTS date_str VARCHAR(10)",
+                            "ALTER TABLE mini_game_bets ADD COLUMN IF NOT EXISTS result_data JSON",
+                            "ALTER TABLE mini_game_bets ADD COLUMN IF NOT EXISTS player_choice VARCHAR(50)",
+                            "ALTER TABLE mini_game_bets ADD COLUMN IF NOT EXISTS payout_multiplier FLOAT DEFAULT 0.0",
+                            "ALTER TABLE mini_game_bets ADD COLUMN IF NOT EXISTS payout_amount FLOAT DEFAULT 0.0",
+                            "ALTER TABLE mini_game_bets ADD COLUMN IF NOT EXISTS is_win BOOLEAN DEFAULT FALSE",
+                            "ALTER TABLE mini_game_bets ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+                            "CREATE INDEX IF NOT EXISTS ix_mini_game_bets_user_id ON mini_game_bets (user_id)",
+                            "CREATE INDEX IF NOT EXISTS ix_mini_game_bets_game_type ON mini_game_bets (game_type)",
+                            "CREATE INDEX IF NOT EXISTS ix_mini_game_bets_date_str ON mini_game_bets (date_str)",
+                            "CREATE INDEX IF NOT EXISTS ix_mini_game_bets_is_archived ON mini_game_bets (is_archived)",
+                            """CREATE TABLE IF NOT EXISTS mini_game_daily_statements (
+                                id SERIAL PRIMARY KEY,
+                                date_str VARCHAR(10) NOT NULL,
+                                game_type VARCHAR(50) NOT NULL,
+                                bets_count INTEGER DEFAULT 0,
+                                stake_amount FLOAT DEFAULT 0.0,
+                                payout_amount FLOAT DEFAULT 0.0,
+                                net_profit FLOAT DEFAULT 0.0,
+                                actual_rtp FLOAT DEFAULT 0.0,
+                                created_at TIMESTAMP,
+                                updated_at TIMESTAMP
+                            )""",
+                            "CREATE INDEX IF NOT EXISTS ix_mini_game_daily_date ON mini_game_daily_statements (date_str)",
+                            "CREATE INDEX IF NOT EXISTS ix_mini_game_daily_game ON mini_game_daily_statements (game_type)",
+                            "ALTER TYPE transactiontype ADD VALUE IF NOT EXISTS 'WIN_PAYOUT'",
+                            "ALTER TABLE transactions ALTER COLUMN gateway TYPE VARCHAR(50)",
+                        ]:
+                            try:
+                                ac_conn.execute(text(ddl))
+                            except Exception as ddl_ex:
+                                print(f"Autocommit DDL note ({ddl[:35]}...): {ddl_ex}")
+                    else:
+                        for ddl in [
+                            """CREATE TABLE IF NOT EXISTS mini_game_bets (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                user_id INTEGER NOT NULL REFERENCES users(id),
+                                game_type VARCHAR(30) NOT NULL,
+                                stake_amount FLOAT NOT NULL,
+                                payout_multiplier FLOAT DEFAULT 0.0,
+                                payout_amount FLOAT DEFAULT 0.0,
+                                is_win BOOLEAN DEFAULT FALSE,
+                                player_choice VARCHAR(50),
+                                result_data JSON,
+                                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                date_str VARCHAR(10),
+                                is_archived BOOLEAN DEFAULT FALSE
+                            )""",
+                            "ALTER TABLE mini_game_bets ADD COLUMN is_archived BOOLEAN DEFAULT FALSE",
+                            """CREATE TABLE IF NOT EXISTS mini_game_daily_statements (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                date_str VARCHAR(10) NOT NULL,
+                                game_type VARCHAR(50) NOT NULL,
+                                bets_count INTEGER DEFAULT 0,
+                                stake_amount FLOAT DEFAULT 0.0,
+                                payout_amount FLOAT DEFAULT 0.0,
+                                net_profit FLOAT DEFAULT 0.0,
+                                actual_rtp FLOAT DEFAULT 0.0,
+                                created_at TIMESTAMP,
+                                updated_at TIMESTAMP
+                            )""",
+                        ]:
+                            try:
+                                ac_conn.execute(text(ddl))
+                            except Exception:
+                                pass
+            except Exception as ac_err:
+                print(f"Notice during autocommit DDL setup: {ac_err}")
 
             # Column size expansion for PostgreSQL
             try:
