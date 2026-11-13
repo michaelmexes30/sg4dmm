@@ -4271,8 +4271,8 @@ def ensure_twod_draws_exist(db: Session):
             morning.status = "CLOSED"
 
     if is_past_morning:
-        if morning.status in ["OPEN", "CLOSED", "UPCOMING"] or morning.winning_number in ["85", "00", None]:
-            res = get_live_twod_result("morning")
+        if morning.status in ["OPEN", "CLOSED"] and not morning.winning_number:
+            res = get_live_twod_result("morning", is_settlement=True)
             if res and res.get("twod"):
                 settle_twod_draw_internal(db, morning, res["twod"], res.get("set_index"), res.get("set_value"))
 
@@ -4295,8 +4295,8 @@ def ensure_twod_draws_exist(db: Session):
             evening.status = "CLOSED"
 
     if is_past_evening:
-        if evening.status in ["OPEN", "CLOSED", "UPCOMING"] or evening.winning_number in ["84", "00", None]:
-            res = get_live_twod_result("evening")
+        if evening.status in ["OPEN", "CLOSED"] and not evening.winning_number:
+            res = get_live_twod_result("evening", is_settlement=True)
             if res and res.get("twod"):
                 settle_twod_draw_internal(db, evening, res["twod"], res.get("set_index"), res.get("set_value"))
 

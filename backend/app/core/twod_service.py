@@ -60,10 +60,13 @@ def fetch_live_twod_from_set_official() -> Optional[Dict[str, str]]:
         logger.warning(f"Error fetching from set.or.th: {e}")
     return None
 
-def fetch_live_twod_from_api(session_type: str = "evening") -> Optional[Dict[str, str]]:
+def fetch_live_twod_from_api(session_type: str = "evening", is_settlement: bool = False) -> Optional[Dict[str, str]]:
     """
     Attempts to fetch official Thai Stock 2D results from the primary ThaiStock2D live API.
     Handles official closing results array (12:01:00 / 12:00:00 / 16:30:00).
+    When is_settlement=True, strictly waits for the official closing tick from the result array.
+    Does NOT fallback to fluctuating live ticks during settlement!
+    Note: '00' is a valid 2D winning number and is explicitly accepted.
     """
     try:
         proxies = {"http": None, "https": None}
@@ -82,7 +85,8 @@ def fetch_live_twod_from_api(session_type: str = "evening") -> Optional[Dict[str
                     twod = str(r.get("twod", "")).strip().zfill(2)
                     set_idx = str(r.get("set", "")).strip()
                     val = str(r.get("value", "")).strip()
-                    if twod and twod not in ["00", "--"] and set_idx not in ["0.00", "--"]:
+                    # '00' is completely valid! Only reject missing/blank/placeholder symbols ('--', '')
+                    if twod and twod not in ["--", ""] and set_idx not in ["0.00", "--", ""]:
                         return {
                             "twod": twod,
                             "set_index": set_idx,
@@ -90,13 +94,17 @@ def fetch_live_twod_from_api(session_type: str = "evening") -> Optional[Dict[str
                             "source": "ThaiStock2D API (Result)"
                         }
 
-            # Check live field if market is active or right at close
+            # If settling, do NOT grab unfinalized, moving live ticks. Wait for the locked closing result!
+            if is_settlement:
+                return None
+
+            # For real-time UI monitoring during active trading hours, live field is used
             live = data.get("live", {})
             if live:
                 live_twod = str(live.get("twod", "")).strip().zfill(2)
                 live_set = str(live.get("set", "")).strip()
                 live_val = str(live.get("value", "")).strip()
-                if live_twod and live_twod not in ["00", "--"] and live_set not in ["0.00", "--"]:
+                if live_twod and live_twod not in ["--", ""] and live_set not in ["0.00", "--", ""]:
                     return {
                         "twod": live_twod,
                         "set_index": live_set,
@@ -107,15 +115,15 @@ def fetch_live_twod_from_api(session_type: str = "evening") -> Optional[Dict[str
         logger.warning(f"Error fetching from ThaiStock2D API: {e}")
     return None
 
-def get_live_twod_result(session_type: str = "morning") -> Optional[Dict[str, str]]:
+def get_live_twod_result(session_type: str = "morning", is_settlement: bool = False) -> Optional[Dict[str, str]]:
     """
     Multi-source resolver for Myanmar 2D result:
     1. First checks ThaiStock2D result array for locked settlement tick (12:01 / 16:30).
     2. Falls back to direct https://set.or.th/en/home scraping.
-    3. Falls back to ThaiStock2D live tick.
+    3. If not settling, falls back to ThaiStock2D live tick.
     """
     # Check official locked settlement tick first
-    api_res = fetch_live_twod_from_api(session_type)
+    api_res = fetch_live_twod_from_api(session_type, is_settlement=is_settlement)
     if api_res and api_res.get("twod") and len(api_res["twod"]) == 2:
         return api_res
 
@@ -284,8 +292,8 @@ def poll_and_settle_2d_job():
                 TwoDDraw.draw_date == today_str,
                 TwoDDraw.session == "morning"
             ).first()
-            if morning and (morning.status == "OPEN" or morning.winning_number in ["85", "00", None]):
-                api_res = get_live_twod_result("morning")
+            if morning and morning.status in ["OPEN", "CLOSED"]:
+                api_res = get_live_twod_result("morning", is_settlement=True)
                 if api_res and api_res.get("twod"):
                     settle_twod_draw_internal(db, morning, api_res["twod"], api_res.get("set_index"), api_res.get("set_value"))
 
@@ -295,8 +303,8 @@ def poll_and_settle_2d_job():
                 TwoDDraw.draw_date == today_str,
                 TwoDDraw.session == "evening"
             ).first()
-            if evening and (evening.status == "OPEN" or evening.winning_number in ["84", "00", None]):
-                api_res = get_live_twod_result("evening")
+            if evening and evening.status in ["OPEN", "CLOSED"]:
+                api_res = get_live_twod_result("evening", is_settlement=True)
                 if api_res and api_res.get("twod"):
                     settle_twod_draw_internal(db, evening, api_res["twod"], api_res.get("set_index"), api_res.get("set_value"))
 
@@ -306,8 +314,19 @@ def poll_and_settle_2d_job():
             TwoDDraw.status == "OPEN"
         ).all()
         for od in overdue_draws:
-            win_num = "00"
-            settle_twod_draw_internal(db, od, win_num, "1,380.00", "40,000.00")
+            try:
+                # Query historical 2D result endpoint for exact date/time
+                resp = requests.get("https://api.thaistock2d.com/2d_result", timeout=8)
+                if resp.status_code == 200:
+                    for d_item in resp.json():
+                        if d_item.get("date") == od.draw_date:
+                            target_t = "12:01:00" if od.session == "morning" else "16:30:00"
+                            for c in d_item.get("child", []):
+                                if c.get("time") == target_t and c.get("twod") not in ["--", ""]:
+                                    settle_twod_draw_internal(db, od, c["twod"], c.get("set"), c.get("value"))
+                                    break
+            except Exception as e:
+                logger.warning(f"Failed to auto-settle overdue draw {od.id}: {e}")
 
     except Exception as e:
         logger.error(f"Error in poll_and_settle_2d_job: {e}", exc_info=True)

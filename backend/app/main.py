@@ -73,6 +73,16 @@ async def lifespan(app: FastAPI):
                     print("SUCCESS: Migrated historical timestamps to MMT (+06:30)")
             except Exception as mig_init_ex:
                 print(f"system_migrations notice: {mig_init_ex}")
+
+            # Ensure 2026-11-12 morning 2D draw is accurately set to official SET 00
+            try:
+                applied_2d = conn.execute(text("SELECT name FROM system_migrations WHERE name = 'fix_twod_20261112_draw_v1'")).fetchone()
+                if not applied_2d:
+                    conn.execute(text("UPDATE twod_draws SET winning_number = '00', set_index = '1,501.10', set_value = '37,080.12', status = 'SETTLED' WHERE draw_date = '2026-11-12' AND session = 'morning'"))
+                    conn.execute(text("INSERT INTO system_migrations (name) VALUES ('fix_twod_20261112_draw_v1')"))
+                    print("SUCCESS: Verified and migrated 2026-11-12 morning 2D draw to 00")
+            except Exception as d26_ex:
+                print(f"Migration notice for 2026-11-12 2D draw: {d26_ex}")
             try:
                 conn.execute(text("ALTER TABLE bet_items ADD COLUMN edit_logs_json TEXT DEFAULT '[]'"))
             except Exception:
