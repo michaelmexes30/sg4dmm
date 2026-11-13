@@ -23,3 +23,25 @@ class MiniGameBet(Base):
     created_at = Column(DateTime, default=now_mmt, index=True)
     date_str = Column(String(10), index=True)
     is_archived = Column(Boolean, default=False, index=True)
+
+class MiniGameDailyStatement(Base):
+    """
+    Persistent 2-Year Historical Daily Statement for Mini-Games.
+    Preserves daily aggregate metrics (Stakes, Payouts, Net Profit, RTP) per game
+    even after granular raw play logs are pruned at 6 months.
+    Retention: 2 Years (730 days).
+    Supports all existing and future dynamic games.
+    """
+    __tablename__ = "mini_game_daily_statements"
+
+    id = Column(Integer, primary_key=True, index=True)
+    date_str = Column(String(10), nullable=False, index=True)      # YYYY-MM-DD
+    game_type = Column(String(50), nullable=False, index=True)     # "WHEEL", "COIN_FLIP", "DICE", or any future game!
+    bets_count = Column(Integer, default=0)
+    stake_amount = Column(Float, default=0.0)
+    payout_amount = Column(Float, default=0.0)
+    net_profit = Column(Float, default=0.0)
+    actual_rtp = Column(Float, default=0.0)
+    created_at = Column(DateTime, default=now_mmt, index=True)
+    updated_at = Column(DateTime, default=now_mmt, onupdate=now_mmt)
+

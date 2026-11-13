@@ -23,13 +23,20 @@ import {
   Clock,
   Trash2,
   BarChart3,
-  Layers
+  Layers,
+  History as HistoryIcon
 } from 'lucide-react';
 import { apiClient } from '../../api/client';
 
-export default function MiniGamesAdminView({ onNotify }) {
-  // Navigation: 'overview' | 'history'
-  const [activeTab, setActiveTab] = useState('overview');
+export default function MiniGamesAdminView({ initialTab = 'game', onNotify }) {
+  // Navigation: 'game' | 'statement' | 'history'
+  const [activeTab, setActiveTab] = useState(initialTab || 'game');
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
 
   const [overview, setOverview] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -41,15 +48,16 @@ export default function MiniGamesAdminView({ onNotify }) {
   const [minBet, setMinBet] = useState(50);
   const [maxBet, setMaxBet] = useState(50000);
 
-  // Daily Reports State
+  // Daily Reports State (2-Year Persistent Retention)
   const [dailyReports, setDailyReports] = useState([]);
   const [dailySubTotal, setDailySubTotal] = useState(null);
+  const [availableGames, setAvailableGames] = useState([]);
   const [dailyLoading, setDailyLoading] = useState(false);
   const [dailyFromDate, setDailyFromDate] = useState('');
   const [dailyToDate, setDailyToDate] = useState('');
   const [dailyGameType, setDailyGameType] = useState('');
 
-  // History Tab - Bets Table State
+  // History Tab - Plays Table State (1-Week Archive, 6-Month Retention)
   const [bets, setBets] = useState([]);
   const [betsLoading, setBetsLoading] = useState(false);
   const [page, setPage] = useState(1);
@@ -112,6 +120,9 @@ export default function MiniGamesAdminView({ onNotify }) {
       if (res && res.status === 'success') {
         setDailyReports(res.reports || []);
         setDailySubTotal(res.sub_total || null);
+        if (res.available_games) {
+          setAvailableGames(res.available_games);
+        }
       }
     } catch (err) {
       console.error('Failed to load daily reports:', err);
@@ -188,7 +199,7 @@ export default function MiniGamesAdminView({ onNotify }) {
   };
 
   const handleRunArchiving = async () => {
-    if (!window.confirm('1-Week Archiving & 6-Month Data Pruning ကို ယခု ချက်ချင်း Run လိုပါသလား? (၇ ရက်ကျော်မှတ်တမ်းများကို Archive ပြုလုပ်ပြီး ၆ လကျော် မှတ်တမ်းများကို ပယ်ဖျက်ပါမည်)')) {
+    if (!window.confirm('1-Week Archiving & 6-Month History Pruning ကို ယခု ချက်ချင်း Run လိုပါသလား? (၇ ရက်ကျော်မှတ်တမ်းများကို Archive ပြုလုပ်ပြီး ၆ လကျော် မှတ်တမ်းများကို အပြီးဖျက်ပါမည်။ နေ့စဉ်စာရင်းရှင်းတမ်းသည် ၂ နှစ်အထိ ဆက်လက်တည်ရှိပါမည်)')) {
       return;
     }
     setArchivingLoading(true);
@@ -196,10 +207,11 @@ export default function MiniGamesAdminView({ onNotify }) {
       const res = await apiClient.runAdminMiniGamesArchiving();
       if (res && res.status === 'success') {
         if (onNotify) {
-          onNotify(`Archiving အောင်မြင်ပါသည်! (Archived: ${res.archived_7_days_count || 0}, 6-Month Purged: ${res.purged_6_months_count || 0})`, 'success');
+          onNotify(`Archiving အောင်မြင်ပါသည်! (Archived: ${res.archived_7_days_count || 0}, 6-Month Purged: ${res.purged_raw_plays_6_months_count || 0})`, 'success');
         }
         loadArchiveStatus();
         loadBets(page);
+        loadDailyReports();
       } else {
         if (onNotify) onNotify(res?.error || 'Archiving မအောင်မြင်ပါ', 'error');
       }
@@ -247,7 +259,7 @@ export default function MiniGamesAdminView({ onNotify }) {
 
   return (
     <div className="space-y-6">
-      {/* Top Header Card */}
+      {/* Top Header Card with 3 Tabs */}
       <div className="bg-gradient-to-r from-navy-900 via-navy-850 to-navy-900 border border-gold-500/30 p-5 rounded-2xl flex flex-wrap items-center justify-between gap-4 shadow-xl gold-border-glow">
         <div className="flex items-center gap-3">
           <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500/20 to-gold-400/20 border border-gold-500/40 flex items-center justify-center text-gold-400 shadow-inner">
@@ -267,36 +279,50 @@ export default function MiniGamesAdminView({ onNotify }) {
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-0.5 font-sans">
-              နေ့စဉ် ဂိမ်းအလိုက် အမြတ်/အရှုံး စာရင်းရှင်းတမ်း၊ RTP နှုန်းထား ထိန်းချုပ်မှုနှင့် ဆော့ကစားမှု မှတ်တမ်းများ
+              ဂိမ်းအခြေအနေ & RTP ထိန်းချုပ်မှု၊ နေ့စဉ် အမြတ်/အရှုံး စာရင်းရှင်းတမ်း (၂ နှစ်စာ) နှင့် ဆော့ကစားမှု မှတ်တမ်းများ
             </p>
           </div>
         </div>
 
-        {/* View Switcher Tabs & Refresh Button */}
+        {/* Tab Navigation & Refresh */}
         <div className="flex items-center gap-3">
-          <div className="flex items-center bg-navy-950 p-1 rounded-xl border border-gold-500/30">
+          <div className="flex items-center bg-navy-950 p-1 rounded-xl border border-gold-500/30 text-xs">
             <button
               type="button"
-              onClick={() => setActiveTab('overview')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                activeTab === 'overview'
+              onClick={() => setActiveTab('game')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                activeTab === 'game'
+                  ? 'bg-gold-500 text-navy-950 shadow-md'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Sliders className="w-3.5 h-3.5" />
+              Game (Live & Closed)
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('statement')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
+                activeTab === 'statement'
                   ? 'bg-gold-500 text-navy-950 shadow-md'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
               <BarChart3 className="w-3.5 h-3.5" />
-              Overview & Daily P/L
+              Daily Games Statement
             </button>
+
             <button
               type="button"
               onClick={() => setActiveTab('history')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold transition-all cursor-pointer ${
                 activeTab === 'history'
                   ? 'bg-gold-500 text-navy-950 shadow-md'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
-              <Archive className="w-3.5 h-3.5" />
+              <HistoryIcon className="w-3.5 h-3.5" />
               History ({totalBetsCount})
             </button>
           </div>
@@ -317,9 +343,9 @@ export default function MiniGamesAdminView({ onNotify }) {
       </div>
 
       {/* ======================================================== */}
-      {/* TAB 1: OVERVIEW & DAILY P/L (RTP + DAILY GAME BREAKDOWN) */}
+      {/* SECTION 1: GAME (LIVE & CLOSED) + RTP CONTROL */}
       {/* ======================================================== */}
-      {activeTab === 'overview' && (
+      {activeTab === 'game' && (
         <div className="space-y-6">
           {/* KPI Cards Grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -542,23 +568,54 @@ export default function MiniGamesAdminView({ onNotify }) {
               </div>
             ))}
           </div>
+        </div>
+      )}
 
-          {/* ======================================================== */}
-          {/* DAILY GAMES PROFIT STATEMENT (MOVED FROM FINANCIAL REPORT) */}
-          {/* ======================================================== */}
+      {/* ======================================================== */}
+      {/* SECTION 2: DAILY GAMES STATEMENT (2-YEAR PERSISTENT DATA) */}
+      {/* ======================================================== */}
+      {activeTab === 'statement' && (
+        <div className="space-y-4">
+          {/* 2-Year Retention Info Banner */}
+          <div className="bg-gradient-to-r from-navy-950 via-navy-900 to-navy-950 border border-gold-500/30 p-4 rounded-2xl flex flex-wrap items-center justify-between gap-4 shadow-lg">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gold-500/10 border border-gold-500/30 flex items-center justify-center text-gold-400">
+                <BarChart3 className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                  <span>Daily Games Financial Statement (၂ နှစ်စာ ဘဏ္ဍာရေး စာရင်းရှင်းတမ်း)</span>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                    2-Year Retention (730 Days)
+                  </span>
+                </h4>
+                <p className="text-xs text-slate-400 mt-0.5 font-sans">
+                  ဆော့ကစားမှု မှတ်တမ်းအသေးစိတ် (History) ကို ၆ လအကြာတွင် ရှင်းလင်းသော်လည်း၊ ဤနေ့စဉ် အမြတ်/အရှုံး စာရင်းရှင်းတမ်းအား ၂ နှစ်တိုင်တိုင် အတိအကျ သိမ်းဆည်းထားပေးပါသည် (ဂိမ်းအသစ်များ ထပ်တိုးပါကလည်း အလိုအလျောက် ပေါင်းစပ်ဖော်ပြပေးပါသည်)။
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <div className="text-right text-xs font-mono">
+                <span className="text-slate-400 block text-[10px]">Total Recorded Days:</span>
+                <span className="font-bold text-gold-400">{dailyReports?.length || 0} Days</span>
+              </div>
+            </div>
+          </div>
+
           <div className="bg-navy-900/90 border border-gold-500/30 rounded-2xl shadow-xl overflow-hidden p-5 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-3">
               <div>
                 <h3 className="text-base font-bold text-white flex items-center gap-2">
-                  <BarChart3 className="w-5 h-5 text-gold-400" />
-                  Daily Games Financial Statement (နေ့စဉ် ဂိမ်းအလိုက် အမြတ်/အရှုံး စာရင်းရှင်းတမ်း)
+                  <Calendar className="w-4 h-4 text-gold-400" />
+                  Daily Breakdown by Game
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  နေ့စဉ် မည်သည့်ဂိမ်း (Lucky Wheel, Coin Flip, Dice) မှ ထိုးကြေးမည်မျှ၊ လျော်ကြေးမည်မျှ နှင့် အသားတင် အမြတ်/အရှုံး မည်မျှရှိကြောင်း စစ်ဆေးနိုင်ပါသည်
+                  နေ့စဉ် မည်သည့်ဂိမ်းမှ ထိုးငွေ (Stake)၊ လျော်ကြေး (Payout) နှင့် အသားတင် အမြတ်/အရှုံး (Net Profit) မည်မျှ ထွက်ပေါ်သည်ကို စစ်ဆေးနိုင်ပါသည်
                 </p>
               </div>
 
-              {/* Date & Game Filter */}
+              {/* Dynamic Game & Date Filter */}
               <form onSubmit={handleDailyFilterSubmit} className="flex flex-wrap items-center gap-2 text-xs">
                 <input
                   type="date"
@@ -579,10 +636,12 @@ export default function MiniGamesAdminView({ onNotify }) {
                   onChange={(e) => setDailyGameType(e.target.value)}
                   className="bg-navy-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-gold-400"
                 >
-                  <option value="">All Games (အားလုံး)</option>
-                  <option value="WHEEL">🎡 Lucky Wheel</option>
-                  <option value="COIN_FLIP">🪙 Head & Tail</option>
-                  <option value="DICE">🎲 Dice Roll</option>
+                  <option value="">All Games (ဂိမ်းအားလုံး)</option>
+                  {availableGames.map((g) => (
+                    <option key={g.game_type} value={g.game_type}>
+                      {g.icon} {g.title}
+                    </option>
+                  ))}
                 </select>
 
                 <button
@@ -619,7 +678,7 @@ export default function MiniGamesAdminView({ onNotify }) {
                     <tr>
                       <td colSpan={6} className="py-10 text-center text-slate-500 font-sans">
                         <RefreshCw className="w-5 h-5 animate-spin mx-auto text-gold-400 mb-2" />
-                        Calculating daily games financial statement...
+                        Calculating 2-year daily games financial statement...
                       </td>
                     </tr>
                   ) : dailyReports.length === 0 ? (
@@ -701,7 +760,7 @@ export default function MiniGamesAdminView({ onNotify }) {
       )}
 
       {/* ======================================================== */}
-      {/* TAB 2: HISTORY (UNDER MINI-GAMES & RTP WITH ARCHIVE/PURGE) */}
+      {/* SECTION 3: HISTORY (REAL-TIME PLAYS & ARCHIVING) */}
       {/* ======================================================== */}
       {activeTab === 'history' && (
         <div className="space-y-4">
@@ -719,7 +778,7 @@ export default function MiniGamesAdminView({ onNotify }) {
                   </span>
                 </h4>
                 <p className="text-xs text-slate-400 mt-0.5 font-sans">
-                  ဆော့ကစားပြီး ၇ ရက်အတွင်း မှတ်တမ်းများကို Active အဖြစ်ထားရှိပြီး၊ ၇ ရက်ကျော်ပါက အပတ်စဉ် အလိုအလျောက် Archive ပြုလုပ်ပါသည် (Archived မှတ်တမ်းများကို ၆ လအထိသာ သိမ်းဆည်းထားပါသည်)။
+                  ဆော့ကစားပြီး ၇ ရက်အတွင်း မှတ်တမ်းများကို Active အဖြစ်ထားရှိပြီး၊ ၇ ရက်ကျော်ပါက အပတ်စဉ် အလိုအလျောက် Archive ပြုလုပ်ပါသည် (Archived မှတ်တမ်းများကို ၆ လအထိသာ သိမ်းဆည်းပြီး အပြီးတိုင် ရှင်းလင်းပါသည်)။
                 </p>
               </div>
             </div>
@@ -752,7 +811,7 @@ export default function MiniGamesAdminView({ onNotify }) {
               <div>
                 <h3 className="text-sm font-bold text-white flex items-center gap-2">
                   <Dice5 className="w-4 h-4 text-gold-400" />
-                  Mini-Games Plays History ({totalBetsCount})
+                  Real-Time Mini-Games Plays & History ({totalBetsCount})
                 </h3>
                 <p className="text-[11px] text-slate-400">
                   ကစားသမားများ၏ ဂိမ်းထိုးကြေး၊ အနိုင်အရှုံးနှင့် ကံစမ်းမှု မှတ်တမ်းများ အသေးစိတ်
@@ -783,16 +842,25 @@ export default function MiniGamesAdminView({ onNotify }) {
                   />
                 </div>
 
-                {/* Game Selector */}
+                {/* Dynamic Game Selector */}
                 <select
                   value={selectedGame}
                   onChange={(e) => setSelectedGame(e.target.value)}
                   className="bg-navy-950 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-gold-400"
                 >
                   <option value="">All Mini-Games</option>
-                  <option value="WHEEL">🎡 Lucky Wheel</option>
-                  <option value="COIN_FLIP">🪙 Head or Tail</option>
-                  <option value="DICE">🎲 Dice Roll</option>
+                  {availableGames.map((g) => (
+                    <option key={g.game_type} value={g.game_type}>
+                      {g.icon} {g.title}
+                    </option>
+                  ))}
+                  {availableGames.length === 0 && (
+                    <>
+                      <option value="WHEEL">🎡 Lucky Wheel</option>
+                      <option value="COIN_FLIP">🪙 Head or Tail</option>
+                      <option value="DICE">🎲 Dice Roll</option>
+                    </>
+                  )}
                 </select>
 
                 {/* Outcome Filter */}
@@ -885,6 +953,7 @@ export default function MiniGamesAdminView({ onNotify }) {
                               {bet.game_type === 'WHEEL' && '🎡 Wheel'}
                               {bet.game_type === 'COIN_FLIP' && '🪙 Coin'}
                               {bet.game_type === 'DICE' && '🎲 Dice'}
+                              {!['WHEEL', 'COIN_FLIP', 'DICE'].includes(bet.game_type) && `🎮 ${bet.game_type}`}
                             </span>
                           </td>
                           <td className="py-2.5 px-3">
@@ -919,6 +988,9 @@ export default function MiniGamesAdminView({ onNotify }) {
                                 Dice: [{bet.result_data?.dice?.join(', ')}] = {bet.result_data?.sum}
                                 {bet.result_data?.is_triple ? ' (Triple!)' : ''}
                               </span>
+                            )}
+                            {!['WHEEL', 'COIN_FLIP', 'DICE'].includes(bet.game_type) && (
+                              <span>{JSON.stringify(bet.result_data || {})}</span>
                             )}
                           </td>
                           <td className={`py-2.5 px-3 text-right font-bold ${

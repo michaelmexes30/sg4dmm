@@ -99,6 +99,7 @@ export default function AdminPortal({ onBackToApp }) {
     '4d': true,
     '2d': true,
     '3d': true,
+    'minigames': true,
     'balance': true,
     'members': true,
     'reports': true,
@@ -414,24 +415,58 @@ export default function AdminPortal({ onBackToApp }) {
               )}
             </div>
 
-            {/* Mini-Games (RTP Control & Real-time History) */}
+            {/* Mini-Games (Game & RTP Control, Daily Financial Statement, History) */}
             <div>
               <button
-                onClick={() => handleSelectMenu('minigames')}
-                className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all cursor-pointer ${
-                  activeMenu === 'minigames'
-                    ? 'bg-gradient-to-r from-purple-600/30 to-amber-500/20 text-gold-300 font-bold border border-gold-500/40 shadow-lg'
-                    : 'text-slate-300 hover:bg-slate-800'
-                }`}
+                onClick={() => toggleGroup('minigames')}
+                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 <div className="flex items-center gap-3">
                   <Gamepad2 className="w-4 h-4 text-gold-400" />
                   <span>Mini-Games & RTP</span>
                 </div>
-                <span className="text-[9px] bg-gold-500/20 text-gold-300 font-mono font-bold px-1.5 py-0.5 rounded border border-gold-500/30">
-                  LIVE
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[9px] bg-gold-500/20 text-gold-300 font-mono font-bold px-1.5 py-0.5 rounded border border-gold-500/30">
+                    LIVE
+                  </span>
+                  {expandedGroups['minigames'] ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                </div>
               </button>
+
+              {expandedGroups['minigames'] && (
+                <div className="pl-9 pr-1 py-1 space-y-1">
+                  <button
+                    onClick={() => handleSelectMenu('minigames-game')}
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                      activeMenu === 'minigames-game' || activeMenu === 'minigames'
+                        ? 'bg-gold-500/20 text-gold-300 font-bold border border-gold-500/30'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Game (Live & Closed)
+                  </button>
+                  <button
+                    onClick={() => handleSelectMenu('minigames-statement')}
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                      activeMenu === 'minigames-statement'
+                        ? 'bg-gold-500/20 text-gold-300 font-bold border border-gold-500/30'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Daily Games Statement
+                  </button>
+                  <button
+                    onClick={() => handleSelectMenu('minigames-history')}
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                      activeMenu === 'minigames-history'
+                        ? 'bg-gold-500/20 text-gold-300 font-bold border border-gold-500/30'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    History
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* 3. Balance (Deposit & Top Up, Withdraw Review) */}
@@ -699,8 +734,16 @@ export default function AdminPortal({ onBackToApp }) {
               <SettingsView onNotify={showNotification} />
             )}
 
-            {activeMenu === 'minigames' && (
-              <MiniGamesAdminView onNotify={showNotification} />
+            {(activeMenu === 'minigames' || activeMenu === 'minigames-game') && (
+              <MiniGamesAdminView initialTab="game" onNotify={showNotification} />
+            )}
+
+            {activeMenu === 'minigames-statement' && (
+              <MiniGamesAdminView initialTab="statement" onNotify={showNotification} />
+            )}
+
+            {activeMenu === 'minigames-history' && (
+              <MiniGamesAdminView initialTab="history" onNotify={showNotification} />
             )}
           </ViewErrorBoundary>
 

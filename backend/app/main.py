@@ -97,6 +97,25 @@ async def lifespan(app: FastAPI):
                 conn.execute(text("ALTER TABLE mini_game_bets ADD COLUMN is_archived BOOLEAN DEFAULT FALSE"))
             except Exception:
                 pass
+            try:
+                conn.execute(text("""
+                    CREATE TABLE IF NOT EXISTS mini_game_daily_statements (
+                        id SERIAL PRIMARY KEY,
+                        date_str VARCHAR(10) NOT NULL,
+                        game_type VARCHAR(50) NOT NULL,
+                        bets_count INTEGER DEFAULT 0,
+                        stake_amount FLOAT DEFAULT 0.0,
+                        payout_amount FLOAT DEFAULT 0.0,
+                        net_profit FLOAT DEFAULT 0.0,
+                        actual_rtp FLOAT DEFAULT 0.0,
+                        created_at TIMESTAMP,
+                        updated_at TIMESTAMP
+                    )
+                """))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_mini_game_daily_date ON mini_game_daily_statements (date_str)"))
+                conn.execute(text("CREATE INDEX IF NOT EXISTS ix_mini_game_daily_game ON mini_game_daily_statements (game_type)"))
+            except Exception as tbl_ex:
+                print(f"Notice creating mini_game_daily_statements: {tbl_ex}")
 
             # Column size expansion for PostgreSQL
             try:

@@ -16,7 +16,7 @@ from app.models.transaction import TransactionArchive
 from app.models.ledger import FinancialLedger, LedgerEntryType, DailyLedgerSummary
 from app.models.bonus import WeeklyBonus
 from app.models.settings import SystemSetting, ApplicationRelease
-from app.models.mini_game import MiniGameBet
+from app.models.mini_game import MiniGameBet, MiniGameDailyStatement
 from app.core.security import get_current_admin, get_current_user, hash_password
 from app.core.bonus_engine import (
     calculate_and_distribute_weekly_bonus,
@@ -5534,23 +5534,47 @@ def get_minigames_daily_reports(
     db: Session = Depends(get_db)
 ):
     """
-    Returns daily breakdown of Mini-Games turnover, payout, and profit per game.
-    Enables tracking exactly which games yielded how much profit on each date.
+    Returns 2-YEAR persistent daily breakdown of Mini-Games turnover, payout, and profit per game.
+    Preserves data for up to 2 Years (730 days) even after granular raw play logs are pruned.
+    Dynamically adapts to any new games added in the future.
     """
-    dates_q = db.query(MiniGameBet.date_str).distinct()
+    from app.core.archiver import sync_minigame_daily_statements
+    # 1. Sync live/recent bets into persistent daily statement table
+    try:
+        sync_minigame_daily_statements(db)
+    except Exception as s_ex:
+        print(f"Notice during sync_minigame_daily_statements: {s_ex}")
+
+    # 2. Query distinct dates within 2 years from persistent table
+    dates_q = db.query(MiniGameDailyStatement.date_str).distinct()
     if from_date:
-        dates_q = dates_q.filter(MiniGameBet.date_str >= from_date)
+        dates_q = dates_q.filter(MiniGameDailyStatement.date_str >= from_date)
     if to_date:
-        dates_q = dates_q.filter(MiniGameBet.date_str <= to_date)
+        dates_q = dates_q.filter(MiniGameDailyStatement.date_str <= to_date)
     
-    date_rows = dates_q.order_by(MiniGameBet.date_str.desc()).all()
+    date_rows = dates_q.order_by(MiniGameDailyStatement.date_str.desc()).all()
     dates = [r[0] for r in date_rows if r[0]]
 
-    GAME_META = {
+    # Dynamic known game metadata with generic fallback for any future game
+    KNOWN_GAMES = {
         "WHEEL": {"title": "Lucky Wheel", "title_mm": "စက်ဝိုင်းလှည့်", "icon": "🎡"},
         "COIN_FLIP": {"title": "Head or Tail", "title_mm": "ခေါင်း-ပန်း", "icon": "🪙"},
         "DICE": {"title": "Dice Roll (Sic Bo)", "title_mm": "အန်စာတုံး", "icon": "🎲"}
     }
+
+    # Discover all unique games dynamically
+    all_game_types = [
+        gt[0] for gt in db.query(MiniGameDailyStatement.game_type).distinct().all() if gt[0]
+    ]
+    available_games = [
+        {
+            "game_type": gt,
+            "title": KNOWN_GAMES.get(gt, {}).get("title") or gt.replace("_", " ").title(),
+            "title_mm": KNOWN_GAMES.get(gt, {}).get("title_mm") or gt.replace("_", " ").title(),
+            "icon": KNOWN_GAMES.get(gt, {}).get("icon") or "🎮"
+        }
+        for gt in sorted(all_game_types)
+    ]
 
     reports = []
     tot_all_stake = 0.0
@@ -5558,34 +5582,35 @@ def get_minigames_daily_reports(
     tot_all_profit = 0.0
 
     for d in dates:
-        query = db.query(
-            MiniGameBet.game_type,
-            func.count(MiniGameBet.id).label("plays"),
-            func.coalesce(func.sum(MiniGameBet.stake_amount), 0.0).label("stake"),
-            func.coalesce(func.sum(MiniGameBet.payout_amount), 0.0).label("payout")
-        ).filter(MiniGameBet.date_str == d)
-
+        stmt_query = db.query(MiniGameDailyStatement).filter(MiniGameDailyStatement.date_str == d)
         if game_type:
-            query = query.filter(MiniGameBet.game_type == game_type.upper())
+            stmt_query = stmt_query.filter(MiniGameDailyStatement.game_type == game_type.upper())
 
-        rows = query.group_by(MiniGameBet.game_type).all()
+        stmts = stmt_query.all()
+        if not stmts:
+            continue
 
         d_stake = 0.0
         d_payout = 0.0
         games_list = []
 
-        for r in rows:
-            g_type = r.game_type
-            g_plays = int(r.plays or 0)
-            g_stake = float(r.stake or 0.0)
-            g_payout = float(r.payout or 0.0)
-            g_profit = g_stake - g_payout
-            g_rtp = (g_payout / g_stake * 100.0) if g_stake > 0 else 0.0
+        for s in stmts:
+            g_type = s.game_type
+            g_plays = int(s.bets_count or 0)
+            g_stake = float(s.stake_amount or 0.0)
+            g_payout = float(s.payout_amount or 0.0)
+            g_profit = float(s.net_profit or (g_stake - g_payout))
+            g_rtp = float(s.actual_rtp or 0.0)
 
             d_stake += g_stake
             d_payout += g_payout
 
-            meta = GAME_META.get(g_type, {"title": g_type, "title_mm": g_type, "icon": "🎮"})
+            meta = KNOWN_GAMES.get(g_type, {
+                "title": g_type.replace("_", " ").title(),
+                "title_mm": g_type.replace("_", " ").title(),
+                "icon": "🎮"
+            })
+
             games_list.append({
                 "game_type": g_type,
                 "title": meta["title"],
@@ -5616,6 +5641,8 @@ def get_minigames_daily_reports(
 
     return {
         "status": "success",
+        "retention": "2-Year Persistent Daily Statements (730 days)",
+        "available_games": available_games,
         "sub_total": {
             "total_stake": tot_all_stake,
             "total_payout": tot_all_payout,

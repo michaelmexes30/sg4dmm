@@ -10,7 +10,7 @@ from app.config import settings
 from app.database import SessionLocal
 from app.models.bet import BetSlip, BetArchive, BetSlipStatus
 from app.models.transaction import Transaction, TransactionArchive, TransactionStatus
-from app.models.mini_game import MiniGameBet
+from app.models.mini_game import MiniGameBet, MiniGameDailyStatement
 from app.core.timezone_utils import now_mmt
 
 ARCHIVE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "archives")
@@ -155,13 +155,68 @@ def archive_old_records(retention_days: int = None) -> Dict[str, Any]:
     finally:
         db.close()
 
+def sync_minigame_daily_statements(db: Session):
+    """
+    Aggregates MiniGameBet records by (date_str, game_type) and updates MiniGameDailyStatement.
+    Ensures that aggregate daily financial statements are permanently preserved for 2 YEARS,
+    even after granular individual play records are purged after 6 months.
+    Fully supports all current and future dynamic games.
+    """
+    rows = db.query(
+        MiniGameBet.date_str,
+        MiniGameBet.game_type,
+        func.count(MiniGameBet.id).label("bets_count"),
+        func.coalesce(func.sum(MiniGameBet.stake_amount), 0.0).label("stake_amount"),
+        func.coalesce(func.sum(MiniGameBet.payout_amount), 0.0).label("payout_amount")
+    ).group_by(MiniGameBet.date_str, MiniGameBet.game_type).all()
+
+    for r in rows:
+        d_str = r.date_str
+        g_type = r.game_type
+        if not d_str or not g_type:
+            continue
+        b_count = int(r.bets_count or 0)
+        stake = float(r.stake_amount or 0.0)
+        payout = float(r.payout_amount or 0.0)
+        net = stake - payout
+        rtp = (payout / stake * 100.0) if stake > 0 else 0.0
+
+        stmt = db.query(MiniGameDailyStatement).filter(
+            MiniGameDailyStatement.date_str == d_str,
+            MiniGameDailyStatement.game_type == g_type
+        ).first()
+
+        if not stmt:
+            stmt = MiniGameDailyStatement(
+                date_str=d_str,
+                game_type=g_type,
+                bets_count=b_count,
+                stake_amount=stake,
+                payout_amount=payout,
+                net_profit=net,
+                actual_rtp=round(rtp, 2)
+            )
+            db.add(stmt)
+        else:
+            stmt.bets_count = b_count
+            stmt.stake_amount = stake
+            stmt.payout_amount = payout
+            stmt.net_profit = net
+            stmt.actual_rtp = round(rtp, 2)
+
+    db.commit()
+
+
 def archive_and_prune_minigames(db: Session = None) -> Dict[str, Any]:
     """
     Mini-Games Data Archiving & Retention:
-    1. Weekly Archiving (1 week 1 time):
-       - MiniGameBet records older than 7 days (created_at < now - 7 days) are flagged as is_archived = True.
-    2. 6-Month Retention Limit:
-       - MiniGameBet records older than 180 days (6 months) are purged (deleted).
+    1. 2-Year Retention for Daily Financial Statements:
+       - Syncs daily aggregates into MiniGameDailyStatement BEFORE any purge.
+       - Prunes daily statements older than 2 YEARS (730 days).
+    2. Weekly Archiving (1 week 1 time):
+       - MiniGameBet individual plays older than 7 days (created_at < now - 7 days) are marked is_archived = True.
+    3. 6-Month History Retention:
+       - MiniGameBet individual plays older than 180 days (6 months) are purged (deleted).
     """
     should_close = False
     if db is None:
@@ -172,26 +227,38 @@ def archive_and_prune_minigames(db: Session = None) -> Dict[str, Any]:
         now = now_mmt()
         seven_days_ago = now - timedelta(days=7)
         six_months_ago = now - timedelta(days=180)
+        two_years_ago = now - timedelta(days=730)
+        two_years_str = two_years_ago.strftime("%Y-%m-%d")
 
-        # 1. Purge records older than 6 months (180 days)
-        deleted_count = db.query(MiniGameBet).filter(
+        # Step 1: Ensure all daily financial statements are persisted BEFORE purging raw bets
+        sync_minigame_daily_statements(db)
+
+        # Step 2: Purge raw individual plays older than 6 months (180 days)
+        deleted_raw_count = db.query(MiniGameBet).filter(
             MiniGameBet.created_at < six_months_ago
         ).delete(synchronize_session=False)
 
-        # 2. Archive records older than 7 days that are not yet marked as archived
+        # Step 3: Archive raw plays older than 7 days that are not yet marked
         archived_count = db.query(MiniGameBet).filter(
             MiniGameBet.created_at < seven_days_ago,
             MiniGameBet.is_archived == False
         ).update({"is_archived": True}, synchronize_session=False)
+
+        # Step 4: Prune daily financial statements older than 2 YEARS (730 days)
+        deleted_stmts_count = db.query(MiniGameDailyStatement).filter(
+            MiniGameDailyStatement.date_str < two_years_str
+        ).delete(synchronize_session=False)
 
         db.commit()
 
         return {
             "status": "success",
             "archived_7_days_count": archived_count,
-            "purged_6_months_count": deleted_count,
+            "purged_raw_plays_6_months_count": deleted_raw_count,
+            "purged_statements_2_years_count": deleted_stmts_count,
             "cutoff_archive_7_days": seven_days_ago.strftime("%Y-%m-%d %H:%M:%S"),
-            "cutoff_purge_6_months": six_months_ago.strftime("%Y-%m-%d %H:%M:%S"),
+            "cutoff_raw_purge_6_months": six_months_ago.strftime("%Y-%m-%d %H:%M:%S"),
+            "cutoff_statement_2_years": two_years_str,
             "executed_at": now.strftime("%Y-%m-%d %H:%M:%S")
         }
     except Exception as e:
