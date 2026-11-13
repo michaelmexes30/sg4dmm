@@ -3036,7 +3036,7 @@ def create_system_user(
         used_credit=0.0,
         settlement_status="SETTLED",
         is_betting_locked=False,
-        balance=10000.0,
+        balance=0.0,
         is_active=True,
         is_suspended=bool(req.is_suspended)
     )
