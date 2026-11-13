@@ -13,6 +13,9 @@ from app.models.user import User
 from app.models.lottery import LotteryDraw, TwoDDraw, ThreeDDraw
 from app.models.bet import BetSlip, BetItem, BetEditLog
 from app.models.settings import SystemSetting
+from app.models.transaction import Transaction
+from app.models.ledger import FinancialLedger
+from app.models.mini_game import MiniGameBet, MiniGameDailyStatement
 from app.seeds.seed_data import seed_database
 from app.seeds.seed_admin_data import seed_admin_and_system_data
 from app.core.archiver import archive_old_records, archive_and_prune_minigames
@@ -93,6 +96,50 @@ async def lifespan(app: FastAPI):
                 conn.execute(text("ALTER TABLE bet_items ADD COLUMN edit_logs_json TEXT DEFAULT '[]'"))
             except Exception:
                 pass
+            # Ensure mini_game_bets table exists across PostgreSQL and SQLite
+            try:
+                is_pg = (engine.dialect.name == "postgresql")
+                if is_pg:
+                    conn.execute(text("""
+                        CREATE TABLE IF NOT EXISTS mini_game_bets (
+                            id SERIAL PRIMARY KEY,
+                            user_id INTEGER NOT NULL REFERENCES users(id),
+                            game_type VARCHAR(30) NOT NULL,
+                            stake_amount FLOAT NOT NULL,
+                            payout_multiplier FLOAT DEFAULT 0.0,
+                            payout_amount FLOAT DEFAULT 0.0,
+                            is_win BOOLEAN DEFAULT FALSE,
+                            player_choice VARCHAR(50),
+                            result_data JSON,
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            date_str VARCHAR(10),
+                            is_archived BOOLEAN DEFAULT FALSE
+                        )
+                    """))
+                    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_mini_game_bets_user_id ON mini_game_bets (user_id)"))
+                    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_mini_game_bets_game_type ON mini_game_bets (game_type)"))
+                    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_mini_game_bets_date_str ON mini_game_bets (date_str)"))
+                    conn.execute(text("CREATE INDEX IF NOT EXISTS ix_mini_game_bets_is_archived ON mini_game_bets (is_archived)"))
+                else:
+                    conn.execute(text("""
+                        CREATE TABLE IF NOT EXISTS mini_game_bets (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            user_id INTEGER NOT NULL REFERENCES users(id),
+                            game_type VARCHAR(30) NOT NULL,
+                            stake_amount FLOAT NOT NULL,
+                            payout_multiplier FLOAT DEFAULT 0.0,
+                            payout_amount FLOAT DEFAULT 0.0,
+                            is_win BOOLEAN DEFAULT FALSE,
+                            player_choice VARCHAR(50),
+                            result_data JSON,
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            date_str VARCHAR(10),
+                            is_archived BOOLEAN DEFAULT FALSE
+                        )
+                    """))
+            except Exception as mgb_ex:
+                print(f"Notice creating mini_game_bets: {mgb_ex}")
+
             try:
                 conn.execute(text("ALTER TABLE mini_game_bets ADD COLUMN is_archived BOOLEAN DEFAULT FALSE"))
             except Exception:
@@ -116,6 +163,16 @@ async def lifespan(app: FastAPI):
                 conn.execute(text("CREATE INDEX IF NOT EXISTS ix_mini_game_daily_game ON mini_game_daily_statements (game_type)"))
             except Exception as tbl_ex:
                 print(f"Notice creating mini_game_daily_statements: {tbl_ex}")
+
+            # Ensure PostgreSQL enum and column expansions
+            try:
+                conn.execute(text("ALTER TYPE transactiontype ADD VALUE IF NOT EXISTS 'WIN_PAYOUT'"))
+            except Exception:
+                pass
+            try:
+                conn.execute(text("ALTER TABLE transactions ALTER COLUMN gateway TYPE VARCHAR(50)"))
+            except Exception:
+                pass
 
             # Column size expansion for PostgreSQL
             try:
@@ -164,7 +221,7 @@ async def lifespan(app: FastAPI):
                     pass
 
             # Sync primary key sequences for PostgreSQL
-            for seq_tbl in ["lottery_draws", "twod_draws", "threed_draws", "bet_slips", "bet_items", "users"]:
+            for seq_tbl in ["lottery_draws", "twod_draws", "threed_draws", "bet_slips", "bet_items", "users", "mini_game_bets", "mini_game_daily_statements"]:
                 try:
                     conn.execute(text(f"SELECT setval(pg_get_serial_sequence('{seq_tbl}', 'id'), coalesce(max(id), 1) + 1, false) FROM {seq_tbl}"))
                 except Exception:

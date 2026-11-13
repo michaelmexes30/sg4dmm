@@ -136,24 +136,29 @@ def get_minigames_history(
     db: Session = Depends(get_db)
 ):
     """Returns player's recent mini-game bets and payouts."""
-    bets = db.query(MiniGameBet).filter(
-        MiniGameBet.user_id == current_user.id
-    ).order_by(MiniGameBet.id.desc()).limit(limit).all()
+    try:
+        bets = db.query(MiniGameBet).filter(
+            MiniGameBet.user_id == current_user.id
+        ).order_by(MiniGameBet.id.desc()).limit(limit).all()
 
-    return [
-        {
-            "id": b.id,
-            "game_type": b.game_type,
-            "stake_amount": b.stake_amount,
-            "payout_multiplier": b.payout_multiplier,
-            "payout_amount": b.payout_amount,
-            "is_win": b.is_win,
-            "player_choice": b.player_choice,
-            "result_data": b.result_data,
-            "created_at": b.created_at.strftime("%Y-%m-%d %H:%M:%S") if b.created_at else None
-        }
-        for b in bets
-    ]
+        return [
+            {
+                "id": b.id,
+                "game_type": b.game_type,
+                "stake_amount": b.stake_amount,
+                "payout_multiplier": b.payout_multiplier,
+                "payout_amount": b.payout_amount,
+                "is_win": b.is_win,
+                "player_choice": b.player_choice,
+                "result_data": b.result_data,
+                "created_at": b.created_at.strftime("%Y-%m-%d %H:%M:%S") if b.created_at else None
+            }
+            for b in bets
+        ]
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Mini-games history error: {str(e)}")
 
 
 @router.post("/wheel/spin")
@@ -163,127 +168,142 @@ def spin_lucky_wheel(
     db: Session = Depends(get_db)
 ):
     """Executes a Lucky Wheel spin with dynamic RTP calibrated weights."""
-    is_enabled, rtp_rate, min_stake, max_stake = get_minigame_controls(db)
-    if not is_enabled:
-        raise HTTPException(status_code=403, detail="မီနီဂိမ်းများကို စနစ်ထိန်းသိမ်းမှုအရ ခေတ္တပိတ်ထားပါသည် (Mini-games are temporarily disabled).")
+    try:
+        is_enabled, rtp_rate, min_stake, max_stake = get_minigame_controls(db)
+        if not is_enabled:
+            raise HTTPException(status_code=403, detail="မီနီဂိမ်းများကို စနစ်ထိန်းသိမ်းမှုအရ ခေတ္တပိတ်ထားပါသည် (Mini-games are temporarily disabled).")
 
-    stake = float(req.stake)
-    if stake < min_stake or stake > max_stake:
-        raise HTTPException(
-            status_code=400,
-            detail=f"ထိုးကြေးမှာ အနည်းဆုံး {min_stake:,.0f} MMK မှ အများဆုံး {max_stake:,.0f} MMK အတွင်း ဖြစ်ရပါမည်။"
+        stake = float(req.stake)
+        if stake < min_stake or stake > max_stake:
+            raise HTTPException(
+                status_code=400,
+                detail=f"ထိုးကြေးမှာ အနည်းဆုံး {min_stake:,.0f} MMK မှ အများဆုံး {max_stake:,.0f} MMK အတွင်း ဖြစ်ရပါမည်။"
+            )
+
+        if float(current_user.balance or 0.0) < stake:
+            raise HTTPException(status_code=400, detail="လက်ကျန်ငွေ မလုံလောက်ပါခင်ဗျာ။ ငွေဖြည့်သွင်းပေးပါရန် (Insufficient balance).")
+
+        # Dynamic RTP weight adjustment for 0x segment:
+        # Non-zero segments sum to 107.0 expected value with sum(weights) = 75.0.
+        # Formula: w0 = (10700.0 / rtp_rate) - 75.0
+        w0 = max(5.0, (10700.0 / rtp_rate) - 75.0)
+        dynamic_segments = [dict(s) for s in WHEEL_SEGMENTS]
+        dynamic_segments[0]["weight"] = round(w0, 2)
+
+        # Weighted random selection
+        weights = [s["weight"] for s in dynamic_segments]
+        chosen = secrets.choice(
+            [s for s, w in zip(dynamic_segments, weights) for _ in range(max(1, int(w * 10)))]
         )
+        multiplier = float(chosen["multiplier"])
+        payout = stake * multiplier
+        is_win = multiplier > 0.0
 
-    if float(current_user.balance or 0.0) < stake:
-        raise HTTPException(status_code=400, detail="လက်ကျန်ငွေ မလုံလောက်ပါခင်ဗျာ။ ငွေဖြည့်သွင်းပေးပါရန် (Insufficient balance).")
+        # Calculate target landing angle:
+        # 8 segments = 45 deg each. Segment 0 is at top, index i is at angle = i * 45
+        segment_angle = chosen["index"] * 45
+        jitter = secrets.randbelow(30) - 15
+        final_angle = (360 - segment_angle + jitter) % 360
 
-    # Dynamic RTP weight adjustment for 0x segment:
-    # Non-zero segments sum to 107.0 expected value with sum(weights) = 75.0.
-    # Formula: w0 = (10700.0 / rtp_rate) - 75.0
-    w0 = max(5.0, (10700.0 / rtp_rate) - 75.0)
-    dynamic_segments = [dict(s) for s in WHEEL_SEGMENTS]
-    dynamic_segments[0]["weight"] = round(w0, 2)
+        # Wallet & Financial updates
+        curr_time = now_mmt()
+        today_str = curr_time.strftime("%Y-%m-%d")
 
-    # Weighted random selection
-    weights = [s["weight"] for s in dynamic_segments]
-    chosen = secrets.choice(
-        [s for s, w in zip(dynamic_segments, weights) for _ in range(max(1, int(w * 10)))]
-    )
-    multiplier = float(chosen["multiplier"])
-    payout = stake * multiplier
-    is_win = multiplier > 0.0
+        current_user.balance = float(current_user.balance or 0.0) - stake + payout
+        game_id_str = f"WHEEL-{curr_time.strftime('%Y%m%d%H%M%S')}-{secrets.token_hex(3).upper()}"
 
-    # Calculate target landing angle:
-    # 8 segments = 45 deg each. Segment 0 is at top, index i is at angle = i * 45
-    segment_angle = chosen["index"] * 45
-    jitter = secrets.randbelow(30) - 15
-    final_angle = (360 - segment_angle + jitter) % 360
-
-    # Wallet & Financial updates
-    curr_time = now_mmt()
-    today_str = curr_time.strftime("%Y-%m-%d")
-
-    current_user.balance = float(current_user.balance or 0.0) - stake + payout
-    game_id_str = f"WHEEL-{curr_time.strftime('%Y%m%d%H%M%S')}-{secrets.token_hex(3).upper()}"
-
-    # Ledger entry for stake
-    db.add(FinancialLedger(
-        entry_type=LedgerEntryType.BET_REVENUE,
-        amount=stake,
-        running_balance=current_user.balance,
-        reference_id=game_id_str,
-        reference_type="MINI_GAME_STAKE",
-        description=f"Lucky Wheel ထိုးကြေး ({stake:,.0f} MMK)",
-        logged_at_mmt=curr_time,
-        date_str=today_str
-    ))
-
-    # If win, create payout ledger and transaction
-    if is_win and payout > 0:
+        # Ledger entry for stake
         db.add(FinancialLedger(
-            entry_type=LedgerEntryType.PAYOUT_EXPENSE,
-            amount=payout,
+            entry_type=LedgerEntryType.BET_REVENUE,
+            amount=stake,
             running_balance=current_user.balance,
             reference_id=game_id_str,
-            reference_type="MINI_GAME_PAYOUT",
-            description=f"Lucky Wheel အနိုင်ရငွေ ({multiplier}x - {payout:,.0f} MMK)",
+            reference_type="MINI_GAME_STAKE",
+            description=f"Lucky Wheel ထိုးကြေး ({stake:,.0f} MMK)",
             logged_at_mmt=curr_time,
             date_str=today_str
         ))
-        db.add(Transaction(
-            user_id=current_user.id,
-            tx_type=TransactionType.WIN_PAYOUT,
-            gateway="Lucky Wheel",
-            transaction_id=game_id_str,
-            receiver_id=f"Player #{current_user.id} ({current_user.phone})",
-            amount=payout,
-            slip_image_url=None,
-            client_timezone="MMT",
-            tx_timestamp_mmt=curr_time,
-            submission_timestamp_mmt=curr_time,
-            delta_minutes=0.0,
-            is_time_valid=True,
-            is_receiver_valid=True,
-            is_tx_unique=True,
-            status=TransactionStatus.COMPLETED,
-            verification_notes=f"Lucky Wheel Win {multiplier}x ({payout:,.0f} MMK)",
-            created_at=curr_time
-        ))
 
-    # Record MiniGameBet
-    bet_rec = MiniGameBet(
-        user_id=current_user.id,
-        game_type="WHEEL",
-        stake_amount=stake,
-        payout_multiplier=multiplier,
-        payout_amount=payout,
-        is_win=is_win,
-        player_choice="SPIN",
-        result_data={
+        # If win, create payout ledger and optional transaction
+        if is_win and payout > 0:
+            db.add(FinancialLedger(
+                entry_type=LedgerEntryType.PAYOUT_EXPENSE,
+                amount=payout,
+                running_balance=current_user.balance,
+                reference_id=game_id_str,
+                reference_type="MINI_GAME_PAYOUT",
+                description=f"Lucky Wheel အနိုင်ရငွေ ({multiplier}x - {payout:,.0f} MMK)",
+                logged_at_mmt=curr_time,
+                date_str=today_str
+            ))
+            try:
+                db.add(Transaction(
+                    user_id=current_user.id,
+                    tx_type=TransactionType.WIN_PAYOUT,
+                    gateway="Lucky Wheel",
+                    transaction_id=game_id_str,
+                    receiver_id=f"Player #{current_user.id} ({current_user.phone})",
+                    amount=payout,
+                    slip_image_url=None,
+                    client_timezone="MMT",
+                    tx_timestamp_mmt=curr_time,
+                    submission_timestamp_mmt=curr_time,
+                    delta_minutes=0.0,
+                    is_time_valid=True,
+                    is_receiver_valid=True,
+                    is_tx_unique=True,
+                    status=TransactionStatus.COMPLETED,
+                    verification_notes=f"Lucky Wheel Win {multiplier}x ({payout:,.0f} MMK)",
+                    created_at=curr_time
+                ))
+            except Exception as tx_err:
+                print(f"Notice: skipped transaction record for win payout: {tx_err}")
+
+        # Record MiniGameBet
+        bet_rec = MiniGameBet(
+            user_id=current_user.id,
+            game_type="WHEEL",
+            stake_amount=stake,
+            payout_multiplier=multiplier,
+            payout_amount=payout,
+            is_win=is_win,
+            player_choice="SPIN",
+            result_data={
+                "segment_index": chosen["index"],
+                "label": chosen["label"],
+                "multiplier": multiplier,
+                "target_angle": final_angle,
+                "game_id": game_id_str
+            },
+            created_at=curr_time,
+            date_str=today_str
+        )
+        db.add(bet_rec)
+        db.commit()
+
+        return {
+            "status": "success",
+            "game_id": game_id_str,
             "segment_index": chosen["index"],
             "label": chosen["label"],
             "multiplier": multiplier,
             "target_angle": final_angle,
-            "game_id": game_id_str
-        },
-        created_at=curr_time,
-        date_str=today_str
-    )
-    db.add(bet_rec)
-    db.commit()
-
-    return {
-        "status": "success",
-        "game_id": game_id_str,
-        "segment_index": chosen["index"],
-        "label": chosen["label"],
-        "multiplier": multiplier,
-        "target_angle": final_angle,
-        "stake": stake,
-        "payout": payout,
-        "is_win": is_win,
-        "new_balance": current_user.balance
-    }
+            "stake": stake,
+            "payout": payout,
+            "is_win": is_win,
+            "new_balance": current_user.balance
+        }
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Lucky Wheel error: {str(e)}"
+        )
 
 
 @router.post("/coin/flip")
@@ -293,110 +313,125 @@ def flip_coin(
     db: Session = Depends(get_db)
 ):
     """Executes a Head or Tail coin flip with dynamic RTP calibrated odds (1.96x multiplier)."""
-    is_enabled, rtp_rate, min_stake, max_stake = get_minigame_controls(db)
-    if not is_enabled:
-        raise HTTPException(status_code=403, detail="မီနီဂိမ်းများကို စနစ်ထိန်းသိမ်းမှုအရ ခေတ္တပိတ်ထားပါသည် (Mini-games are temporarily disabled).")
+    try:
+        is_enabled, rtp_rate, min_stake, max_stake = get_minigame_controls(db)
+        if not is_enabled:
+            raise HTTPException(status_code=403, detail="မီနီဂိမ်းများကို စနစ်ထိန်းသိမ်းမှုအရ ခေတ္တပိတ်ထားပါသည် (Mini-games are temporarily disabled).")
 
-    stake = float(req.stake)
-    player_choice = req.choice.upper()
+        stake = float(req.stake)
+        player_choice = req.choice.upper()
 
-    if stake < min_stake or stake > max_stake:
-        raise HTTPException(
-            status_code=400,
-            detail=f"ထိုးကြေးမှာ အနည်းဆုံး {min_stake:,.0f} MMK မှ အများဆုံး {max_stake:,.0f} MMK အတွင်း ဖြစ်ရပါမည်။"
-        )
+        if stake < min_stake or stake > max_stake:
+            raise HTTPException(
+                status_code=400,
+                detail=f"ထိုးကြေးမှာ အနည်းဆုံး {min_stake:,.0f} MMK မှ အများဆုံး {max_stake:,.0f} MMK အတွင်း ဖြစ်ရပါမည်။"
+            )
 
-    if float(current_user.balance or 0.0) < stake:
-        raise HTTPException(status_code=400, detail="လက်ကျန်ငွေ မလုံလောက်ပါခင်ဗျာ။ ငွေဖြည့်သွင်းပေးပါရန် (Insufficient balance).")
+        if float(current_user.balance or 0.0) < stake:
+            raise HTTPException(status_code=400, detail="လက်ကျန်ငွေ မလုံလောက်ပါခင်ဗျာ။ ငွေဖြည့်သွင်းပေးပါရန် (Insufficient balance).")
 
-    # Win probability strictly aligned with RTP: P(win) = (rtp_rate / 100) / 1.96
-    win_probability = (rtp_rate / 100.0) / 1.96
-    roll = secrets.randbelow(100000) / 100000.0
-    is_win = (roll < win_probability)
+        # Win probability strictly aligned with RTP: P(win) = (rtp_rate / 100) / 1.96
+        win_probability = (rtp_rate / 100.0) / 1.96
+        roll = secrets.randbelow(100000) / 100000.0
+        is_win = (roll < win_probability)
 
-    outcome = player_choice if is_win else ("TAIL" if player_choice == "HEAD" else "HEAD")
-    multiplier = 1.96 if is_win else 0.0
-    payout = stake * multiplier if is_win else 0.0
+        outcome = player_choice if is_win else ("TAIL" if player_choice == "HEAD" else "HEAD")
+        multiplier = 1.96 if is_win else 0.0
+        payout = stake * multiplier if is_win else 0.0
 
-    curr_time = now_mmt()
-    today_str = curr_time.strftime("%Y-%m-%d")
+        curr_time = now_mmt()
+        today_str = curr_time.strftime("%Y-%m-%d")
 
-    current_user.balance = float(current_user.balance or 0.0) - stake + payout
-    game_id_str = f"COIN-{curr_time.strftime('%Y%m%d%H%M%S')}-{secrets.token_hex(3).upper()}"
+        current_user.balance = float(current_user.balance or 0.0) - stake + payout
+        game_id_str = f"COIN-{curr_time.strftime('%Y%m%d%H%M%S')}-{secrets.token_hex(3).upper()}"
 
-    db.add(FinancialLedger(
-        entry_type=LedgerEntryType.BET_REVENUE,
-        amount=stake,
-        running_balance=current_user.balance,
-        reference_id=game_id_str,
-        reference_type="MINI_GAME_STAKE",
-        description=f"ခေါင်း/ပန်း ထိုးကြေး ({player_choice} - {stake:,.0f} MMK)",
-        logged_at_mmt=curr_time,
-        date_str=today_str
-    ))
-
-    if is_win and payout > 0:
         db.add(FinancialLedger(
-            entry_type=LedgerEntryType.PAYOUT_EXPENSE,
-            amount=payout,
+            entry_type=LedgerEntryType.BET_REVENUE,
+            amount=stake,
             running_balance=current_user.balance,
             reference_id=game_id_str,
-            reference_type="MINI_GAME_PAYOUT",
-            description=f"ခေါင်း/ပန်း အနိုင်ရငွေ ({player_choice} - {payout:,.0f} MMK)",
+            reference_type="MINI_GAME_STAKE",
+            description=f"ခေါင်း/ပန်း ထိုးကြေး ({player_choice} - {stake:,.0f} MMK)",
             logged_at_mmt=curr_time,
             date_str=today_str
         ))
-        db.add(Transaction(
-            user_id=current_user.id,
-            tx_type=TransactionType.WIN_PAYOUT,
-            gateway="Head or Tail",
-            transaction_id=game_id_str,
-            receiver_id=f"Player #{current_user.id} ({current_user.phone})",
-            amount=payout,
-            slip_image_url=None,
-            client_timezone="MMT",
-            tx_timestamp_mmt=curr_time,
-            submission_timestamp_mmt=curr_time,
-            delta_minutes=0.0,
-            is_time_valid=True,
-            is_receiver_valid=True,
-            is_tx_unique=True,
-            status=TransactionStatus.COMPLETED,
-            verification_notes=f"Coin Flip Win {outcome} ({payout:,.0f} MMK)",
-            created_at=curr_time
-        ))
 
-    bet_rec = MiniGameBet(
-        user_id=current_user.id,
-        game_type="COIN_FLIP",
-        stake_amount=stake,
-        payout_multiplier=multiplier,
-        payout_amount=payout,
-        is_win=is_win,
-        player_choice=player_choice,
-        result_data={
+        if is_win and payout > 0:
+            db.add(FinancialLedger(
+                entry_type=LedgerEntryType.PAYOUT_EXPENSE,
+                amount=payout,
+                running_balance=current_user.balance,
+                reference_id=game_id_str,
+                reference_type="MINI_GAME_PAYOUT",
+                description=f"ခေါင်း/ပန်း အနိုင်ရငွေ ({player_choice} - {payout:,.0f} MMK)",
+                logged_at_mmt=curr_time,
+                date_str=today_str
+            ))
+            try:
+                db.add(Transaction(
+                    user_id=current_user.id,
+                    tx_type=TransactionType.WIN_PAYOUT,
+                    gateway="Head or Tail",
+                    transaction_id=game_id_str,
+                    receiver_id=f"Player #{current_user.id} ({current_user.phone})",
+                    amount=payout,
+                    slip_image_url=None,
+                    client_timezone="MMT",
+                    tx_timestamp_mmt=curr_time,
+                    submission_timestamp_mmt=curr_time,
+                    delta_minutes=0.0,
+                    is_time_valid=True,
+                    is_receiver_valid=True,
+                    is_tx_unique=True,
+                    status=TransactionStatus.COMPLETED,
+                    verification_notes=f"Coin Flip Win {outcome} ({payout:,.0f} MMK)",
+                    created_at=curr_time
+                ))
+            except Exception as tx_err:
+                print(f"Notice: skipped transaction record for win payout: {tx_err}")
+
+        bet_rec = MiniGameBet(
+            user_id=current_user.id,
+            game_type="COIN_FLIP",
+            stake_amount=stake,
+            payout_multiplier=multiplier,
+            payout_amount=payout,
+            is_win=is_win,
+            player_choice=player_choice,
+            result_data={
+                "outcome": outcome,
+                "player_choice": player_choice,
+                "is_win": is_win,
+                "game_id": game_id_str
+            },
+            created_at=curr_time,
+            date_str=today_str
+        )
+        db.add(bet_rec)
+        db.commit()
+
+        return {
+            "status": "success",
+            "game_id": game_id_str,
             "outcome": outcome,
             "player_choice": player_choice,
             "is_win": is_win,
-            "game_id": game_id_str
-        },
-        created_at=curr_time,
-        date_str=today_str
-    )
-    db.add(bet_rec)
-    db.commit()
-
-    return {
-        "status": "success",
-        "game_id": game_id_str,
-        "outcome": outcome,
-        "player_choice": player_choice,
-        "is_win": is_win,
-        "multiplier": multiplier,
-        "stake": stake,
-        "payout": payout,
-        "new_balance": current_user.balance
-    }
+            "multiplier": multiplier,
+            "stake": stake,
+            "payout": payout,
+            "new_balance": current_user.balance
+        }
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Coin Flip error: {str(e)}"
+        )
 
 
 @router.post("/dice/roll")
@@ -406,118 +441,133 @@ def roll_dice(
     db: Session = Depends(get_db)
 ):
     """Executes a 3-dice roll (Small: 2.0x, Big: 2.0x, Triple: 30x) with dynamic RTP odds."""
-    is_enabled, rtp_rate, min_stake, max_stake = get_minigame_controls(db)
-    if not is_enabled:
-        raise HTTPException(status_code=403, detail="မီနီဂိမ်းများကို စနစ်ထိန်းသိမ်းမှုအရ ခေတ္တပိတ်ထားပါသည် (Mini-games are temporarily disabled).")
+    try:
+        is_enabled, rtp_rate, min_stake, max_stake = get_minigame_controls(db)
+        if not is_enabled:
+            raise HTTPException(status_code=403, detail="မီနီဂိမ်းများကို စနစ်ထိန်းသိမ်းမှုအရ ခေတ္တပိတ်ထားပါသည် (Mini-games are temporarily disabled).")
 
-    stake = float(req.stake)
-    player_choice = req.choice.upper()
+        stake = float(req.stake)
+        player_choice = req.choice.upper()
 
-    if stake < min_stake or stake > max_stake:
-        raise HTTPException(
-            status_code=400,
-            detail=f"ထိုးကြေးမှာ အနည်းဆုံး {min_stake:,.0f} MMK မှ အများဆုံး {max_stake:,.0f} MMK အတွင်း ဖြစ်ရပါမည်။"
-        )
+        if stake < min_stake or stake > max_stake:
+            raise HTTPException(
+                status_code=400,
+                detail=f"ထိုးကြေးမှာ အနည်းဆုံး {min_stake:,.0f} MMK မှ အများဆုံး {max_stake:,.0f} MMK အတွင်း ဖြစ်ရပါမည်။"
+            )
 
-    if float(current_user.balance or 0.0) < stake:
-        raise HTTPException(status_code=400, detail="လက်ကျန်ငွေ မလုံလောက်ပါခင်ဗျာ။ ငွေဖြည့်သွင်းပေးပါရန် (Insufficient balance).")
+        if float(current_user.balance or 0.0) < stake:
+            raise HTTPException(status_code=400, detail="လက်ကျန်ငွေ မလုံလောက်ပါခင်ဗျာ။ ငွေဖြည့်သွင်းပေးပါရန် (Insufficient balance).")
 
-    # Win multiplier and calibrated win probability
-    if player_choice in ("SMALL", "BIG"):
-        target_multiplier = 2.0
-    else:  # TRIPLE
-        target_multiplier = 30.0
+        # Win multiplier and calibrated win probability
+        if player_choice in ("SMALL", "BIG"):
+            target_multiplier = 2.0
+        else:  # TRIPLE
+            target_multiplier = 30.0
 
-    win_probability = (rtp_rate / 100.0) / target_multiplier
-    roll = secrets.randbelow(100000) / 100000.0
-    is_win = (roll < win_probability)
+        win_probability = (rtp_rate / 100.0) / target_multiplier
+        roll = secrets.randbelow(100000) / 100000.0
+        is_win = (roll < win_probability)
 
-    multiplier = target_multiplier if is_win else 0.0
-    payout = stake * multiplier if is_win else 0.0
+        multiplier = target_multiplier if is_win else 0.0
+        payout = stake * multiplier if is_win else 0.0
 
-    # Generate authentic dice outcome matching the calculated win/loss
-    dice, total_sum, is_triple = generate_dice_for_outcome(player_choice, is_win)
+        # Generate authentic dice outcome matching the calculated win/loss
+        dice, total_sum, is_triple = generate_dice_for_outcome(player_choice, is_win)
 
-    curr_time = now_mmt()
-    today_str = curr_time.strftime("%Y-%m-%d")
+        curr_time = now_mmt()
+        today_str = curr_time.strftime("%Y-%m-%d")
 
-    current_user.balance = float(current_user.balance or 0.0) - stake + payout
-    game_id_str = f"DICE-{curr_time.strftime('%Y%m%d%H%M%S')}-{secrets.token_hex(3).upper()}"
+        current_user.balance = float(current_user.balance or 0.0) - stake + payout
+        game_id_str = f"DICE-{curr_time.strftime('%Y%m%d%H%M%S')}-{secrets.token_hex(3).upper()}"
 
-    db.add(FinancialLedger(
-        entry_type=LedgerEntryType.BET_REVENUE,
-        amount=stake,
-        running_balance=current_user.balance,
-        reference_id=game_id_str,
-        reference_type="MINI_GAME_STAKE",
-        description=f"အန်စာတုံး ထိုးကြေး ({player_choice} - {stake:,.0f} MMK)",
-        logged_at_mmt=curr_time,
-        date_str=today_str
-    ))
-
-    if is_win and payout > 0:
         db.add(FinancialLedger(
-            entry_type=LedgerEntryType.PAYOUT_EXPENSE,
-            amount=payout,
+            entry_type=LedgerEntryType.BET_REVENUE,
+            amount=stake,
             running_balance=current_user.balance,
             reference_id=game_id_str,
-            reference_type="MINI_GAME_PAYOUT",
-            description=f"အန်စာတုံး အနိုင်ရငွေ ({player_choice} - {payout:,.0f} MMK)",
+            reference_type="MINI_GAME_STAKE",
+            description=f"အန်စာတုံး ထိုးကြေး ({player_choice} - {stake:,.0f} MMK)",
             logged_at_mmt=curr_time,
             date_str=today_str
         ))
-        db.add(Transaction(
-            user_id=current_user.id,
-            tx_type=TransactionType.WIN_PAYOUT,
-            gateway="Dice Roll",
-            transaction_id=game_id_str,
-            receiver_id=f"Player #{current_user.id} ({current_user.phone})",
-            amount=payout,
-            slip_image_url=None,
-            client_timezone="MMT",
-            tx_timestamp_mmt=curr_time,
-            submission_timestamp_mmt=curr_time,
-            delta_minutes=0.0,
-            is_time_valid=True,
-            is_receiver_valid=True,
-            is_tx_unique=True,
-            status=TransactionStatus.COMPLETED,
-            verification_notes=f"Dice Roll Win {player_choice} ({payout:,.0f} MMK)",
-            created_at=curr_time
-        ))
 
-    bet_rec = MiniGameBet(
-        user_id=current_user.id,
-        game_type="DICE",
-        stake_amount=stake,
-        payout_multiplier=multiplier,
-        payout_amount=payout,
-        is_win=is_win,
-        player_choice=player_choice,
-        result_data={
+        if is_win and payout > 0:
+            db.add(FinancialLedger(
+                entry_type=LedgerEntryType.PAYOUT_EXPENSE,
+                amount=payout,
+                running_balance=current_user.balance,
+                reference_id=game_id_str,
+                reference_type="MINI_GAME_PAYOUT",
+                description=f"အန်စာတုံး အနိုင်ရငွေ ({player_choice} - {payout:,.0f} MMK)",
+                logged_at_mmt=curr_time,
+                date_str=today_str
+            ))
+            try:
+                db.add(Transaction(
+                    user_id=current_user.id,
+                    tx_type=TransactionType.WIN_PAYOUT,
+                    gateway="Dice Roll",
+                    transaction_id=game_id_str,
+                    receiver_id=f"Player #{current_user.id} ({current_user.phone})",
+                    amount=payout,
+                    slip_image_url=None,
+                    client_timezone="MMT",
+                    tx_timestamp_mmt=curr_time,
+                    submission_timestamp_mmt=curr_time,
+                    delta_minutes=0.0,
+                    is_time_valid=True,
+                    is_receiver_valid=True,
+                    is_tx_unique=True,
+                    status=TransactionStatus.COMPLETED,
+                    verification_notes=f"Dice Roll Win {player_choice} ({payout:,.0f} MMK)",
+                    created_at=curr_time
+                ))
+            except Exception as tx_err:
+                print(f"Notice: skipped transaction record for win payout: {tx_err}")
+
+        bet_rec = MiniGameBet(
+            user_id=current_user.id,
+            game_type="DICE",
+            stake_amount=stake,
+            payout_multiplier=multiplier,
+            payout_amount=payout,
+            is_win=is_win,
+            player_choice=player_choice,
+            result_data={
+                "dice": dice,
+                "sum": total_sum,
+                "is_triple": is_triple,
+                "player_choice": player_choice,
+                "is_win": is_win,
+                "game_id": game_id_str
+            },
+            created_at=curr_time,
+            date_str=today_str
+        )
+        db.add(bet_rec)
+        db.commit()
+
+        return {
+            "status": "success",
+            "game_id": game_id_str,
             "dice": dice,
             "sum": total_sum,
             "is_triple": is_triple,
             "player_choice": player_choice,
             "is_win": is_win,
-            "game_id": game_id_str
-        },
-        created_at=curr_time,
-        date_str=today_str
-    )
-    db.add(bet_rec)
-    db.commit()
-
-    return {
-        "status": "success",
-        "game_id": game_id_str,
-        "dice": dice,
-        "sum": total_sum,
-        "is_triple": is_triple,
-        "player_choice": player_choice,
-        "is_win": is_win,
-        "multiplier": multiplier,
-        "stake": stake,
-        "payout": payout,
-        "new_balance": current_user.balance
-    }
+            "multiplier": multiplier,
+            "stake": stake,
+            "payout": payout,
+            "new_balance": current_user.balance
+        }
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Dice Roll error: {str(e)}"
+        )
