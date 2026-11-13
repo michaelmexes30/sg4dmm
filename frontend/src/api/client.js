@@ -822,9 +822,29 @@ export const apiClient = {
     if (params.search) q.append('search', params.search);
     if (params.from_date) q.append('from_date', params.from_date);
     if (params.to_date) q.append('to_date', params.to_date);
+    if (params.archive_filter) q.append('archive_filter', params.archive_filter);
     const qs = q.toString();
     const url = qs ? '/admin/minigames/bets?' + qs : '/admin/minigames/bets';
     return this.request(url);
+  },
+
+  getAdminMiniGamesDailyReports(params = {}) {
+    const q = new URLSearchParams();
+    if (params.from_date) q.append('from_date', params.from_date);
+    if (params.to_date) q.append('to_date', params.to_date);
+    if (params.game_type) q.append('game_type', params.game_type);
+    const qs = q.toString();
+    return this.request(qs ? '/admin/minigames/daily-reports?' + qs : '/admin/minigames/daily-reports');
+  },
+
+  runAdminMiniGamesArchiving() {
+    return this.request('/admin/minigames/run-archiving', {
+      method: 'POST'
+    });
+  },
+
+  getAdminMiniGamesArchiveStatus() {
+    return this.request('/admin/minigames/archive-status');
   }
 };
 

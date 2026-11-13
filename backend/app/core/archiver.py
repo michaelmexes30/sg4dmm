@@ -10,6 +10,7 @@ from app.config import settings
 from app.database import SessionLocal
 from app.models.bet import BetSlip, BetArchive, BetSlipStatus
 from app.models.transaction import Transaction, TransactionArchive, TransactionStatus
+from app.models.mini_game import MiniGameBet
 from app.core.timezone_utils import now_mmt
 
 ARCHIVE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "archives")
@@ -153,3 +154,53 @@ def archive_old_records(retention_days: int = None) -> Dict[str, Any]:
         }
     finally:
         db.close()
+
+def archive_and_prune_minigames(db: Session = None) -> Dict[str, Any]:
+    """
+    Mini-Games Data Archiving & Retention:
+    1. Weekly Archiving (1 week 1 time):
+       - MiniGameBet records older than 7 days (created_at < now - 7 days) are flagged as is_archived = True.
+    2. 6-Month Retention Limit:
+       - MiniGameBet records older than 180 days (6 months) are purged (deleted).
+    """
+    should_close = False
+    if db is None:
+        db = SessionLocal()
+        should_close = True
+
+    try:
+        now = now_mmt()
+        seven_days_ago = now - timedelta(days=7)
+        six_months_ago = now - timedelta(days=180)
+
+        # 1. Purge records older than 6 months (180 days)
+        deleted_count = db.query(MiniGameBet).filter(
+            MiniGameBet.created_at < six_months_ago
+        ).delete(synchronize_session=False)
+
+        # 2. Archive records older than 7 days that are not yet marked as archived
+        archived_count = db.query(MiniGameBet).filter(
+            MiniGameBet.created_at < seven_days_ago,
+            MiniGameBet.is_archived == False
+        ).update({"is_archived": True}, synchronize_session=False)
+
+        db.commit()
+
+        return {
+            "status": "success",
+            "archived_7_days_count": archived_count,
+            "purged_6_months_count": deleted_count,
+            "cutoff_archive_7_days": seven_days_ago.strftime("%Y-%m-%d %H:%M:%S"),
+            "cutoff_purge_6_months": six_months_ago.strftime("%Y-%m-%d %H:%M:%S"),
+            "executed_at": now.strftime("%Y-%m-%d %H:%M:%S")
+        }
+    except Exception as e:
+        db.rollback()
+        return {
+            "status": "error",
+            "error": str(e)
+        }
+    finally:
+        if should_close:
+            db.close()
+

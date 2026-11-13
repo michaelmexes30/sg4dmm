@@ -5471,6 +5471,7 @@ def get_minigames_admin_bets(
     search: Optional[str] = None,
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
+    archive_filter: Optional[str] = "all",
     admin_user: User = Depends(get_current_admin),
     db: Session = Depends(get_db)
 ):
@@ -5488,6 +5489,10 @@ def get_minigames_admin_bets(
     if search:
         s = f"%{search.strip()}%"
         query = query.filter(or_(User.phone.like(s), User.username.like(s)))
+    if archive_filter == "active":
+        query = query.filter(getattr(MiniGameBet, "is_archived", False) == False)
+    elif archive_filter == "archived":
+        query = query.filter(getattr(MiniGameBet, "is_archived", False) == True)
 
     total_count = query.count()
     bets = query.order_by(MiniGameBet.id.desc()).offset((page - 1) * limit).limit(limit).all()
@@ -5507,6 +5512,7 @@ def get_minigames_admin_bets(
             "player_choice": bet.player_choice,
             "result_data": bet.result_data,
             "date_str": bet.date_str,
+            "is_archived": bool(getattr(bet, "is_archived", False)),
             "created_at": bet.created_at.strftime("%Y-%m-%d %H:%M:%S") if bet.created_at else None
         })
 
@@ -5516,6 +5522,138 @@ def get_minigames_admin_bets(
         "page": page,
         "limit": limit,
         "total_pages": (total_count + limit - 1) // limit if limit > 0 else 1
+    }
+
+
+@router.get("/minigames/daily-reports")
+def get_minigames_daily_reports(
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    game_type: Optional[str] = None,
+    admin_user: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Returns daily breakdown of Mini-Games turnover, payout, and profit per game.
+    Enables tracking exactly which games yielded how much profit on each date.
+    """
+    dates_q = db.query(MiniGameBet.date_str).distinct()
+    if from_date:
+        dates_q = dates_q.filter(MiniGameBet.date_str >= from_date)
+    if to_date:
+        dates_q = dates_q.filter(MiniGameBet.date_str <= to_date)
+    
+    date_rows = dates_q.order_by(MiniGameBet.date_str.desc()).all()
+    dates = [r[0] for r in date_rows if r[0]]
+
+    GAME_META = {
+        "WHEEL": {"title": "Lucky Wheel", "title_mm": "စက်ဝိုင်းလှည့်", "icon": "🎡"},
+        "COIN_FLIP": {"title": "Head or Tail", "title_mm": "ခေါင်း-ပန်း", "icon": "🪙"},
+        "DICE": {"title": "Dice Roll (Sic Bo)", "title_mm": "အန်စာတုံး", "icon": "🎲"}
+    }
+
+    reports = []
+    tot_all_stake = 0.0
+    tot_all_payout = 0.0
+    tot_all_profit = 0.0
+
+    for d in dates:
+        query = db.query(
+            MiniGameBet.game_type,
+            func.count(MiniGameBet.id).label("plays"),
+            func.coalesce(func.sum(MiniGameBet.stake_amount), 0.0).label("stake"),
+            func.coalesce(func.sum(MiniGameBet.payout_amount), 0.0).label("payout")
+        ).filter(MiniGameBet.date_str == d)
+
+        if game_type:
+            query = query.filter(MiniGameBet.game_type == game_type.upper())
+
+        rows = query.group_by(MiniGameBet.game_type).all()
+
+        d_stake = 0.0
+        d_payout = 0.0
+        games_list = []
+
+        for r in rows:
+            g_type = r.game_type
+            g_plays = int(r.plays or 0)
+            g_stake = float(r.stake or 0.0)
+            g_payout = float(r.payout or 0.0)
+            g_profit = g_stake - g_payout
+            g_rtp = (g_payout / g_stake * 100.0) if g_stake > 0 else 0.0
+
+            d_stake += g_stake
+            d_payout += g_payout
+
+            meta = GAME_META.get(g_type, {"title": g_type, "title_mm": g_type, "icon": "🎮"})
+            games_list.append({
+                "game_type": g_type,
+                "title": meta["title"],
+                "title_mm": meta["title_mm"],
+                "icon": meta["icon"],
+                "plays": g_plays,
+                "stake": g_stake,
+                "payout": g_payout,
+                "profit": g_profit,
+                "rtp": round(g_rtp, 1)
+            })
+
+        d_profit = d_stake - d_payout
+        d_rtp = (d_payout / d_stake * 100.0) if d_stake > 0 else 0.0
+
+        tot_all_stake += d_stake
+        tot_all_payout += d_payout
+        tot_all_profit += d_profit
+
+        reports.append({
+            "date": d,
+            "total_stake": d_stake,
+            "total_payout": d_payout,
+            "net_profit": d_profit,
+            "rtp": round(d_rtp, 1),
+            "games": sorted(games_list, key=lambda x: x["stake"], reverse=True)
+        })
+
+    return {
+        "status": "success",
+        "sub_total": {
+            "total_stake": tot_all_stake,
+            "total_payout": tot_all_payout,
+            "net_profit": tot_all_profit,
+            "rtp": round((tot_all_payout / tot_all_stake * 100.0), 1) if tot_all_stake > 0 else 0.0
+        },
+        "reports": reports
+    }
+
+@router.post("/minigames/run-archiving")
+def run_minigames_archiving_endpoint(
+    admin_user: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Manually triggers the 1-week archiving and 6-month data pruning routine.
+    - Flags records older than 7 days as is_archived = True.
+    - Permanently deletes records older than 180 days (6 months).
+    """
+    from app.core.archiver import archive_and_prune_minigames
+    res = archive_and_prune_minigames(db)
+    return res
+
+@router.get("/minigames/archive-status")
+def get_minigames_archive_status(
+    admin_user: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """Returns active vs archived records count and retention policy status."""
+    total = db.query(func.count(MiniGameBet.id)).scalar() or 0
+    archived = db.query(func.count(MiniGameBet.id)).filter(getattr(MiniGameBet, "is_archived", False) == True).scalar() or 0
+    active = total - archived
+    return {
+        "status": "success",
+        "total_records": total,
+        "active_records": active,
+        "archived_records": archived,
+        "retention_policy": "Weekly archiving (older than 7 days), 6-month maximum retention (purged after 180 days)"
     }
 
 

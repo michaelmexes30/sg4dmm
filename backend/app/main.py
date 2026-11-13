@@ -15,7 +15,7 @@ from app.models.bet import BetSlip, BetItem, BetEditLog
 from app.models.settings import SystemSetting
 from app.seeds.seed_data import seed_database
 from app.seeds.seed_admin_data import seed_admin_and_system_data
-from app.core.archiver import archive_old_records
+from app.core.archiver import archive_old_records, archive_and_prune_minigames
 from app.core.bonus_engine import calculate_and_distribute_weekly_bonus
 from app.core.notifications import send_cutoff_reminder_job
 from app.core.singapore_pools_scraper import poll_singapore_pools_job
@@ -91,6 +91,10 @@ async def lifespan(app: FastAPI):
                 print(f"System settings update notice: {set_upd_ex}")
             try:
                 conn.execute(text("ALTER TABLE bet_items ADD COLUMN edit_logs_json TEXT DEFAULT '[]'"))
+            except Exception:
+                pass
+            try:
+                conn.execute(text("ALTER TABLE mini_game_bets ADD COLUMN is_archived BOOLEAN DEFAULT FALSE"))
             except Exception:
                 pass
 
@@ -216,6 +220,17 @@ async def lifespan(app: FastAPI):
         hour=2,
         minute=0,
         id="nightly_archiving_job",
+        replace_existing=True
+    )
+
+    # 1b. Schedule Mini-Games Weekly Archiving (older than 7 days) and 6-Month Purge
+    scheduler.add_job(
+        archive_and_prune_minigames,
+        "cron",
+        day_of_week="sun",
+        hour=3,
+        minute=0,
+        id="weekly_minigames_archiving_job",
         replace_existing=True
     )
 

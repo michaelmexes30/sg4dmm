@@ -236,12 +236,6 @@ export default function ReportsView({ onNotify }) {
                 </span>
               </div>
               <div>
-                <span className="text-[11px] text-slate-400 block">Mini-Games Turnover</span>
-                <span className="text-sm font-black font-mono text-cyan-400">
-                  +Ks {(data?.sub_total?.mini_game_stake || 0).toLocaleString()}
-                </span>
-              </div>
-              <div>
                 <span className="text-[11px] text-slate-400 block">Mini-Games Net P/L</span>
                 <span className={`text-sm font-black font-mono ${(data?.sub_total?.mini_game_net || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                   {(data?.sub_total?.mini_game_net || 0) >= 0 ? '+' : ''}Ks {(data?.sub_total?.mini_game_net || 0).toLocaleString()}
@@ -275,8 +269,6 @@ export default function ReportsView({ onNotify }) {
                     <th className="py-2.5 px-2.5">Date</th>
                     <th className="py-2.5 px-2.5 text-right">4D Bet Stake</th>
                     <th className="py-2.5 px-2.5 text-right">4D Payout</th>
-                    <th className="py-2.5 px-2.5 text-right text-cyan-300">Mini Stake</th>
-                    <th className="py-2.5 px-2.5 text-right text-rose-300">Mini Payout</th>
                     <th className="py-2.5 px-2.5 text-right text-amber-300">Mini Net P/L</th>
                     <th className="py-2.5 px-2.5 text-right">Top Up</th>
                     <th className="py-2.5 px-2.5 text-right">Withdraw</th>
@@ -290,14 +282,14 @@ export default function ReportsView({ onNotify }) {
                 <tbody className="divide-y divide-slate-800 text-slate-300 font-mono text-[11px]">
                   {loading ? (
                     <tr>
-                      <td colSpan={14} className="py-12 text-center text-slate-500 font-sans">
+                      <td colSpan={12} className="py-12 text-center text-slate-500 font-sans">
                         <RefreshCw className="w-6 h-6 animate-spin mx-auto text-gold-400 mb-2" />
                         Calculating live financial statement from database...
                       </td>
                     </tr>
                   ) : !data?.reports || data.reports.length === 0 ? (
                     <tr>
-                      <td colSpan={14} className="py-12 text-center text-slate-500 font-sans">
+                      <td colSpan={12} className="py-12 text-center text-slate-500 font-sans">
                         No financial records found in date range.
                       </td>
                     </tr>
@@ -311,12 +303,6 @@ export default function ReportsView({ onNotify }) {
                         </td>
                         <td className="py-2 px-2.5 text-right text-rose-400">
                           {r.four_d_payout < 0 ? (r.four_d_payout).toLocaleString() : r.four_d_payout > 0 ? `-${(r.four_d_payout).toLocaleString()}` : '-'}
-                        </td>
-                        <td className="py-2 px-2.5 text-right text-cyan-400 font-bold">
-                          {r.mini_game_stake > 0 ? (r.mini_game_stake).toLocaleString() : '-'}
-                        </td>
-                        <td className="py-2 px-2.5 text-right text-rose-400">
-                          {r.mini_game_payout < 0 ? (r.mini_game_payout).toLocaleString() : r.mini_game_payout > 0 ? `-${(r.mini_game_payout).toLocaleString()}` : '-'}
                         </td>
                         <td className={`py-2 px-2.5 text-right font-extrabold ${(r.mini_game_net || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                           {r.mini_game_stake > 0 || r.mini_game_payout !== 0 ? (
@@ -359,12 +345,6 @@ export default function ReportsView({ onNotify }) {
                       </td>
                       <td className="py-2.5 px-2.5 text-right text-rose-400">
                         {(data.sub_total.four_d_payout || 0).toLocaleString()}
-                      </td>
-                      <td className="py-2.5 px-2.5 text-right text-cyan-400 font-bold">
-                        {(data.sub_total.mini_game_stake || 0).toLocaleString()}
-                      </td>
-                      <td className="py-2.5 px-2.5 text-right text-rose-400">
-                        {(data.sub_total.mini_game_payout || 0).toLocaleString()}
                       </td>
                       <td className={`py-2.5 px-2.5 text-right font-black ${(data.sub_total.mini_game_net || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                         {(data.sub_total.mini_game_net || 0) >= 0 ? '+' : ''}{(data.sub_total.mini_game_net || 0).toLocaleString()}

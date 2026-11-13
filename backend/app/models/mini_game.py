@@ -22,3 +22,4 @@ class MiniGameBet(Base):
     
     created_at = Column(DateTime, default=now_mmt, index=True)
     date_str = Column(String(10), index=True)
+    is_archived = Column(Boolean, default=False, index=True)
