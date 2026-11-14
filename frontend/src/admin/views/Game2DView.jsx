@@ -204,103 +204,7 @@ export default function Game2DView({ onNotify, mode = 'live' }) {
     );
   }
 
-  // If mode === 'past'
-  if (mode === 'past') {
-    const pastDraws = gameData?.past_draws || [];
-    return (
-      <div className="space-y-6">
-        {/* Past Draw Results Header */}
-        <div className="flex flex-wrap items-center justify-between gap-4 bg-navy-900/90 border border-gold-500/30 p-4 rounded-2xl shadow-xl">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gold-500/20 text-gold-400 flex items-center justify-center font-black border border-gold-500/40 text-lg">
-              🏆
-            </div>
-            <div>
-              <h2 className="font-extrabold text-white text-base">Thai 2D Past Games (ယခင် 2D ပေါက်စဉ်များ)</h2>
-              <p className="text-[11px] text-slate-400 font-mono mt-0.5">
-                Thai Stock Exchange (SET) Morning 12:01 PM & Evening 04:30 PM Results
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => loadGameData(null)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-navy-800 hover:bg-navy-750 text-gold-400 hover:text-white text-xs font-bold transition-colors cursor-pointer"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            <span>Refresh</span>
-          </button>
-        </div>
 
-        {/* Past Games Table */}
-        <div className="bg-navy-900/90 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-950/80 text-slate-400 font-bold uppercase tracking-wider text-[10px] border-b border-slate-800">
-                <tr>
-                  <th className="py-3.5 px-4">Draw Date</th>
-                  <th className="py-3.5 px-4">Session</th>
-                  <th className="py-3.5 px-4">SET Index</th>
-                  <th className="py-3.5 px-4">SET Value</th>
-                  <th className="py-3.5 px-4 text-center">Winning 2D</th>
-                  <th className="py-3.5 px-4 text-right">Total Staked</th>
-                  <th className="py-3.5 px-4 text-right">Total Payout</th>
-                  <th className="py-3.5 px-4 text-right">Net Profit</th>
-                  <th className="py-3.5 px-4 text-center">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/60 font-mono">
-                {pastDraws.length === 0 ? (
-                  <tr>
-                    <td colSpan={9} className="py-8 text-center text-slate-500 font-sans">
-                      ယခင် 2D ထီပေါက်စဉ်မှတ်တမ်း မရှိသေးပါ
-                    </td>
-                  </tr>
-                ) : (
-                  pastDraws.map((d) => (
-                    <tr key={d.id} className="hover:bg-slate-800/40 transition-colors">
-                      <td className="py-3 px-4 font-bold text-white">{d.draw_date}</td>
-                      <td className="py-3 px-4">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                          d.session === 'morning'
-                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                            : 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30'
-                        }`}>
-                          {d.session_label}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-slate-300">{d.set_index || '-'}</td>
-                      <td className="py-3 px-4 text-slate-400">{d.set_value || '-'}</td>
-                      <td className="py-3 px-4 text-center">
-                        <span className="inline-block px-3 py-1 rounded-xl bg-gold-500/20 text-gold-300 font-black text-sm tracking-widest border border-gold-500/40 shadow-inner">
-                          {d.winning_number || '--'}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-right text-slate-200">
-                        Ks {(d.total_staked || 0).toLocaleString()}
-                      </td>
-                      <td className="py-3 px-4 text-right text-rose-400">
-                        Ks {(d.total_payout || 0).toLocaleString()}
-                      </td>
-                      <td className={`py-3 px-4 text-right font-black ${
-                        (d.profit || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
-                      }`}>
-                        {(d.profit || 0) < 0 ? `-Ks ${Math.abs(d.profit).toLocaleString()}` : `+Ks ${(d.profit || 0).toLocaleString()}`}
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                          {d.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   // Mode === 'live'
   const currentDraw = gameData?.selected_draw;
@@ -351,9 +255,20 @@ export default function Game2DView({ onNotify, mode = 'live' }) {
               }`}>
                 {d.session_label}
               </span>
-              <span className="px-1.5 py-0.5 text-[9px] bg-emerald-500/20 text-emerald-300 rounded font-black border border-emerald-500/30">
-                {d.status}
-              </span>
+              {mode === 'past' && d.winning_number && (
+                <span className={`px-1.5 py-0.5 text-[9px] rounded font-black border ${
+                  selectedDrawId === d.id
+                    ? 'bg-black/80 text-amber-300 border-amber-900/60'
+                    : 'bg-gold-500/20 text-gold-300 border-gold-500/30'
+                }`}>
+                  2D: {d.winning_number}
+                </span>
+              )}
+              {mode === 'live' && (
+                <span className="px-1.5 py-0.5 text-[9px] bg-emerald-500/20 text-emerald-300 rounded font-black border border-emerald-500/30">
+                  {d.status}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -368,15 +283,17 @@ export default function Game2DView({ onNotify, mode = 'live' }) {
             <span>Refresh</span>
           </button>
 
-          <button
-            onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-lg shadow-rose-950 transition-all cursor-pointer"
-          >
-            <Lock className="w-4 h-4" />
-            <span>+ Lock / Close 2D Number</span>
-          </button>
+          {mode !== 'past' && (
+            <button
+              onClick={() => setIsAddModalOpen(true)}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-lg shadow-rose-950 transition-all cursor-pointer"
+            >
+              <Lock className="w-4 h-4" />
+              <span>+ Lock / Close 2D Number</span>
+            </button>
+          )}
 
-          {currentDraw?.status === 'OPEN' && (
+          {mode !== 'past' && currentDraw?.status === 'OPEN' && (
             <button
               onClick={() => {
                 setSettleSetIndex('');
@@ -393,6 +310,47 @@ export default function Game2DView({ onNotify, mode = 'live' }) {
           )}
         </div>
       </div>
+
+      {/* Official Past Draw Results Banner for Past Games */}
+      {mode === 'past' && currentDraw && (
+        <div className="bg-navy-900/90 border border-gold-500/30 p-4 rounded-2xl shadow-xl flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gold-500/20 text-gold-400 flex items-center justify-center font-black border border-gold-500/40 text-lg">
+              🏆
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-extrabold text-white text-sm">Past Game Results (Thai 2D) - {currentDraw.session_label}</h3>
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  SETTLED (ရလဒ်ထွက်ပြီး)
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 font-mono mt-0.5">Official Thai SET Draw Date: {currentDraw.draw_date}</p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5 sm:gap-4 font-mono">
+            <div className="bg-navy-950 px-3.5 py-1.5 rounded-xl border border-gold-500/40 text-center">
+              <span className="text-[10px] text-slate-400 block font-sans">Winning 2D</span>
+              <span className="text-gold-300 text-lg font-black tracking-widest">{currentDraw.winning_number || '--'}</span>
+            </div>
+            <div className="bg-navy-950 px-3.5 py-1.5 rounded-xl border border-slate-700 text-center">
+              <span className="text-[10px] text-slate-400 block font-sans">SET Index</span>
+              <span className="text-slate-200 text-sm font-black">{currentDraw.set_index || '-'}</span>
+            </div>
+            <div className="bg-navy-950 px-3.5 py-1.5 rounded-xl border border-slate-700 text-center">
+              <span className="text-[10px] text-slate-400 block font-sans">SET Value</span>
+              <span className="text-slate-200 text-sm font-black">{currentDraw.set_value || '-'}</span>
+            </div>
+            <div className="bg-navy-950 px-3.5 py-1.5 rounded-xl border border-rose-500/30 text-right">
+              <span className="text-[10px] text-slate-400 block font-sans">Total Payout Disbursed</span>
+              <span className="text-rose-400 text-sm font-black">
+                Ks {(currentDraw.total_payout || 0).toLocaleString()}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 4 Executive Risk KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

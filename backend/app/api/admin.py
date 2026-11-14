@@ -4598,33 +4598,21 @@ def get_2d_game_monitor(
     risk_cap = float(getattr(setting, "twod_max_risk_per_number", 100000.0) or 100000.0)
 
     if mode == "past":
-        past_draws = db.query(TwoDDraw).filter(TwoDDraw.status == "SETTLED").order_by(TwoDDraw.id.desc()).limit(15).all()
-        return {
-            "mode": "past",
-            "past_draws": [
-                {
-                    "id": d.id,
-                    "draw_date": d.draw_date,
-                    "session": d.session,
-                    "session_label": "Morning (12:01 PM)" if d.session == "morning" else "Evening (04:30 PM)",
-                    "draw_time_mmt": d.draw_time_mmt,
-                    "set_index": d.set_index,
-                    "set_value": d.set_value,
-                    "winning_number": d.winning_number,
-                    "total_staked": d.total_staked,
-                    "total_payout": d.total_payout,
-                    "profit": d.total_staked - d.total_payout,
-                    "status": d.status
-                } for d in past_draws
-            ]
-        }
+        draws_to_show = db.query(TwoDDraw).filter(
+            or_(TwoDDraw.status == "SETTLED", TwoDDraw.winning_number != None)
+        ).order_by(TwoDDraw.draw_date.desc(), TwoDDraw.id.desc()).limit(15).all()
+        if not draws_to_show:
+            draws_to_show = db.query(TwoDDraw).order_by(TwoDDraw.id.desc()).limit(15).all()
+    else:
+        draws_to_show = db.query(TwoDDraw).filter(TwoDDraw.status == "OPEN").order_by(TwoDDraw.id.asc()).all()
+        if not draws_to_show:
+            draws_to_show = db.query(TwoDDraw).order_by(TwoDDraw.id.desc()).limit(1).all()
 
-    open_draws = db.query(TwoDDraw).filter(TwoDDraw.status == "OPEN").order_by(TwoDDraw.id.asc()).all()
     selected_draw = None
     if draw_id:
         selected_draw = db.query(TwoDDraw).filter(TwoDDraw.id == draw_id).first()
-    if not selected_draw and open_draws:
-        selected_draw = open_draws[0]
+    if not selected_draw and draws_to_show:
+        selected_draw = draws_to_show[0]
 
     numbers_map = {}
     for i in range(100):
@@ -4653,7 +4641,7 @@ def get_2d_game_monitor(
     top_numbers = sorted(numbers_map.values(), key=lambda x: x["staked"], reverse=True)[:10]
 
     return {
-        "mode": "live",
+        "mode": mode,
         "selected_draw": {
             "id": selected_draw.id if selected_draw else None,
             "draw_date": selected_draw.draw_date if selected_draw else None,
@@ -4661,7 +4649,13 @@ def get_2d_game_monitor(
             "session_label": ("Morning (12:01 PM)" if selected_draw and selected_draw.session == "morning" else "Evening (04:30 PM)") if selected_draw else None,
             "draw_time_mmt": selected_draw.draw_time_mmt if selected_draw else "12:01 PM MMT",
             "cutoff_time_mmt": selected_draw.cutoff_time_mmt if selected_draw else "11:30 AM MMT",
-            "status": selected_draw.status if selected_draw else "OPEN",
+            "status": selected_draw.status if selected_draw else ("SETTLED" if mode == "past" else "OPEN"),
+            "winning_number": selected_draw.winning_number if selected_draw else None,
+            "set_index": selected_draw.set_index if selected_draw else None,
+            "set_value": selected_draw.set_value if selected_draw else None,
+            "total_staked": float(selected_draw.total_staked) if (selected_draw and selected_draw.total_staked) else total_pool,
+            "total_payout": float(selected_draw.total_payout) if selected_draw else 0.0,
+            "profit": float(selected_draw.total_staked - selected_draw.total_payout) if (selected_draw and selected_draw.total_staked) else total_pool,
             "closed_numbers": list(closed_nums)
         },
         "available_draws": [
@@ -4672,9 +4666,31 @@ def get_2d_game_monitor(
                 "session_label": "Morning (12:01 PM)" if d.session == "morning" else "Evening (04:30 PM)",
                 "draw_time_mmt": d.draw_time_mmt,
                 "cutoff_time_mmt": d.cutoff_time_mmt,
+                "winning_number": d.winning_number,
+                "set_index": d.set_index,
+                "set_value": d.set_value,
+                "total_staked": float(d.total_staked or 0.0),
+                "total_payout": float(d.total_payout or 0.0),
+                "profit": float((d.total_staked or 0.0) - (d.total_payout or 0.0)),
                 "status": d.status
-            } for d in open_draws
+            } for d in draws_to_show
         ],
+        "past_draws": [
+            {
+                "id": d.id,
+                "draw_date": d.draw_date,
+                "session": d.session,
+                "session_label": "Morning (12:01 PM)" if d.session == "morning" else "Evening (04:30 PM)",
+                "draw_time_mmt": d.draw_time_mmt,
+                "set_index": d.set_index,
+                "set_value": d.set_value,
+                "winning_number": d.winning_number,
+                "total_staked": float(d.total_staked or 0.0),
+                "total_payout": float(d.total_payout or 0.0),
+                "profit": float((d.total_staked or 0.0) - (d.total_payout or 0.0)),
+                "status": d.status
+            } for d in draws_to_show
+        ] if mode == "past" else [],
         "payout_multiplier": payout_multiplier,
         "max_risk_cap": risk_cap,
         "total_staked": total_pool,
@@ -4956,30 +4972,21 @@ def get_3d_game_monitor(
     risk_cap = float(getattr(setting, "threed_max_risk_per_number", 200000.0) or 200000.0)
 
     if mode == "past":
-        past_draws = db.query(ThreeDDraw).filter(ThreeDDraw.status == "SETTLED").order_by(ThreeDDraw.id.desc()).limit(10).all()
-        return {
-            "mode": "past",
-            "past_draws": [
-                {
-                    "id": d.id,
-                    "draw_date": d.draw_date,
-                    "draw_time_mmt": d.draw_time_mmt,
-                    "thai_first_prize": d.thai_first_prize,
-                    "winning_number": d.winning_number,
-                    "total_staked": d.total_staked,
-                    "total_payout": d.total_payout,
-                    "profit": d.total_staked - d.total_payout,
-                    "status": d.status
-                } for d in past_draws
-            ]
-        }
+        draws_to_show = db.query(ThreeDDraw).filter(
+            or_(ThreeDDraw.status == "SETTLED", ThreeDDraw.winning_number != None)
+        ).order_by(ThreeDDraw.draw_date.desc(), ThreeDDraw.id.desc()).limit(15).all()
+        if not draws_to_show:
+            draws_to_show = db.query(ThreeDDraw).order_by(ThreeDDraw.id.desc()).limit(15).all()
+    else:
+        draws_to_show = db.query(ThreeDDraw).filter(ThreeDDraw.status == "OPEN").order_by(ThreeDDraw.id.asc()).all()
+        if not draws_to_show:
+            draws_to_show = db.query(ThreeDDraw).order_by(ThreeDDraw.id.desc()).limit(1).all()
 
-    open_draws = db.query(ThreeDDraw).filter(ThreeDDraw.status == "OPEN").order_by(ThreeDDraw.id.asc()).all()
     selected_draw = None
     if draw_id:
         selected_draw = db.query(ThreeDDraw).filter(ThreeDDraw.id == draw_id).first()
-    if not selected_draw and open_draws:
-        selected_draw = open_draws[0]
+    if not selected_draw and draws_to_show:
+        selected_draw = draws_to_show[0]
 
     closed_nums = set(selected_draw.closed_numbers if selected_draw else [])
 
@@ -5033,13 +5040,18 @@ def get_3d_game_monitor(
             })
 
     return {
-        "mode": "live",
+        "mode": mode,
         "selected_draw": {
             "id": selected_draw.id if selected_draw else None,
             "draw_date": selected_draw.draw_date if selected_draw else None,
             "draw_time_mmt": selected_draw.draw_time_mmt if selected_draw else "03:30 PM MMT",
             "cutoff_time_mmt": selected_draw.cutoff_time_mmt if selected_draw else "02:30 PM MMT",
-            "status": selected_draw.status if selected_draw else "OPEN",
+            "status": selected_draw.status if selected_draw else ("SETTLED" if mode == "past" else "OPEN"),
+            "winning_number": selected_draw.winning_number if selected_draw else None,
+            "thai_first_prize": selected_draw.thai_first_prize if selected_draw else None,
+            "total_staked": float(selected_draw.total_staked) if (selected_draw and selected_draw.total_staked) else total_staked,
+            "total_payout": float(selected_draw.total_payout) if selected_draw else 0.0,
+            "profit": float(selected_draw.total_staked - selected_draw.total_payout) if (selected_draw and selected_draw.total_staked) else total_staked,
             "closed_numbers": list(closed_nums)
         },
         "available_draws": [
@@ -5048,9 +5060,27 @@ def get_3d_game_monitor(
                 "draw_date": d.draw_date,
                 "draw_time_mmt": d.draw_time_mmt,
                 "cutoff_time_mmt": d.cutoff_time_mmt,
+                "winning_number": d.winning_number,
+                "thai_first_prize": d.thai_first_prize,
+                "total_staked": float(d.total_staked or 0.0),
+                "total_payout": float(d.total_payout or 0.0),
+                "profit": float((d.total_staked or 0.0) - (d.total_payout or 0.0)),
                 "status": d.status
-            } for d in open_draws
+            } for d in draws_to_show
         ],
+        "past_draws": [
+            {
+                "id": d.id,
+                "draw_date": d.draw_date,
+                "draw_time_mmt": d.draw_time_mmt,
+                "thai_first_prize": d.thai_first_prize,
+                "winning_number": d.winning_number,
+                "total_staked": float(d.total_staked or 0.0),
+                "total_payout": float(d.total_payout or 0.0),
+                "profit": float((d.total_staked or 0.0) - (d.total_payout or 0.0)),
+                "status": d.status
+            } for d in draws_to_show
+        ] if mode == "past" else [],
         "straight_payout": straight_payout,
         "tote_payout": tote_payout,
         "max_risk_cap": risk_cap,

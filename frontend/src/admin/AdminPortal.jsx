@@ -331,15 +331,7 @@ export default function AdminPortal({ onBackToApp }) {
                       activeMenu === '4d-financial-ledger' ? 'bg-blue-600/20 text-blue-300 font-bold border border-blue-500/30' : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    4D Financial Ledger
-                  </button>
-                  <button
-                    onClick={() => handleSelectMenu('4d-draw-performance')}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                      activeMenu === '4d-draw-performance' ? 'bg-blue-600/20 text-blue-300 font-bold border border-blue-500/30' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Draw Performance
+                    Mini Ledger
                   </button>
                 </div>
               )}
@@ -392,15 +384,7 @@ export default function AdminPortal({ onBackToApp }) {
                       activeMenu === '2d-financial-ledger' ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30' : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    2D Financial Ledger
-                  </button>
-                  <button
-                    onClick={() => handleSelectMenu('2d-draw-performance')}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                      activeMenu === '2d-draw-performance' ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Draw Performance
+                    Mini Ledger
                   </button>
                 </div>
               )}
@@ -453,15 +437,7 @@ export default function AdminPortal({ onBackToApp }) {
                       activeMenu === '3d-financial-ledger' ? 'bg-purple-600/20 text-purple-300 font-bold border border-purple-500/30' : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    3D Financial Ledger
-                  </button>
-                  <button
-                    onClick={() => handleSelectMenu('3d-draw-performance')}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                      activeMenu === '3d-draw-performance' ? 'bg-purple-600/20 text-purple-300 font-bold border border-purple-500/30' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Draw Performance
+                    Mini Ledger
                   </button>
                 </div>
               )}

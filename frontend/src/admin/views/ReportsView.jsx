@@ -303,7 +303,7 @@ export default function ReportsView({ onNotify, gameFilter = 'ALL', initialTab =
               </div>
               <div>
                 <p className="text-xs font-bold text-gold-400 uppercase tracking-widest font-serif">
-                  {gameFilter === 'ALL' ? 'Total Financial Ledger (Live Net Balance)' : `${gameTitle} Financial Ledger`}
+                  {gameFilter === 'ALL' ? 'Total Financial Ledger (Live Net Balance)' : `${gameTitle} Mini Ledger`}
                 </p>
                 <h2 className={`text-2xl sm:text-3xl font-black font-mono mt-0.5 ${(data?.sub_total?.company_balance || 0) >= 0 ? 'text-white' : 'text-rose-400'}`}>
                   {(data?.sub_total?.company_balance || 0) < 0 

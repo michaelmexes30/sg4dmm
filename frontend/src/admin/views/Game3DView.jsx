@@ -217,92 +217,7 @@ export default function Game3DView({ onNotify, mode = 'live' }) {
     );
   }
 
-  // Past Mode
-  if (mode === 'past') {
-    const pastDraws = gameData?.past_draws || [];
-    return (
-      <div className="space-y-6">
-        <div className="flex flex-wrap items-center justify-between gap-4 bg-navy-900/90 border border-gold-500/30 p-4 rounded-2xl shadow-xl">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center font-black border border-purple-500/40 text-lg">
-              🎲
-            </div>
-            <div>
-              <h2 className="font-extrabold text-white text-base">Thai 3D Past Games (ယခင် 3D ပေါက်စဉ်များ)</h2>
-              <p className="text-[11px] text-slate-400 font-mono mt-0.5">
-                Thai Government Official Lottery Results (Every 1st & 16th of the month at 03:30 PM MMT)
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => loadGameData(null)}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-navy-800 hover:bg-navy-750 text-gold-400 hover:text-white text-xs font-bold transition-colors cursor-pointer"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            <span>Refresh</span>
-          </button>
-        </div>
 
-        {/* Past Draws Table */}
-        <div className="bg-navy-900/90 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-950/80 text-slate-400 font-bold uppercase tracking-wider text-[10px] border-b border-slate-800">
-                <tr>
-                  <th className="py-3.5 px-4">Draw Date</th>
-                  <th className="py-3.5 px-4">Draw Time</th>
-                  <th className="py-3.5 px-4">Thai 1st Prize (6 Digits)</th>
-                  <th className="py-3.5 px-4 text-center">Winning 3D (Last 3)</th>
-                  <th className="py-3.5 px-4 text-right">Total Staked</th>
-                  <th className="py-3.5 px-4 text-right">Total Payout</th>
-                  <th className="py-3.5 px-4 text-right">Net Profit</th>
-                  <th className="py-3.5 px-4 text-center">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/60 font-mono">
-                {pastDraws.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="py-8 text-center text-slate-500 font-sans">
-                      ယခင် 3D ထီပေါက်စဉ်မှတ်တမ်း မရှိသေးပါ
-                    </td>
-                  </tr>
-                ) : (
-                  pastDraws.map((d) => (
-                    <tr key={d.id} className="hover:bg-slate-800/40 transition-colors">
-                      <td className="py-3 px-4 font-bold text-white">{d.draw_date}</td>
-                      <td className="py-3 px-4 text-slate-400">{d.draw_time_mmt}</td>
-                      <td className="py-3 px-4 text-slate-300 font-bold tracking-wider">{d.thai_first_prize || '------'}</td>
-                      <td className="py-3 px-4 text-center">
-                        <span className="inline-block px-3 py-1 rounded-xl bg-purple-500/20 text-purple-300 font-black text-sm tracking-widest border border-purple-500/40 shadow-inner">
-                          {d.winning_number || '---'}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-right text-slate-200">
-                        Ks {(d.total_staked || 0).toLocaleString()}
-                      </td>
-                      <td className="py-3 px-4 text-right text-rose-400">
-                        Ks {(d.total_payout || 0).toLocaleString()}
-                      </td>
-                      <td className={`py-3 px-4 text-right font-black ${
-                        (d.profit || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'
-                      }`}>
-                        {(d.profit || 0) < 0 ? `-Ks ${Math.abs(d.profit).toLocaleString()}` : `+Ks ${(d.profit || 0).toLocaleString()}`}
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                          {d.status}
-                        </span>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   // Live Mode
   const currentDraw = gameData?.selected_draw;
@@ -338,9 +253,20 @@ export default function Game3DView({ onNotify, mode = 'live' }) {
             >
               <span>{d.draw_date}</span>
               <span className="text-[10px] opacity-80">{d.draw_time_mmt}</span>
-              <span className="px-1.5 py-0.5 text-[9px] bg-emerald-500/20 text-emerald-300 rounded font-black border border-emerald-500/30">
-                {d.status}
-              </span>
+              {mode === 'past' && d.winning_number && (
+                <span className={`px-1.5 py-0.5 text-[9px] rounded font-black border ${
+                  selectedDrawId === d.id
+                    ? 'bg-black/80 text-purple-300 border-purple-900/60'
+                    : 'bg-purple-500/20 text-purple-300 border-purple-500/30'
+                }`}>
+                  3D: {d.winning_number}
+                </span>
+              )}
+              {mode === 'live' && (
+                <span className="px-1.5 py-0.5 text-[9px] bg-emerald-500/20 text-emerald-300 rounded font-black border border-emerald-500/30">
+                  {d.status}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -355,34 +281,77 @@ export default function Game3DView({ onNotify, mode = 'live' }) {
             <span>Refresh</span>
           </button>
 
-          <button
-            onClick={handleTriggerAutoScraper}
-            disabled={scraping}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-purple-950/60 transition-all cursor-pointer disabled:opacity-50"
-            title="Auto scrape Thai Government Lottery results from Sanook/GLO feed and settle"
-          >
-            <Sparkles className={`w-4 h-4 ${scraping ? 'animate-spin' : ''}`} />
-            <span>{scraping ? 'Scraping Live GLO...' : 'Auto-Fetch Live 3D'}</span>
-          </button>
+          {mode !== 'past' && (
+            <button
+              onClick={handleTriggerAutoScraper}
+              disabled={scraping}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-purple-950/60 transition-all cursor-pointer disabled:opacity-50"
+              title="Auto scrape Thai Government Lottery results from Sanook/GLO feed and settle"
+            >
+              <Sparkles className={`w-4 h-4 ${scraping ? 'animate-spin' : ''}`} />
+              <span>{scraping ? 'Scraping Live GLO...' : 'Auto-Fetch Live 3D'}</span>
+            </button>
+          )}
 
-          <button
-            onClick={handleOpenSettleModal}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-950/60 transition-all cursor-pointer"
-            title="Settle this 3D Draw"
-          >
-            <Award className="w-4 h-4" />
-            <span>Settle Draw</span>
-          </button>
+          {mode !== 'past' && (
+            <button
+              onClick={handleOpenSettleModal}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-950/60 transition-all cursor-pointer"
+              title="Settle this 3D Draw"
+            >
+              <Award className="w-4 h-4" />
+              <span>Settle Draw</span>
+            </button>
+          )}
 
-          <button
-            onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-lg shadow-rose-950 transition-all cursor-pointer"
-          >
-            <Lock className="w-4 h-4" />
-            <span>+ Lock / Close 3D Number</span>
-          </button>
+          {mode !== 'past' && (
+            <button
+              onClick={() => setIsAddModalOpen(true)}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-lg shadow-rose-950 transition-all cursor-pointer"
+            >
+              <Lock className="w-4 h-4" />
+              <span>+ Lock / Close 3D Number</span>
+            </button>
+          )}
         </div>
       </div>
+
+      {/* Official Past Draw Results Banner for Past Games */}
+      {mode === 'past' && currentDraw && (
+        <div className="bg-navy-900/90 border border-gold-500/30 p-4 rounded-2xl shadow-xl flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-purple-500/20 text-purple-400 flex items-center justify-center font-black border border-purple-500/40 text-lg">
+              🏆
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-extrabold text-white text-sm">Past Game Results (Thai 3D)</h3>
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  SETTLED (ရလဒ်ထွက်ပြီး)
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 font-mono mt-0.5">Official Thai Government Lottery Draw Date: {currentDraw.draw_date}</p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5 sm:gap-4 font-mono">
+            <div className="bg-navy-950 px-3.5 py-1.5 rounded-xl border border-purple-500/40 text-center">
+              <span className="text-[10px] text-slate-400 block font-sans">Winning 3D (Last 3)</span>
+              <span className="text-purple-300 text-lg font-black tracking-widest">{currentDraw.winning_number || '---'}</span>
+            </div>
+            <div className="bg-navy-950 px-3.5 py-1.5 rounded-xl border border-slate-700 text-center">
+              <span className="text-[10px] text-slate-400 block font-sans">Thai 1st Prize (6 Digits)</span>
+              <span className="text-slate-200 text-sm font-black">{currentDraw.thai_first_prize || '------'}</span>
+            </div>
+            <div className="bg-navy-950 px-3.5 py-1.5 rounded-xl border border-rose-500/30 text-right">
+              <span className="text-[10px] text-slate-400 block font-sans">Total Payout Disbursed</span>
+              <span className="text-rose-400 text-sm font-black">
+                Ks {(currentDraw.total_payout || 0).toLocaleString()}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 4 Executive Risk KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -461,6 +430,7 @@ export default function Game3DView({ onNotify, mode = 'live' }) {
       </div>
 
       {/* Closed 3D Numbers Panel */}
+      {mode !== 'past' && (
       <div className="bg-navy-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -500,6 +470,7 @@ export default function Game3DView({ onNotify, mode = 'live' }) {
           </div>
         )}
       </div>
+      )}
 
       {/* Top 20 High Stakes 3D Numbers Monitor */}
       <div className="bg-navy-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
@@ -533,22 +504,30 @@ export default function Game3DView({ onNotify, mode = 'live' }) {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-            {filteredTopNumbers.map((item, idx) => (
+            {filteredTopNumbers.map((item, idx) => {
+              const isWinner = mode === 'past' && currentDraw?.winning_number === item.number;
+              return (
               <div
                 key={item.number}
                 className={`p-3 rounded-2xl border transition-all ${
-                  item.is_closed
+                  isWinner
+                    ? 'bg-amber-500/20 border-gold-400 ring-2 ring-gold-400/80 shadow-lg shadow-gold-500/30 text-amber-200'
+                    : item.is_closed
                     ? 'bg-rose-950/40 border-rose-600/50 text-rose-300'
                     : 'bg-slate-950/80 border-slate-800 hover:border-purple-500/50 text-white'
                 }`}
               >
                 <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono mb-1">
                   <span>Rank #{idx + 1}</span>
-                  {item.is_closed && (
+                  {isWinner ? (
+                    <span className="px-1.5 py-0.2 rounded bg-amber-400 text-slate-950 font-black text-[9px]">
+                      🏆 WINNER
+                    </span>
+                  ) : item.is_closed ? (
                     <span className="px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30 font-bold">
                       CLOSED
                     </span>
-                  )}
+                  ) : null}
                 </div>
 
                 <div className="flex items-baseline justify-between my-1">
@@ -573,7 +552,8 @@ export default function Game3DView({ onNotify, mode = 'live' }) {
                   </span>
                 </div>
               </div>
-            ))}
+            );
+            })}
           </div>
         )}
       </div>
