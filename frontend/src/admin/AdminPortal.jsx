@@ -89,7 +89,7 @@ export default function AdminPortal({ onBackToApp }) {
   // Active view: e.g. '4d-game', '4d-bet-history', 'withdraw', 'system-users', 'app-users', 'fake-users', 'financial-report', 'system-settings'
   const [activeMenu, setActiveMenu] = useState('4d-game');
   const [companyBalance, setCompanyBalance] = useState(0);
-  const [balanceMonth, setBalanceMonth] = useState('Oct');
+  const [balanceMonth, setBalanceMonth] = useState(() => new Date().toLocaleString('en-US', { month: 'short' }));
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notification, setNotification] = useState(null);
@@ -138,13 +138,17 @@ export default function AdminPortal({ onBackToApp }) {
     }
 
     try {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const lastDay = new Date(year, now.getMonth() + 1, 0).getDate();
       const fin = await apiClient.getAdminFinancialReport({
-        from_date: '2026-10-01',
-        to_date: '2026-10-31'
+        from_date: `${year}-${month}-01`,
+        to_date: `${year}-${month}-${String(lastDay).padStart(2, '0')}`
       });
-      if (fin && fin.company_balance_oct !== undefined) {
-        setCompanyBalance(fin.company_balance_oct);
-      } else if (fin && fin.sub_total && fin.sub_total.company_balance !== undefined) {
+      const monthName = now.toLocaleString('en-US', { month: 'short' });
+      setBalanceMonth(monthName);
+      if (fin && fin.sub_total && fin.sub_total.company_balance !== undefined) {
         setCompanyBalance(fin.sub_total.company_balance);
       }
     } catch (e) {
@@ -321,6 +325,22 @@ export default function AdminPortal({ onBackToApp }) {
                   >
                     Bet History
                   </button>
+                  <button
+                    onClick={() => handleSelectMenu('4d-financial-ledger')}
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                      activeMenu === '4d-financial-ledger' ? 'bg-blue-600/20 text-blue-300 font-bold border border-blue-500/30' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    4D Financial Ledger
+                  </button>
+                  <button
+                    onClick={() => handleSelectMenu('4d-draw-performance')}
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                      activeMenu === '4d-draw-performance' ? 'bg-blue-600/20 text-blue-300 font-bold border border-blue-500/30' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Draw Performance
+                  </button>
                 </div>
               )}
             </div>
@@ -366,6 +386,22 @@ export default function AdminPortal({ onBackToApp }) {
                   >
                     Bet History
                   </button>
+                  <button
+                    onClick={() => handleSelectMenu('2d-financial-ledger')}
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                      activeMenu === '2d-financial-ledger' ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    2D Financial Ledger
+                  </button>
+                  <button
+                    onClick={() => handleSelectMenu('2d-draw-performance')}
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                      activeMenu === '2d-draw-performance' ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Draw Performance
+                  </button>
                 </div>
               )}
             </div>
@@ -410,6 +446,22 @@ export default function AdminPortal({ onBackToApp }) {
                     }`}
                   >
                     Bet History
+                  </button>
+                  <button
+                    onClick={() => handleSelectMenu('3d-financial-ledger')}
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                      activeMenu === '3d-financial-ledger' ? 'bg-purple-600/20 text-purple-300 font-bold border border-purple-500/30' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    3D Financial Ledger
+                  </button>
+                  <button
+                    onClick={() => handleSelectMenu('3d-draw-performance')}
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                      activeMenu === '3d-draw-performance' ? 'bg-purple-600/20 text-purple-300 font-bold border border-purple-500/30' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Draw Performance
                   </button>
                 </div>
               )}
@@ -580,7 +632,7 @@ export default function AdminPortal({ onBackToApp }) {
                       activeMenu === 'reports-financial' ? 'bg-blue-600/20 text-blue-300 font-bold border border-blue-500/30' : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    Financial Ledger
+                    Total Financial Ledger
                   </button>
                   <button
                     onClick={() => handleSelectMenu('weekly-bonuses')}
@@ -722,8 +774,32 @@ export default function AdminPortal({ onBackToApp }) {
               <FakeUsersView onNotify={showNotification} />
             )}
 
+            {activeMenu === '4d-financial-ledger' && (
+              <ReportsView gameFilter="4D" initialTab="financial" onNotify={showNotification} />
+            )}
+
+            {activeMenu === '4d-draw-performance' && (
+              <ReportsView gameFilter="4D" initialTab="draws" onNotify={showNotification} />
+            )}
+
+            {activeMenu === '2d-financial-ledger' && (
+              <ReportsView gameFilter="2D" initialTab="financial" onNotify={showNotification} />
+            )}
+
+            {activeMenu === '2d-draw-performance' && (
+              <ReportsView gameFilter="2D" initialTab="draws" onNotify={showNotification} />
+            )}
+
+            {activeMenu === '3d-financial-ledger' && (
+              <ReportsView gameFilter="3D" initialTab="financial" onNotify={showNotification} />
+            )}
+
+            {activeMenu === '3d-draw-performance' && (
+              <ReportsView gameFilter="3D" initialTab="draws" onNotify={showNotification} />
+            )}
+
             {activeMenu === 'reports-financial' && (
-              <ReportsView onNotify={showNotification} />
+              <ReportsView gameFilter="ALL" initialTab="financial" onNotify={showNotification} />
             )}
 
             {activeMenu === 'weekly-bonuses' && (

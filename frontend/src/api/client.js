@@ -630,6 +630,11 @@ export const apiClient = {
   getAdminDrawStatements(limit = 50) {
     return this.request(`/admin/reports/4d-bets?limit=${limit}`);
   },
+  getAdminDrawsPerformance(params = {}) {
+    const q = new URLSearchParams(params).toString();
+    return this.request(`/admin/reports/draws-performance?${q}`);
+  },
+
 
   getAdmin4DBetsReport(params = {}) {
     const q = new URLSearchParams(params).toString();

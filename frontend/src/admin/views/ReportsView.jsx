@@ -1,36 +1,83 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   BarChart3, 
-  FileSpreadsheet, 
-  TrendingUp, 
-  TrendingDown, 
   Coins, 
-  DollarSign, 
   Calendar, 
   RefreshCw,
   Award,
   Users,
-  Layers,
-  ArrowUpRight,
-  ArrowDownRight,
   Search,
-  ShieldCheck,
-  Sparkles,
-  PieChart,
-  Receipt,
   UserCheck
 } from 'lucide-react';
 import { apiClient } from '../../api/client';
 
-export default function ReportsView({ onNotify }) {
-  const [reportType, setReportType] = useState('financial'); // 'financial' | 'statements' | 'draws' | 'user-bet' | 'agents'
+export default function ReportsView({ onNotify, gameFilter = 'ALL', initialTab = 'financial' }) {
+  const [reportType, setReportType] = useState(initialTab); // 'financial' | 'statements' | 'draws' | 'user-bet' | 'agents'
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [fromDate, setFromDate] = useState('2026-10-01');
-  const [toDate, setToDate] = useState('2026-10-31');
+
+  // Dynamic Month Bounds helper (Defaults to Current Month, never hardcoded past months)
+  const currentMonthBounds = useMemo(() => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const lastDay = new Date(year, now.getMonth() + 1, 0).getDate();
+    return {
+      from: `${year}-${month}-01`,
+      to: `${year}-${month}-${String(lastDay).padStart(2, '0')}`,
+      monthKey: `${year}-${month}`
+    };
+  }, []);
+
+  const [fromDate, setFromDate] = useState(currentMonthBounds.from);
+  const [toDate, setToDate] = useState(currentMonthBounds.to);
+  const [selectedMonth, setSelectedMonth] = useState(currentMonthBounds.monthKey);
   const [searchUser, setSearchUser] = useState('');
   const [drawSortCol, setDrawSortCol] = useState('date');
   const [drawSortAsc, setDrawSortAsc] = useState(false);
+
+  // Generate 12 months for the month selector dropdown
+  const monthOptions = useMemo(() => {
+    const options = [];
+    const now = new Date();
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const monthKey = `${y}-${m}`;
+      const monthName = d.toLocaleString('en-US', { month: 'short' });
+      options.push({
+        key: monthKey,
+        label: i === 0 ? `${monthName} ${y} (Current)` : `${monthName} ${y}`
+      });
+    }
+    return options;
+  }, []);
+
+  const handleMonthChange = (mKey) => {
+    setSelectedMonth(mKey);
+    if (mKey === 'custom') return;
+    const [y, m] = mKey.split('-').map(Number);
+    const lastDay = new Date(y, m, 0).getDate();
+    const newFrom = `${y}-${String(m).padStart(2, '0')}-01`;
+    const newTo = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    setFromDate(newFrom);
+    setToDate(newTo);
+  };
+
+  const handleCustomFromDate = (val) => {
+    setFromDate(val);
+    setSelectedMonth('custom');
+  };
+
+  const handleCustomToDate = (val) => {
+    setToDate(val);
+    setSelectedMonth('custom');
+  };
+
+  useEffect(() => {
+    setReportType(initialTab);
+  }, [initialTab, gameFilter]);
 
   const sortedDrawResults = useMemo(() => {
     if (!data?.results || !Array.isArray(data.results)) return [];
@@ -60,12 +107,12 @@ export default function ReportsView({ onNotify }) {
 
   useEffect(() => {
     loadReport();
-  }, [reportType]);
+  }, [reportType, gameFilter, fromDate, toDate]);
 
   const loadReport = async () => {
     try {
       setLoading(true);
-      const params = { from_date: fromDate, to_date: toDate };
+      const params = { from_date: fromDate, to_date: toDate, game_type: gameFilter };
       if (searchUser.trim()) {
         params.username = searchUser.trim();
         params.search = searchUser.trim();
@@ -82,7 +129,12 @@ export default function ReportsView({ onNotify }) {
       } else if (reportType === 'statements') {
         res = await apiClient.getAdminStatements(params);
       } else if (reportType === 'draws') {
-        res = await apiClient.getAdminDrawStatements(50);
+        res = await apiClient.getAdminDrawsPerformance({
+          game_type: gameFilter,
+          from_date: fromDate,
+          to_date: toDate,
+          limit: 100
+        });
       } else if (reportType === 'user-bet') {
         res = await apiClient.getAdminUserBetsReport(params);
       } else if (reportType === 'agents') {
@@ -102,9 +154,16 @@ export default function ReportsView({ onNotify }) {
     loadReport();
   };
 
+  const gameTitle = useMemo(() => {
+    if (gameFilter === '4D') return '4D';
+    if (gameFilter === '2D') return 'Thai 2D';
+    if (gameFilter === '3D') return 'Thai 3D';
+    return 'Total';
+  }, [gameFilter]);
+
   return (
     <div className="space-y-6">
-      {/* 5 Sub-navigation Tabs */}
+      {/* Sub-navigation Tabs */}
       <div className="flex flex-wrap items-center justify-between gap-4 bg-navy-900/90 border border-gold-500/20 p-4 rounded-2xl shadow-xl">
         <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
           <button
@@ -115,19 +174,21 @@ export default function ReportsView({ onNotify }) {
                 : 'bg-navy-800 text-slate-400 hover:text-white'
             }`}
           >
-            📊 Daily Financial Statement
+            📊 {gameFilter === 'ALL' ? 'Daily Financial Statement' : `Daily ${gameTitle} Statement`}
           </button>
 
-          <button
-            onClick={() => setReportType('statements')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-              reportType === 'statements'
-                ? 'bg-amber-500 text-slate-950 font-black shadow-md'
-                : 'bg-navy-800 text-slate-400 hover:text-white'
-            }`}
-          >
-            💳 Cash In/Out Ledger
-          </button>
+          {gameFilter === 'ALL' && (
+            <button
+              onClick={() => setReportType('statements')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                reportType === 'statements'
+                  ? 'bg-amber-500 text-slate-950 font-black shadow-md'
+                  : 'bg-navy-800 text-slate-400 hover:text-white'
+              }`}
+            >
+              💳 Cash In/Out Ledger
+            </button>
+          )}
 
           <button
             onClick={() => setReportType('draws')}
@@ -137,34 +198,38 @@ export default function ReportsView({ onNotify }) {
                 : 'bg-navy-800 text-slate-400 hover:text-white'
             }`}
           >
-            🎯 Draw-by-Draw Performance
+            🎯 {gameFilter === 'ALL' ? 'Draw-by-Draw Performance' : `${gameTitle} Draw Performance`}
           </button>
 
-          <button
-            onClick={() => setReportType('user-bet')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-              reportType === 'user-bet'
-                ? 'bg-amber-500 text-slate-950 font-black shadow-md'
-                : 'bg-navy-800 text-slate-400 hover:text-white'
-            }`}
-          >
-            🏆 Player Turnover Ranking
-          </button>
+          {gameFilter === 'ALL' && (
+            <>
+              <button
+                onClick={() => setReportType('user-bet')}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                  reportType === 'user-bet'
+                    ? 'bg-amber-500 text-slate-950 font-black shadow-md'
+                    : 'bg-navy-800 text-slate-400 hover:text-white'
+                }`}
+              >
+                🏆 Player Turnover Ranking
+              </button>
 
-          <button
-            onClick={() => setReportType('agents')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-              reportType === 'agents'
-                ? 'bg-amber-500 text-slate-950 font-black shadow-md'
-                : 'bg-navy-800 text-slate-400 hover:text-white'
-            }`}
-          >
-            🦚 Agent Turnover Summary
-          </button>
+              <button
+                onClick={() => setReportType('agents')}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                  reportType === 'agents'
+                    ? 'bg-amber-500 text-slate-950 font-black shadow-md'
+                    : 'bg-navy-800 text-slate-400 hover:text-white'
+                }`}
+              >
+                🦚 Agent Turnover Summary
+              </button>
+            </>
+          )}
         </div>
 
-        {/* Date Range & Refresh Filter */}
-        <form onSubmit={handleFilter} className="flex items-center gap-2">
+        {/* Date Range, Month Selector & Refresh Filter */}
+        <form onSubmit={handleFilter} className="flex flex-wrap items-center gap-2">
           {(reportType === 'statements' || reportType === 'user-bet') && (
             <div className="relative">
               <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2" />
@@ -178,22 +243,42 @@ export default function ReportsView({ onNotify }) {
             </div>
           )}
 
-          {reportType !== 'agents' && reportType !== 'draws' && (
-            <div className="flex items-center gap-1.5 bg-navy-950 border border-gold-500/20 rounded-xl px-2.5 py-1">
-              <Calendar className="w-3.5 h-3.5 text-gold-400" />
-              <input
-                type="date"
-                value={fromDate}
-                onChange={(e) => setFromDate(e.target.value)}
-                className="bg-transparent text-xs text-white focus:outline-none font-mono"
-              />
-              <span className="text-slate-500 text-xs">-</span>
-              <input
-                type="date"
-                value={toDate}
-                onChange={(e) => setToDate(e.target.value)}
-                className="bg-transparent text-xs text-white focus:outline-none font-mono"
-              />
+          {reportType !== 'agents' && (
+            <div className="flex items-center gap-2">
+              {/* Month Selector Dropdown */}
+              <select
+                value={selectedMonth}
+                onChange={(e) => handleMonthChange(e.target.value)}
+                className="bg-navy-950 border border-gold-500/20 rounded-xl px-2.5 py-1 text-xs text-amber-300 font-bold focus:outline-none cursor-pointer"
+                title="Select Month"
+              >
+                {monthOptions.map((opt) => (
+                  <option key={opt.key} value={opt.key} className="bg-navy-900 text-white font-sans">
+                    {opt.label}
+                  </option>
+                ))}
+                <option value="custom" className="bg-navy-900 text-white font-sans">📅 Custom Range</option>
+              </select>
+
+              {/* Exact Date Range Inputs */}
+              <div className="flex items-center gap-1.5 bg-navy-950 border border-gold-500/20 rounded-xl px-2.5 py-1">
+                <Calendar className="w-3.5 h-3.5 text-gold-400" />
+                <input
+                  type="date"
+                  value={fromDate}
+                  onChange={(e) => handleCustomFromDate(e.target.value)}
+                  className="bg-transparent text-xs text-white focus:outline-none font-mono"
+                  title="From Date"
+                />
+                <span className="text-slate-500 text-xs">-</span>
+                <input
+                  type="date"
+                  value={toDate}
+                  onChange={(e) => handleCustomToDate(e.target.value)}
+                  className="bg-transparent text-xs text-white focus:outline-none font-mono"
+                  title="To Date"
+                />
+              </div>
             </div>
           )}
 
@@ -207,10 +292,10 @@ export default function ReportsView({ onNotify }) {
         </form>
       </div>
 
-      {/* VIEW 1: Daily Financial Report (100% LIVE & RECONCILED) */}
+      {/* VIEW 1: Daily Financial Report */}
       {reportType === 'financial' && (
         <div className="space-y-4">
-          {/* Company Monthly Reconciled Balance Banner */}
+          {/* Reconciled Balance Banner */}
           <div className="bg-gradient-to-r from-navy-900 via-navy-850 to-navy-900 border border-gold-500/30 p-5 rounded-2xl flex flex-wrap items-center justify-between gap-4 shadow-xl gold-border-glow">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center">
@@ -218,7 +303,7 @@ export default function ReportsView({ onNotify }) {
               </div>
               <div>
                 <p className="text-xs font-bold text-gold-400 uppercase tracking-widest font-serif">
-                  Company Net Balance (Live)
+                  {gameFilter === 'ALL' ? 'Total Financial Ledger (Live Net Balance)' : `${gameTitle} Financial Ledger`}
                 </p>
                 <h2 className={`text-2xl sm:text-3xl font-black font-mono mt-0.5 ${(data?.sub_total?.company_balance || 0) >= 0 ? 'text-white' : 'text-rose-400'}`}>
                   {(data?.sub_total?.company_balance || 0) < 0 
@@ -228,152 +313,435 @@ export default function ReportsView({ onNotify }) {
               </div>
             </div>
 
-            <div className="flex items-center gap-6 text-right">
-              <div>
-                <span className="text-[11px] text-slate-400 block">Total 4D Turnover</span>
-                <span className="text-sm font-black font-mono text-emerald-400">
-                  +Ks {(data?.sub_total?.four_d_bet || 0).toLocaleString()}
+            {gameFilter === 'ALL' ? (
+              <div className="flex items-center gap-6 text-right flex-wrap">
+                <div>
+                  <span className="text-[11px] text-slate-400 block">Total Turnover (4D/2D/3D)</span>
+                  <span className="text-sm font-black font-mono text-emerald-400">
+                    +Ks {(data?.sub_total?.four_d_bet || 0).toLocaleString()}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[11px] text-slate-400 block">Mini-Games Net P/L</span>
+                  <span className={`text-sm font-black font-mono ${(data?.sub_total?.mini_game_net || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    {(data?.sub_total?.mini_game_net || 0) >= 0 ? '+' : ''}Ks {(data?.sub_total?.mini_game_net || 0).toLocaleString()}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[11px] text-slate-400 block">Total Net Profit</span>
+                  <span className={`text-sm font-black font-mono ${(data?.sub_total?.profit || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    Ks {(data?.sub_total?.profit || 0).toLocaleString()}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[11px] text-slate-400 block">30% Agent Commission</span>
+                  <span className="text-sm font-black font-mono text-gold-400">
+                    -Ks {Math.abs(data?.sub_total?.agent_commission || 0).toLocaleString()}
+                  </span>
+                </div>
+                <span className="hidden sm:inline-block px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-bold border border-emerald-500/30">
+                  Live Reconciled
                 </span>
               </div>
-              <div>
-                <span className="text-[11px] text-slate-400 block">Mini-Games Net P/L</span>
-                <span className={`text-sm font-black font-mono ${(data?.sub_total?.mini_game_net || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  {(data?.sub_total?.mini_game_net || 0) >= 0 ? '+' : ''}Ks {(data?.sub_total?.mini_game_net || 0).toLocaleString()}
-                </span>
+            ) : (
+              <div className="flex items-center gap-6 text-right">
+                <div>
+                  <span className="text-[11px] text-slate-400 block">Total {gameTitle} Turnover</span>
+                  <span className="text-sm font-black font-mono text-emerald-400">
+                    +Ks {(data?.sub_total?.four_d_bet || 0).toLocaleString()}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[11px] text-slate-400 block">Total {gameTitle} Payout</span>
+                  <span className="text-sm font-black font-mono text-rose-400">
+                    -Ks {Math.abs(data?.sub_total?.four_d_payout || 0).toLocaleString()}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[11px] text-slate-400 block">Net Profit</span>
+                  <span className={`text-sm font-black font-mono ${(data?.sub_total?.profit || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                    Ks {(data?.sub_total?.profit || 0).toLocaleString()}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[11px] text-slate-400 block">Profit Margin</span>
+                  <span className="text-sm font-black font-mono text-gold-400">
+                    {data?.sub_total?.four_d_bet > 0 
+                      ? `${Math.round(((data.sub_total.profit || 0) / data.sub_total.four_d_bet) * 1000) / 10}%` 
+                      : '0%'}
+                  </span>
+                </div>
               </div>
-              <div>
-                <span className="text-[11px] text-slate-400 block">Total Net Profit</span>
-                <span className={`text-sm font-black font-mono ${data?.sub_total?.profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  Ks {(data?.sub_total?.profit || 0).toLocaleString()}
-                </span>
-              </div>
-              <div>
-                <span className="text-[11px] text-slate-400 block">30% Agent Commission</span>
-                <span className="text-sm font-black font-mono text-gold-400">
-                  -Ks {Math.abs(data?.sub_total?.agent_commission || 0).toLocaleString()}
-                </span>
-              </div>
-              <span className="hidden sm:inline-block px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-bold border border-emerald-500/30">
-                Live Reconciled
-              </span>
-            </div>
+            )}
           </div>
 
-          {/* 11-Column Live Daily Ledger Table (Sweep Bet / Sweep Payout Removed!) */}
+          {/* Table: Conditional rendering according to gameFilter */}
           <div className="bg-navy-900/90 border border-gold-500/20 rounded-2xl shadow-xl overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs whitespace-nowrap">
-                <thead className="bg-navy-950/90 text-slate-400 uppercase font-bold tracking-wider border-b border-gold-500/20 text-[11px]">
-                  <tr>
-                    <th className="py-2.5 px-2.5">No</th>
-                    <th className="py-2.5 px-2.5">Date</th>
-                    <th className="py-2.5 px-2.5 text-right">4D Bet Stake</th>
-                    <th className="py-2.5 px-2.5 text-right">4D Payout</th>
-                    <th className="py-2.5 px-2.5 text-right text-amber-300">Mini Net P/L</th>
-                    <th className="py-2.5 px-2.5 text-right">Top Up</th>
-                    <th className="py-2.5 px-2.5 text-right">Withdraw</th>
-                    <th className="py-2.5 px-2.5 text-right">30% Agent Comm</th>
-                    <th className="py-2.5 px-2.5 text-right">Weekly Bonus</th>
-                    <th className="py-2.5 px-2.5 text-right">Customer Bal</th>
-                    <th className="py-2.5 px-2.5 text-right">Net Profit / Loss</th>
-                    <th className="py-2.5 px-2.5 text-right">Company Balance</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800 text-slate-300 font-mono text-[11px]">
-                  {loading ? (
+              {gameFilter === 'ALL' && (
+                /* 12-Column Total Ledger Table */
+                <table className="w-full text-left text-xs whitespace-nowrap">
+                  <thead className="bg-navy-950/90 text-slate-400 uppercase font-bold tracking-wider border-b border-gold-500/20 text-[11px]">
                     <tr>
-                      <td colSpan={12} className="py-12 text-center text-slate-500 font-sans">
-                        <RefreshCw className="w-6 h-6 animate-spin mx-auto text-gold-400 mb-2" />
-                        Calculating live financial statement from database...
-                      </td>
+                      <th className="py-2.5 px-2.5">No</th>
+                      <th className="py-2.5 px-2.5">Date</th>
+                      <th className="py-2.5 px-2.5 text-right">Total Bet Stake (4D/2D/3D)</th>
+                      <th className="py-2.5 px-2.5 text-right">Total Payout (4D/2D/3D)</th>
+                      <th className="py-2.5 px-2.5 text-right text-amber-300">Mini Net P/L</th>
+                      <th className="py-2.5 px-2.5 text-right">Top Up</th>
+                      <th className="py-2.5 px-2.5 text-right">Withdraw</th>
+                      <th className="py-2.5 px-2.5 text-right">30% Agent Comm</th>
+                      <th className="py-2.5 px-2.5 text-right">Weekly Bonus</th>
+                      <th className="py-2.5 px-2.5 text-right">Customer Bal</th>
+                      <th className="py-2.5 px-2.5 text-right">Net Profit / Loss</th>
+                      <th className="py-2.5 px-2.5 text-right">Company Balance</th>
                     </tr>
-                  ) : !data?.reports || data.reports.length === 0 ? (
-                    <tr>
-                      <td colSpan={12} className="py-12 text-center text-slate-500 font-sans">
-                        No financial records found in date range.
-                      </td>
-                    </tr>
-                  ) : (
-                    data.reports.map((r, i) => (
-                      <tr key={r.report_date || i} className="hover:bg-navy-800/40 transition-colors">
-                        <td className="py-2 px-2.5 text-slate-500 font-mono">{i + 1}</td>
-                        <td className="py-2 px-2.5 font-sans font-semibold text-white">{r.report_date}</td>
-                        <td className="py-2 px-2.5 text-right text-emerald-400 font-bold">
-                          {r.four_d_bet > 0 ? (r.four_d_bet).toLocaleString() : '-'}
-                        </td>
-                        <td className="py-2 px-2.5 text-right text-rose-400">
-                          {r.four_d_payout < 0 ? (r.four_d_payout).toLocaleString() : r.four_d_payout > 0 ? `-${(r.four_d_payout).toLocaleString()}` : '-'}
-                        </td>
-                        <td className={`py-2 px-2.5 text-right font-extrabold ${(r.mini_game_net || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                          {r.mini_game_stake > 0 || r.mini_game_payout !== 0 ? (
-                            <span>{(r.mini_game_net || 0) >= 0 ? '+' : ''}{(r.mini_game_net || 0).toLocaleString()}</span>
-                          ) : '-'}
-                        </td>
-                        <td className="py-2 px-2.5 text-right text-blue-400 font-bold">
-                          {r.top_up > 0 ? (r.top_up).toLocaleString() : '-'}
-                        </td>
-                        <td className="py-2 px-2.5 text-right text-rose-400">
-                          {r.withdraw < 0 ? (r.withdraw).toLocaleString() : r.withdraw > 0 ? `-${(r.withdraw).toLocaleString()}` : '-'}
-                        </td>
-                        <td className="py-2 px-2.5 text-right text-gold-300">
-                          {r.agent_commission < 0 ? (r.agent_commission).toLocaleString() : r.agent_commission > 0 ? `-${(r.agent_commission).toLocaleString()}` : '-'}
-                        </td>
-                        <td className="py-2 px-2.5 text-right text-purple-300">
-                          {r.weekly_bonus < 0 ? (r.weekly_bonus).toLocaleString() : r.weekly_bonus > 0 ? `-${(r.weekly_bonus).toLocaleString()}` : '-'}
-                        </td>
-                        <td className="py-2 px-2.5 text-right font-bold text-slate-300">
-                          {(r.customer_balance || 0).toLocaleString()}
-                        </td>
-                        <td className={`py-2 px-2.5 text-right font-extrabold ${r.profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                          {(r.profit || 0).toLocaleString()}
-                        </td>
-                        <td className={`py-2 px-2.5 text-right font-bold ${(r.company_balance || 0) >= 0 ? 'text-gold-400' : 'text-rose-400'}`}>
-                          {(r.company_balance || 0).toLocaleString()}
+                  </thead>
+                  <tbody className="divide-y divide-slate-800 text-slate-300 font-mono text-[11px]">
+                    {loading ? (
+                      <tr>
+                        <td colSpan={12} className="py-12 text-center text-slate-500 font-sans">
+                          <RefreshCw className="w-6 h-6 animate-spin mx-auto text-gold-400 mb-2" />
+                          Calculating live total financial statement from database...
                         </td>
                       </tr>
-                    ))
+                    ) : !data?.reports || data.reports.length === 0 ? (
+                      <tr>
+                        <td colSpan={12} className="py-12 text-center text-slate-500 font-sans">
+                          No financial records found in date range.
+                        </td>
+                      </tr>
+                    ) : (
+                      data.reports.map((r, i) => (
+                        <tr key={r.report_date || i} className="hover:bg-navy-800/40 transition-colors">
+                          <td className="py-2 px-2.5 text-slate-500 font-mono">{i + 1}</td>
+                          <td className="py-2 px-2.5 font-sans font-semibold text-white">{r.report_date}</td>
+                          <td className="py-2 px-2.5 text-right text-emerald-400 font-bold">
+                            {r.total_bet > 0 ? (r.total_bet).toLocaleString() : '-'}
+                          </td>
+                          <td className="py-2 px-2.5 text-right text-rose-400">
+                            {r.total_payout < 0 ? (r.total_payout).toLocaleString() : r.total_payout > 0 ? `-${(r.total_payout).toLocaleString()}` : '-'}
+                          </td>
+                          <td className={`py-2 px-2.5 text-right font-extrabold ${(r.mini_game_net || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {r.mini_game_stake > 0 || r.mini_game_payout !== 0 ? (
+                              <span>{(r.mini_game_net || 0) >= 0 ? '+' : ''}{(r.mini_game_net || 0).toLocaleString()}</span>
+                            ) : '-'}
+                          </td>
+                          <td className="py-2 px-2.5 text-right text-blue-400 font-bold">
+                            {r.top_up > 0 ? (r.top_up).toLocaleString() : '-'}
+                          </td>
+                          <td className="py-2 px-2.5 text-right text-rose-400">
+                            {r.withdraw < 0 ? (r.withdraw).toLocaleString() : r.withdraw > 0 ? `-${(r.withdraw).toLocaleString()}` : '-'}
+                          </td>
+                          <td className="py-2 px-2.5 text-right text-gold-300">
+                            {r.agent_commission < 0 ? (r.agent_commission).toLocaleString() : r.agent_commission > 0 ? `-${(r.agent_commission).toLocaleString()}` : '-'}
+                          </td>
+                          <td className="py-2 px-2.5 text-right text-purple-300">
+                            {r.weekly_bonus < 0 ? (r.weekly_bonus).toLocaleString() : r.weekly_bonus > 0 ? `-${(r.weekly_bonus).toLocaleString()}` : '-'}
+                          </td>
+                          <td className="py-2 px-2.5 text-right font-bold text-slate-300">
+                            {(r.customer_balance || 0).toLocaleString()}
+                          </td>
+                          <td className={`py-2 px-2.5 text-right font-extrabold ${r.profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {(r.profit || 0).toLocaleString()}
+                          </td>
+                          <td className={`py-2 px-2.5 text-right font-bold ${(r.company_balance || 0) >= 0 ? 'text-gold-400' : 'text-rose-400'}`}>
+                            {(r.company_balance || 0).toLocaleString()}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                  {data?.sub_total && (
+                    <tfoot className="bg-navy-950 font-mono font-black text-[11px] text-white border-t-2 border-gold-500/40">
+                      <tr>
+                        <td colSpan={2} className="py-2.5 px-2.5 uppercase font-sans font-bold text-gold-400">
+                          Total Summary
+                        </td>
+                        <td className="py-2.5 px-2.5 text-right text-emerald-400 font-bold">
+                          {(data.sub_total.four_d_bet || 0).toLocaleString()}
+                        </td>
+                        <td className="py-2.5 px-2.5 text-right text-rose-400">
+                          {(data.sub_total.four_d_payout || 0).toLocaleString()}
+                        </td>
+                        <td className={`py-2.5 px-2.5 text-right font-black ${(data.sub_total.mini_game_net || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {(data.sub_total.mini_game_net || 0) >= 0 ? '+' : ''}{(data.sub_total.mini_game_net || 0).toLocaleString()}
+                        </td>
+                        <td className="py-2.5 px-2.5 text-right text-blue-400 font-bold">
+                          {(data.sub_total.top_up || 0).toLocaleString()}
+                        </td>
+                        <td className="py-2.5 px-2.5 text-right text-rose-400">
+                          {(data.sub_total.withdraw || 0).toLocaleString()}
+                        </td>
+                        <td className="py-2.5 px-2.5 text-right text-gold-300 font-bold">
+                          {(data.sub_total.agent_commission || 0).toLocaleString()}
+                        </td>
+                        <td className="py-2.5 px-2.5 text-right text-purple-300 font-bold">
+                          {(data.sub_total.weekly_bonus || 0).toLocaleString()}
+                        </td>
+                        <td className="py-2.5 px-2.5 text-right text-slate-300">
+                          {(data.sub_total.customer_balance || 0).toLocaleString()}
+                        </td>
+                        <td className={`py-2.5 px-2.5 text-right text-xs font-black ${data.sub_total.profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          {(data.sub_total.profit || 0).toLocaleString()}
+                        </td>
+                        <td className={`py-2.5 px-2.5 text-right font-black text-xs ${(data.sub_total.company_balance || 0) >= 0 ? 'text-gold-400' : 'text-rose-400'}`}>
+                          {(data.sub_total.company_balance || 0).toLocaleString()}
+                        </td>
+                      </tr>
+                    </tfoot>
                   )}
-                </tbody>
-                {data?.sub_total && (
-                  <tfoot className="bg-navy-950 font-mono font-black text-[11px] text-white border-t-2 border-gold-500/40">
+                </table>
+              )}
+
+              {gameFilter === '4D' && (
+                /* 4D Dedicated Mini Ledger */
+                <table className="w-full text-left text-xs whitespace-nowrap">
+                  <thead className="bg-navy-950/90 text-slate-400 uppercase font-bold tracking-wider border-b border-gold-500/20 text-[11px]">
                     <tr>
-                      <td colSpan={2} className="py-2.5 px-2.5 uppercase font-sans font-bold text-gold-400">
-                        Sub Total
-                      </td>
-                      <td className="py-2.5 px-2.5 text-right text-emerald-400 font-bold">
-                        {(data.sub_total.four_d_bet || 0).toLocaleString()}
-                      </td>
-                      <td className="py-2.5 px-2.5 text-right text-rose-400">
-                        {(data.sub_total.four_d_payout || 0).toLocaleString()}
-                      </td>
-                      <td className={`py-2.5 px-2.5 text-right font-black ${(data.sub_total.mini_game_net || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                        {(data.sub_total.mini_game_net || 0) >= 0 ? '+' : ''}{(data.sub_total.mini_game_net || 0).toLocaleString()}
-                      </td>
-                      <td className="py-2.5 px-2.5 text-right text-blue-400 font-bold">
-                        {(data.sub_total.top_up || 0).toLocaleString()}
-                      </td>
-                      <td className="py-2.5 px-2.5 text-right text-rose-400">
-                        {(data.sub_total.withdraw || 0).toLocaleString()}
-                      </td>
-                      <td className="py-2.5 px-2.5 text-right text-gold-300 font-bold">
-                        {(data.sub_total.agent_commission || 0).toLocaleString()}
-                      </td>
-                      <td className="py-2.5 px-2.5 text-right text-purple-300 font-bold">
-                        {(data.sub_total.weekly_bonus || 0).toLocaleString()}
-                      </td>
-                      <td className="py-2.5 px-2.5 text-right text-slate-300">
-                        {(data.sub_total.customer_balance || 0).toLocaleString()}
-                      </td>
-                      <td className={`py-2.5 px-2.5 text-right text-xs font-black ${data.sub_total.profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                        {(data.sub_total.profit || 0).toLocaleString()}
-                      </td>
-                      <td className={`py-2.5 px-2.5 text-right font-black text-xs ${(data.sub_total.company_balance || 0) >= 0 ? 'text-gold-400' : 'text-rose-400'}`}>
-                        {(data.sub_total.company_balance || 0).toLocaleString()}
-                      </td>
+                      <th className="py-3 px-4">No</th>
+                      <th className="py-3 px-4">Date</th>
+                      <th className="py-3 px-4 text-right">4D Bet Stake</th>
+                      <th className="py-3 px-4 text-right">4D Winning Payout</th>
+                      <th className="py-3 px-4 text-right">Company Net Profit</th>
+                      <th className="py-3 px-4 text-right">Margin %</th>
+                      <th className="py-3 px-4 text-center">Tickets Count</th>
                     </tr>
-                  </tfoot>
-                )}
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800 text-slate-300 font-mono">
+                    {loading ? (
+                      <tr>
+                        <td colSpan={7} className="py-12 text-center text-slate-500 font-sans">
+                          <RefreshCw className="w-6 h-6 animate-spin mx-auto text-gold-400 mb-2" />
+                          Calculating 4D daily statement...
+                        </td>
+                      </tr>
+                    ) : !data?.reports || data.reports.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="py-12 text-center text-slate-500 font-sans">
+                          No 4D betting records found in date range.
+                        </td>
+                      </tr>
+                    ) : (
+                      data.reports.map((r, i) => (
+                        <tr key={r.report_date || i} className="hover:bg-navy-800/40 transition-colors">
+                          <td className="py-3 px-4 text-slate-500 font-mono">{i + 1}</td>
+                          <td className="py-3 px-4 font-sans font-semibold text-white">{r.report_date}</td>
+                          <td className="py-3 px-4 text-right text-emerald-400 font-bold">
+                            Ks {(r.four_d_bet || 0).toLocaleString()}
+                          </td>
+                          <td className="py-3 px-4 text-right text-rose-400">
+                            -Ks {Math.abs(r.four_d_payout || 0).toLocaleString()}
+                          </td>
+                          <td className={`py-3 px-4 text-right font-black ${r.profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            Ks {(r.profit || 0).toLocaleString()}
+                          </td>
+                          <td className="py-3 px-4 text-right font-bold text-amber-300">
+                            {r.margin_percent}%
+                          </td>
+                          <td className="py-3 px-4 text-center font-bold text-slate-300">
+                            {r.tickets_count || 0}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                  {data?.sub_total && (
+                    <tfoot className="bg-navy-950 font-mono font-black text-xs text-white border-t-2 border-gold-500/40">
+                      <tr>
+                        <td colSpan={2} className="py-3 px-4 uppercase font-sans font-bold text-gold-400">
+                          Total Summary
+                        </td>
+                        <td className="py-3 px-4 text-right text-emerald-400 font-bold">
+                          Ks {(data.sub_total.four_d_bet || 0).toLocaleString()}
+                        </td>
+                        <td className="py-3 px-4 text-right text-rose-400">
+                          -Ks {Math.abs(data.sub_total.four_d_payout || 0).toLocaleString()}
+                        </td>
+                        <td className={`py-3 px-4 text-right font-black ${data.sub_total.profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          Ks {(data.sub_total.profit || 0).toLocaleString()}
+                        </td>
+                        <td className="py-3 px-4 text-right text-gold-400 font-bold">
+                          {data.sub_total.four_d_bet > 0 
+                            ? `${Math.round(((data.sub_total.profit || 0) / data.sub_total.four_d_bet) * 1000) / 10}%` 
+                            : '0%'}
+                        </td>
+                        <td className="py-3 px-4 text-center text-slate-300">
+                          -
+                        </td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              )}
+
+              {gameFilter === '2D' && (
+                /* Thai 2D Dedicated Mini Ledger (Morning, Evening, Total) */
+                <table className="w-full text-left text-xs whitespace-nowrap">
+                  <thead className="bg-navy-950/90 text-slate-400 uppercase font-bold tracking-wider border-b border-gold-500/20 text-[11px]">
+                    <tr>
+                      <th className="py-3 px-3">No</th>
+                      <th className="py-3 px-3">Date</th>
+                      <th className="py-3 px-3 text-right text-blue-300">Morning Stake (12:01 PM)</th>
+                      <th className="py-3 px-3 text-right text-amber-300">Evening Stake (04:30 PM)</th>
+                      <th className="py-3 px-3 text-right text-emerald-400">Total 2D Stake</th>
+                      <th className="py-3 px-3 text-right text-rose-400">Total 2D Payout</th>
+                      <th className="py-3 px-3 text-right">Company Net Profit</th>
+                      <th className="py-3 px-3 text-right">Margin %</th>
+                      <th className="py-3 px-3 text-center">Bets Count</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800 text-slate-300 font-mono">
+                    {loading ? (
+                      <tr>
+                        <td colSpan={9} className="py-12 text-center text-slate-500 font-sans">
+                          <RefreshCw className="w-6 h-6 animate-spin mx-auto text-gold-400 mb-2" />
+                          Calculating Thai 2D daily statement...
+                        </td>
+                      </tr>
+                    ) : !data?.reports || data.reports.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} className="py-12 text-center text-slate-500 font-sans">
+                          No Thai 2D betting records found in date range.
+                        </td>
+                      </tr>
+                    ) : (
+                      data.reports.map((r, i) => (
+                        <tr key={r.report_date || i} className="hover:bg-navy-800/40 transition-colors">
+                          <td className="py-3 px-3 text-slate-500 font-mono">{i + 1}</td>
+                          <td className="py-3 px-3 font-sans font-semibold text-white">{r.report_date}</td>
+                          <td className="py-3 px-3 text-right text-blue-300 font-semibold">
+                            {r.bet_2d_morning > 0 ? (r.bet_2d_morning).toLocaleString() : '-'}
+                          </td>
+                          <td className="py-3 px-3 text-right text-amber-300 font-semibold">
+                            {r.bet_2d_evening > 0 ? (r.bet_2d_evening).toLocaleString() : '-'}
+                          </td>
+                          <td className="py-3 px-3 text-right text-emerald-400 font-bold">
+                            Ks {(r.total_bet || 0).toLocaleString()}
+                          </td>
+                          <td className="py-3 px-3 text-right text-rose-400">
+                            -Ks {Math.abs(r.total_payout || 0).toLocaleString()}
+                          </td>
+                          <td className={`py-3 px-3 text-right font-black ${r.profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            Ks {(r.profit || 0).toLocaleString()}
+                          </td>
+                          <td className="py-3 px-3 text-right font-bold text-amber-300">
+                            {r.margin_percent}%
+                          </td>
+                          <td className="py-3 px-3 text-center font-bold text-slate-300">
+                            {r.tickets_count || 0}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                  {data?.sub_total && (
+                    <tfoot className="bg-navy-950 font-mono font-black text-xs text-white border-t-2 border-gold-500/40">
+                      <tr>
+                        <td colSpan={2} className="py-3 px-3 uppercase font-sans font-bold text-gold-400">
+                          Total Summary
+                        </td>
+                        <td className="py-3 px-3 text-right text-blue-300 font-bold">-</td>
+                        <td className="py-3 px-3 text-right text-amber-300 font-bold">-</td>
+                        <td className="py-3 px-3 text-right text-emerald-400 font-bold">
+                          Ks {(data.sub_total.four_d_bet || 0).toLocaleString()}
+                        </td>
+                        <td className="py-3 px-3 text-right text-rose-400">
+                          -Ks {Math.abs(data.sub_total.four_d_payout || 0).toLocaleString()}
+                        </td>
+                        <td className={`py-3 px-3 text-right font-black ${data.sub_total.profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          Ks {(data.sub_total.profit || 0).toLocaleString()}
+                        </td>
+                        <td className="py-3 px-3 text-right text-gold-400 font-bold">
+                          {data.sub_total.four_d_bet > 0 
+                            ? `${Math.round(((data.sub_total.profit || 0) / data.sub_total.four_d_bet) * 1000) / 10}%` 
+                            : '0%'}
+                        </td>
+                        <td className="py-3 px-3 text-center text-slate-300">-</td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              )}
+
+              {gameFilter === '3D' && (
+                /* Thai 3D Dedicated Mini Ledger */
+                <table className="w-full text-left text-xs whitespace-nowrap">
+                  <thead className="bg-navy-950/90 text-slate-400 uppercase font-bold tracking-wider border-b border-gold-500/20 text-[11px]">
+                    <tr>
+                      <th className="py-3 px-4">No</th>
+                      <th className="py-3 px-4">Date</th>
+                      <th className="py-3 px-4 text-right">3D Bet Stake</th>
+                      <th className="py-3 px-4 text-right">3D Winning Payout</th>
+                      <th className="py-3 px-4 text-right">Company Net Profit</th>
+                      <th className="py-3 px-4 text-right">Margin %</th>
+                      <th className="py-3 px-4 text-center">Bets Count</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-800 text-slate-300 font-mono">
+                    {loading ? (
+                      <tr>
+                        <td colSpan={7} className="py-12 text-center text-slate-500 font-sans">
+                          <RefreshCw className="w-6 h-6 animate-spin mx-auto text-gold-400 mb-2" />
+                          Calculating Thai 3D daily statement...
+                        </td>
+                      </tr>
+                    ) : !data?.reports || data.reports.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="py-12 text-center text-slate-500 font-sans">
+                          No Thai 3D betting records found in date range.
+                        </td>
+                      </tr>
+                    ) : (
+                      data.reports.map((r, i) => (
+                        <tr key={r.report_date || i} className="hover:bg-navy-800/40 transition-colors">
+                          <td className="py-3 px-4 text-slate-500 font-mono">{i + 1}</td>
+                          <td className="py-3 px-4 font-sans font-semibold text-white">{r.report_date}</td>
+                          <td className="py-3 px-4 text-right text-emerald-400 font-bold">
+                            Ks {(r.total_bet || 0).toLocaleString()}
+                          </td>
+                          <td className="py-3 px-4 text-right text-rose-400">
+                            -Ks {Math.abs(r.total_payout || 0).toLocaleString()}
+                          </td>
+                          <td className={`py-3 px-4 text-right font-black ${r.profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            Ks {(r.profit || 0).toLocaleString()}
+                          </td>
+                          <td className="py-3 px-4 text-right font-bold text-amber-300">
+                            {r.margin_percent}%
+                          </td>
+                          <td className="py-3 px-4 text-center font-bold text-slate-300">
+                            {r.tickets_count || 0}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                  {data?.sub_total && (
+                    <tfoot className="bg-navy-950 font-mono font-black text-xs text-white border-t-2 border-gold-500/40">
+                      <tr>
+                        <td colSpan={2} className="py-3 px-4 uppercase font-sans font-bold text-gold-400">
+                          Total Summary
+                        </td>
+                        <td className="py-3 px-4 text-right text-emerald-400 font-bold">
+                          Ks {(data.sub_total.four_d_bet || 0).toLocaleString()}
+                        </td>
+                        <td className="py-3 px-4 text-right text-rose-400">
+                          -Ks {Math.abs(data.sub_total.four_d_payout || 0).toLocaleString()}
+                        </td>
+                        <td className={`py-3 px-4 text-right font-black ${data.sub_total.profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          Ks {(data.sub_total.profit || 0).toLocaleString()}
+                        </td>
+                        <td className="py-3 px-4 text-right text-gold-400 font-bold">
+                          {data.sub_total.four_d_bet > 0 
+                            ? `${Math.round(((data.sub_total.profit || 0) / data.sub_total.four_d_bet) * 1000) / 10}%` 
+                            : '0%'}
+                        </td>
+                        <td className="py-3 px-4 text-center text-slate-300">-</td>
+                      </tr>
+                    </tfoot>
+                  )}
+                </table>
+              )}
             </div>
           </div>
         </div>
@@ -457,14 +825,14 @@ export default function ReportsView({ onNotify }) {
         </div>
       )}
 
-      {/* VIEW 3: Draw-by-Draw Financial Statement (100% Live) */}
+      {/* VIEW 3: Draw-by-Draw Financial Statement */}
       {reportType === 'draws' && (
         <div className="bg-navy-900/90 border border-gold-500/20 rounded-2xl shadow-xl overflow-hidden">
           <div className="p-4 border-b border-gold-500/20 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Award className="w-5 h-5 text-gold-400" />
               <h3 className="text-sm font-bold text-white uppercase tracking-wider font-serif">
-                Draw-by-Draw Financial Breakdown & Prize Audit
+                {gameTitle} Draw-by-Draw Financial Breakdown & Audit
               </h3>
             </div>
             <span className="text-xs text-slate-400 font-mono">
@@ -473,98 +841,276 @@ export default function ReportsView({ onNotify }) {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs whitespace-nowrap">
-              <thead className="bg-navy-950/80 text-slate-400 uppercase font-bold tracking-wider border-b border-gold-500/20">
-                <tr>
-                  <th 
-                    onClick={() => handleToggleDrawSort('date')}
-                    className="py-3 px-4 cursor-pointer hover:text-gold-300 transition-colors select-none group"
-                    title="Click to sort by Draw Date"
-                  >
-                    <span className="flex items-center gap-1.5">
-                      <span>Draw Date</span>
-                      <span className="text-gold-400 font-mono text-xs">{drawSortCol === 'date' ? (drawSortAsc ? '▲' : '▼') : '↕'}</span>
-                    </span>
-                  </th>
-                  <th 
-                    onClick={() => handleToggleDrawSort('draw_no')}
-                    className="py-3 px-4 cursor-pointer hover:text-gold-300 transition-colors select-none group"
-                    title="Click to sort by Draw No"
-                  >
-                    <span className="flex items-center gap-1.5">
-                      <span>Draw No</span>
-                      <span className="text-gold-400 font-mono text-xs">{drawSortCol === 'draw_no' ? (drawSortAsc ? '▲' : '▼') : '↕'}</span>
-                    </span>
-                  </th>
-                  <th className="py-3 px-4 text-right">Total Bet Stake</th>
-                  <th className="py-3 px-4 text-right">Winning Payouts</th>
-                  <th 
-                    onClick={() => handleToggleDrawSort('profit')}
-                    className="py-3 px-4 text-right cursor-pointer hover:text-gold-300 transition-colors select-none group"
-                    title="Click to sort by Net Profit"
-                  >
-                    <span className="flex items-center justify-end gap-1.5">
-                      <span>Company Net Profit</span>
-                      <span className="text-gold-400 font-mono text-xs">{drawSortCol === 'profit' ? (drawSortAsc ? '▲' : '▼') : '↕'}</span>
-                    </span>
-                  </th>
-                  <th className="py-3 px-4 text-center">Tickets Count</th>
-                  <th className="py-3 px-4 text-center">1st / 2nd / 3rd Prizes</th>
-                  <th className="py-3 px-4 text-center">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800 text-slate-300 font-mono">
-                {loading ? (
+            {gameFilter === '2D' ? (
+              /* Thai 2D Draw by Draw Table */
+              <table className="w-full text-left text-xs whitespace-nowrap">
+                <thead className="bg-navy-950/80 text-slate-400 uppercase font-bold tracking-wider border-b border-gold-500/20">
                   <tr>
-                    <td colSpan={8} className="py-12 text-center text-slate-500 font-sans">
-                      Loading draw statements...
-                    </td>
+                    <th 
+                      onClick={() => handleToggleDrawSort('date')}
+                      className="py-3 px-4 cursor-pointer hover:text-gold-300 transition-colors select-none"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <span>Draw Date</span>
+                        <span className="text-gold-400 font-mono text-xs">{drawSortCol === 'date' ? (drawSortAsc ? '▲' : '▼') : '↕'}</span>
+                      </span>
+                    </th>
+                    <th className="py-3 px-4">Session</th>
+                    <th className="py-3 px-4">SET Index / Value</th>
+                    <th className="py-3 px-4 text-center">2D Winning No</th>
+                    <th className="py-3 px-4 text-right">Total Bet Stake</th>
+                    <th className="py-3 px-4 text-right">Winning Payouts</th>
+                    <th 
+                      onClick={() => handleToggleDrawSort('profit')}
+                      className="py-3 px-4 text-right cursor-pointer hover:text-gold-300 transition-colors select-none"
+                    >
+                      <span className="flex items-center justify-end gap-1.5">
+                        <span>Net Profit</span>
+                        <span className="text-gold-400 font-mono text-xs">{drawSortCol === 'profit' ? (drawSortAsc ? '▲' : '▼') : '↕'}</span>
+                      </span>
+                    </th>
+                    <th className="py-3 px-4 text-right">Margin %</th>
+                    <th className="py-3 px-4 text-center">Bets Count</th>
+                    <th className="py-3 px-4 text-center">Status</th>
                   </tr>
-                ) : sortedDrawResults.length === 0 ? (
-                  <tr>
-                    <td colSpan={8} className="py-12 text-center text-slate-500 font-sans">
-                      No lottery draws registered.
-                    </td>
-                  </tr>
-                ) : (
-                  sortedDrawResults.map((d, i) => (
-                    <tr key={d.id || i} className="hover:bg-navy-800/40 transition-colors">
-                      <td className="py-3 px-4 font-sans font-bold text-white">{d.date}</td>
-                      <td className="py-3 px-4 font-mono font-bold text-gold-400">#{d.draw_no}</td>
-                      <td className="py-3 px-4 text-right font-bold text-white">
-                        Ks {(d.total_bet_amount || 0).toLocaleString()}
-                      </td>
-                      <td className="py-3 px-4 text-right text-rose-400">
-                        -Ks {(d.total_payout_amount || 0).toLocaleString()}
-                      </td>
-                      <td className={`py-3 px-4 text-right font-black ${d.profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                        Ks {(d.profit || 0).toLocaleString()}
-                      </td>
-                      <td className="py-3 px-4 text-center font-bold text-slate-300">
-                        {d.tickets_count || 0}
-                      </td>
-                      <td className="py-3 px-4 text-center font-bold text-slate-200">
-                        <span className="text-gold-400">{d.first_prize || '-'}</span> / <span>{d.second_prize || '-'}</span> / <span>{d.third_prize || '-'}</span>
-                      </td>
-                      <td className="py-3 px-4 text-center">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                          d.status === 'CLOSED'
-                            ? 'bg-slate-700 text-slate-300'
-                            : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                        }`}>
-                          {d.status || 'CLOSED'}
-                        </span>
+                </thead>
+                <tbody className="divide-y divide-slate-800 text-slate-300 font-mono">
+                  {loading ? (
+                    <tr>
+                      <td colSpan={10} className="py-12 text-center text-slate-500 font-sans">
+                        Loading Thai 2D draw statements...
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : sortedDrawResults.length === 0 ? (
+                    <tr>
+                      <td colSpan={10} className="py-12 text-center text-slate-500 font-sans">
+                        No 2D draws found in range.
+                      </td>
+                    </tr>
+                  ) : (
+                    sortedDrawResults.map((d, i) => (
+                      <tr key={d.id || i} className="hover:bg-navy-800/40 transition-colors">
+                        <td className="py-3 px-4 font-sans font-bold text-white">{d.date}</td>
+                        <td className="py-3 px-4">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            d.session === 'morning' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                          }`}>
+                            {d.session_label || d.session}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-slate-300">
+                          {d.set_index || '-'} / {d.set_value || '-'}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <span className="px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-300 font-mono font-black text-sm border border-amber-500/40">
+                            {d.winning_number || '-'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-right font-bold text-emerald-400">
+                          Ks {(d.total_bet_amount || 0).toLocaleString()}
+                        </td>
+                        <td className="py-3 px-4 text-right text-rose-400">
+                          -Ks {(d.total_payout_amount || 0).toLocaleString()}
+                        </td>
+                        <td className={`py-3 px-4 text-right font-black ${d.profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          Ks {(d.profit || 0).toLocaleString()}
+                        </td>
+                        <td className="py-3 px-4 text-right font-bold text-amber-300">
+                          {d.margin_percent}%
+                        </td>
+                        <td className="py-3 px-4 text-center font-bold text-slate-300">
+                          {d.tickets_count || 0}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            d.status === 'CLOSED'
+                              ? 'bg-slate-700 text-slate-300'
+                              : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                          }`}>
+                            {d.status || 'CLOSED'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            ) : gameFilter === '3D' ? (
+              /* Thai 3D Draw by Draw Table */
+              <table className="w-full text-left text-xs whitespace-nowrap">
+                <thead className="bg-navy-950/80 text-slate-400 uppercase font-bold tracking-wider border-b border-gold-500/20">
+                  <tr>
+                    <th 
+                      onClick={() => handleToggleDrawSort('date')}
+                      className="py-3 px-4 cursor-pointer hover:text-gold-300 transition-colors select-none"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <span>Draw Date</span>
+                        <span className="text-gold-400 font-mono text-xs">{drawSortCol === 'date' ? (drawSortAsc ? '▲' : '▼') : '↕'}</span>
+                      </span>
+                    </th>
+                    <th className="py-3 px-4">Draw Time</th>
+                    <th className="py-3 px-4 text-center">3D Winning No</th>
+                    <th className="py-3 px-4 text-right">Total Bet Stake</th>
+                    <th className="py-3 px-4 text-right">Winning Payouts</th>
+                    <th 
+                      onClick={() => handleToggleDrawSort('profit')}
+                      className="py-3 px-4 text-right cursor-pointer hover:text-gold-300 transition-colors select-none"
+                    >
+                      <span className="flex items-center justify-end gap-1.5">
+                        <span>Net Profit</span>
+                        <span className="text-gold-400 font-mono text-xs">{drawSortCol === 'profit' ? (drawSortAsc ? '▲' : '▼') : '↕'}</span>
+                      </span>
+                    </th>
+                    <th className="py-3 px-4 text-right">Margin %</th>
+                    <th className="py-3 px-4 text-center">Bets Count</th>
+                    <th className="py-3 px-4 text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800 text-slate-300 font-mono">
+                  {loading ? (
+                    <tr>
+                      <td colSpan={9} className="py-12 text-center text-slate-500 font-sans">
+                        Loading Thai 3D draw statements...
+                      </td>
+                    </tr>
+                  ) : sortedDrawResults.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="py-12 text-center text-slate-500 font-sans">
+                        No 3D draws found in range.
+                      </td>
+                    </tr>
+                  ) : (
+                    sortedDrawResults.map((d, i) => (
+                      <tr key={d.id || i} className="hover:bg-navy-800/40 transition-colors">
+                        <td className="py-3 px-4 font-sans font-bold text-white">{d.date}</td>
+                        <td className="py-3 px-4 text-slate-300 font-mono">{d.draw_time_mmt}</td>
+                        <td className="py-3 px-4 text-center">
+                          <span className="px-3 py-1 rounded-lg bg-purple-500/20 text-purple-300 font-mono font-black text-sm border border-purple-500/40">
+                            {d.winning_number || '-'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-right font-bold text-emerald-400">
+                          Ks {(d.total_bet_amount || 0).toLocaleString()}
+                        </td>
+                        <td className="py-3 px-4 text-right text-rose-400">
+                          -Ks {(d.total_payout_amount || 0).toLocaleString()}
+                        </td>
+                        <td className={`py-3 px-4 text-right font-black ${d.profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          Ks {(d.profit || 0).toLocaleString()}
+                        </td>
+                        <td className="py-3 px-4 text-right font-bold text-amber-300">
+                          {d.margin_percent}%
+                        </td>
+                        <td className="py-3 px-4 text-center font-bold text-slate-300">
+                          {d.tickets_count || 0}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            d.status === 'CLOSED'
+                              ? 'bg-slate-700 text-slate-300'
+                              : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                          }`}>
+                            {d.status || 'CLOSED'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            ) : (
+              /* 4D or ALL Draw by Draw Table */
+              <table className="w-full text-left text-xs whitespace-nowrap">
+                <thead className="bg-navy-950/80 text-slate-400 uppercase font-bold tracking-wider border-b border-gold-500/20">
+                  <tr>
+                    <th 
+                      onClick={() => handleToggleDrawSort('date')}
+                      className="py-3 px-4 cursor-pointer hover:text-gold-300 transition-colors select-none group"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <span>Draw Date</span>
+                        <span className="text-gold-400 font-mono text-xs">{drawSortCol === 'date' ? (drawSortAsc ? '▲' : '▼') : '↕'}</span>
+                      </span>
+                    </th>
+                    <th 
+                      onClick={() => handleToggleDrawSort('draw_no')}
+                      className="py-3 px-4 cursor-pointer hover:text-gold-300 transition-colors select-none group"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <span>Draw No</span>
+                        <span className="text-gold-400 font-mono text-xs">{drawSortCol === 'draw_no' ? (drawSortAsc ? '▲' : '▼') : '↕'}</span>
+                      </span>
+                    </th>
+                    <th className="py-3 px-4 text-right">Total Bet Stake</th>
+                    <th className="py-3 px-4 text-right">Winning Payouts</th>
+                    <th 
+                      onClick={() => handleToggleDrawSort('profit')}
+                      className="py-3 px-4 text-right cursor-pointer hover:text-gold-300 transition-colors select-none group"
+                    >
+                      <span className="flex items-center justify-end gap-1.5">
+                        <span>Company Net Profit</span>
+                        <span className="text-gold-400 font-mono text-xs">{drawSortCol === 'profit' ? (drawSortAsc ? '▲' : '▼') : '↕'}</span>
+                      </span>
+                    </th>
+                    <th className="py-3 px-4 text-center">Tickets Count</th>
+                    <th className="py-3 px-4 text-center">1st / 2nd / 3rd Prizes</th>
+                    <th className="py-3 px-4 text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800 text-slate-300 font-mono">
+                  {loading ? (
+                    <tr>
+                      <td colSpan={8} className="py-12 text-center text-slate-500 font-sans">
+                        Loading draw statements...
+                      </td>
+                    </tr>
+                  ) : sortedDrawResults.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="py-12 text-center text-slate-500 font-sans">
+                        No lottery draws registered.
+                      </td>
+                    </tr>
+                  ) : (
+                    sortedDrawResults.map((d, i) => (
+                      <tr key={d.id || i} className="hover:bg-navy-800/40 transition-colors">
+                        <td className="py-3 px-4 font-sans font-bold text-white">{d.date}</td>
+                        <td className="py-3 px-4 font-mono font-bold text-gold-400">#{d.draw_no}</td>
+                        <td className="py-3 px-4 text-right font-bold text-white">
+                          Ks {(d.total_bet_amount || 0).toLocaleString()}
+                        </td>
+                        <td className="py-3 px-4 text-right text-rose-400">
+                          -Ks {(d.total_payout_amount || 0).toLocaleString()}
+                        </td>
+                        <td className={`py-3 px-4 text-right font-black ${d.profit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          Ks {(d.profit || 0).toLocaleString()}
+                        </td>
+                        <td className="py-3 px-4 text-center font-bold text-slate-300">
+                          {d.tickets_count || 0}
+                        </td>
+                        <td className="py-3 px-4 text-center font-bold text-slate-200">
+                          <span className="text-gold-400">{d.first_prize || '-'}</span> / <span>{d.second_prize || '-'}</span> / <span>{d.third_prize || '-'}</span>
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            d.status === 'CLOSED'
+                              ? 'bg-slate-700 text-slate-300'
+                              : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                          }`}>
+                            {d.status || 'CLOSED'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       )}
 
-      {/* VIEW 4: Player Turnover Ranking (100% Live) */}
+      {/* VIEW 4: Player Turnover Ranking */}
       {reportType === 'user-bet' && (
         <div className="bg-navy-900/90 border border-gold-500/20 rounded-2xl shadow-xl overflow-hidden">
           <div className="p-4 border-b border-gold-500/20 flex items-center justify-between">
@@ -647,14 +1193,14 @@ export default function ReportsView({ onNotify }) {
         </div>
       )}
 
-      {/* VIEW 5: Agent Turnover Summary (100% Live) */}
+      {/* VIEW 5: Agent Turnover Summary */}
       {reportType === 'agents' && (
         <div className="bg-navy-900/90 border border-gold-500/20 rounded-2xl shadow-xl overflow-hidden">
           <div className="p-4 border-b border-gold-500/20 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <UserCheck className="w-5 h-5 text-gold-400" />
               <h3 className="text-sm font-bold text-white uppercase tracking-wider font-serif">
-                Agent Performance, Network Turnover & 30% Commission Summary
+                Agent Performance, Network Turnover & Commission Summary
               </h3>
             </div>
             <span className="text-xs text-slate-400 font-mono">
@@ -671,8 +1217,8 @@ export default function ReportsView({ onNotify }) {
                   <th className="py-3 px-4">Phone Number</th>
                   <th className="py-3 px-4 text-center">Downline Players</th>
                   <th className="py-3 px-4 text-right">Total Bet Turnover</th>
-                  <th className="py-3 px-4 text-right">30% Pending Comm</th>
-                  <th className="py-3 px-4 text-right">30% Settled Comm</th>
+                  <th className="py-3 px-4 text-right">Pending Comm</th>
+                  <th className="py-3 px-4 text-right">Settled Comm</th>
                   <th className="py-3 px-4 text-right">Credit Limit</th>
                   <th className="py-3 px-4 text-right">Used Debt</th>
                   <th className="py-3 px-4 text-center">Status</th>

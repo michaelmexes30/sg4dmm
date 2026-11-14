@@ -1520,29 +1520,65 @@ def calculate_company_monthly_net_profit(db: Session, ym: Optional[str] = None) 
             month_label = parsed.strftime('%b')
             month_full_label = parsed.strftime('%b %Y')
         except Exception:
-            month_label = "Oct"
-            month_full_label = "Oct 2026"
+            now_dt = now_mmt()
+            month_label = now_dt.strftime('%b')
+            month_full_label = now_dt.strftime('%b %Y')
 
     start_dt = f"{ym}-01 00:00:00"
     end_dt = f"{ym}-31 23:59:59"
 
-    # Total bets in month
+    # Total bets in month across all lottery games (4D, 2D, 3D)
     tot_bets = db.query(func.coalesce(func.sum(BetSlip.total_stake), 0.0)).filter(
         BetSlip.created_at >= start_dt,
         BetSlip.created_at <= end_dt
     ).scalar() or 0.0
 
-    # Total 4D Payout in month (calculated by official Draw Date)
-    tot_payout = (
+    # Payouts across all games (4D, 2D, 3D) in month
+    tot_payout_4d = (
         db.query(func.coalesce(func.sum(BetSlip.total_payout), 0.0))
         .join(LotteryDraw, BetSlip.draw_id == LotteryDraw.id)
         .filter(
+            BetSlip.game_type == "4D",
             LotteryDraw.draw_date >= f"{ym}-01",
             LotteryDraw.draw_date <= f"{ym}-31",
             BetSlip.total_payout > 0
         )
         .scalar() or 0.0
     )
+    tot_payout_2d = (
+        db.query(func.coalesce(func.sum(BetSlip.total_payout), 0.0))
+        .join(TwoDDraw, BetSlip.draw_id == TwoDDraw.id)
+        .filter(
+            BetSlip.game_type == "2D",
+            TwoDDraw.draw_date >= f"{ym}-01",
+            TwoDDraw.draw_date <= f"{ym}-31",
+            BetSlip.total_payout > 0
+        )
+        .scalar() or 0.0
+    )
+    tot_payout_3d = (
+        db.query(func.coalesce(func.sum(BetSlip.total_payout), 0.0))
+        .join(ThreeDDraw, BetSlip.draw_id == ThreeDDraw.id)
+        .filter(
+            BetSlip.game_type == "3D",
+            ThreeDDraw.draw_date >= f"{ym}-01",
+            ThreeDDraw.draw_date <= f"{ym}-31",
+            BetSlip.total_payout > 0
+        )
+        .scalar() or 0.0
+    )
+    tot_payout = tot_payout_4d + tot_payout_2d + tot_payout_3d
+
+    # Mini-Games Stake, Payout & Net in month
+    mini_stake = db.query(func.coalesce(func.sum(MiniGameBet.stake_amount), 0.0)).filter(
+        MiniGameBet.date_str >= f"{ym}-01",
+        MiniGameBet.date_str <= f"{ym}-31"
+    ).scalar() or 0.0
+    mini_payout = db.query(func.coalesce(func.sum(MiniGameBet.payout_amount), 0.0)).filter(
+        MiniGameBet.date_str >= f"{ym}-01",
+        MiniGameBet.date_str <= f"{ym}-31"
+    ).scalar() or 0.0
+    tot_mini_net = mini_stake - mini_payout
 
     # 30% Settled Agent Commission credited in month
     tot_comm = db.query(func.coalesce(func.sum(AgentCommissionLog.commission_amount), 0.0)).filter(
@@ -1558,8 +1594,8 @@ def calculate_company_monthly_net_profit(db: Session, ym: Optional[str] = None) 
         WeeklyBonus.credited_at <= end_dt
     ).scalar() or 0.0
 
-    # Net Profit formula requested: Total Bets - Payout - 30% Commission - 10% Bonus
-    net_profit = float(tot_bets) - float(tot_payout) - float(tot_comm) - float(tot_bonus)
+    # Net Profit formula: (Total Bets - Payout - 30% Commission - 10% Bonus) + Mini-Games Net P/L
+    net_profit = (float(tot_bets) - float(tot_payout) - float(tot_comm) - float(tot_bonus)) + float(tot_mini_net)
 
     return {
         "company_balance": net_profit,
@@ -1567,6 +1603,7 @@ def calculate_company_monthly_net_profit(db: Session, ym: Optional[str] = None) 
         "month": month_full_label,
         "total_bets": float(tot_bets),
         "total_payout": float(tot_payout),
+        "mini_game_net": float(tot_mini_net),
         "total_commission": float(tot_comm),
         "total_bonus": float(tot_bonus)
     }
@@ -3446,6 +3483,7 @@ def get_reports_statements(
 def get_reports_financial(
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
+    game_type: Optional[str] = None,
     admin_user: User = Depends(get_current_admin),
     db: Session = Depends(get_db)
 ):
@@ -3554,11 +3592,58 @@ def get_reports_financial(
             d_start = None
             d_end = None
 
+        # Determine game-specific breakdown
+        gt_filter = (game_type or "ALL").strip().upper()
+
         if d_start and d_end:
-            d_bet = db.query(func.coalesce(func.sum(BetSlip.total_stake), 0.0)).filter(
+            d_bet_4d = db.query(func.coalesce(func.sum(BetSlip.total_stake), 0.0)).filter(
+                BetSlip.game_type == "4D",
                 BetSlip.created_at >= d_start,
                 BetSlip.created_at < d_end
             ).scalar() or 0.0
+
+            d_bet_2d = db.query(func.coalesce(func.sum(BetSlip.total_stake), 0.0)).filter(
+                BetSlip.game_type == "2D",
+                BetSlip.created_at >= d_start,
+                BetSlip.created_at < d_end
+            ).scalar() or 0.0
+
+            # 2D Morning (12:01) vs Evening (04:30) stake
+            d_bet_2d_morning = (
+                db.query(func.coalesce(func.sum(BetSlip.total_stake), 0.0))
+                .join(TwoDDraw, BetSlip.draw_id == TwoDDraw.id)
+                .filter(
+                    BetSlip.game_type == "2D",
+                    TwoDDraw.session == "morning",
+                    BetSlip.created_at >= d_start,
+                    BetSlip.created_at < d_end
+                ).scalar() or 0.0
+            )
+            d_bet_2d_evening = max(0.0, d_bet_2d - d_bet_2d_morning)
+
+            d_bet_3d = db.query(func.coalesce(func.sum(BetSlip.total_stake), 0.0)).filter(
+                BetSlip.game_type == "3D",
+                BetSlip.created_at >= d_start,
+                BetSlip.created_at < d_end
+            ).scalar() or 0.0
+
+            d_tickets_4d = db.query(func.count(BetSlip.id)).filter(
+                BetSlip.game_type == "4D",
+                BetSlip.created_at >= d_start,
+                BetSlip.created_at < d_end
+            ).scalar() or 0
+
+            d_tickets_2d = db.query(func.count(BetSlip.id)).filter(
+                BetSlip.game_type == "2D",
+                BetSlip.created_at >= d_start,
+                BetSlip.created_at < d_end
+            ).scalar() or 0
+
+            d_tickets_3d = db.query(func.count(BetSlip.id)).filter(
+                BetSlip.game_type == "3D",
+                BetSlip.created_at >= d_start,
+                BetSlip.created_at < d_end
+            ).scalar() or 0
 
             d_topup = db.query(func.coalesce(func.sum(Transaction.amount), 0.0)).filter(
                 Transaction.tx_type == TransactionType.DEPOSIT,
@@ -3586,11 +3671,20 @@ def get_reports_financial(
                 WeeklyBonus.credited_at < d_end
             ).scalar() or 0.0
         else:
-            d_bet = 0.0
+            d_bet_4d = 0.0
+            d_bet_2d = 0.0
+            d_bet_2d_morning = 0.0
+            d_bet_2d_evening = 0.0
+            d_bet_3d = 0.0
+            d_tickets_4d = 0
+            d_tickets_2d = 0
+            d_tickets_3d = 0
             d_topup = 0.0
             d_withdraw = 0.0
             d_comm = 0.0
             d_bonus = 0.0
+
+        d_bet_total = d_bet_4d + d_bet_2d + d_bet_3d
 
         # Payout is strictly calculated by official DRAW DATE across all game types
         d_payout_4d = (
@@ -3623,7 +3717,7 @@ def get_reports_financial(
             )
             .scalar() or 0.0
         )
-        d_payout = d_payout_4d + d_payout_2d + d_payout_3d
+        d_payout_total = d_payout_4d + d_payout_2d + d_payout_3d
 
         # Mini-Games Stake, Payout & Net P/L
         d_mini_stake = db.query(func.coalesce(func.sum(MiniGameBet.stake_amount), 0.0)).filter(
@@ -3636,11 +3730,39 @@ def get_reports_financial(
 
         d_mini_net = d_mini_stake - d_mini_payout
 
-        if d_bet == 0 and d_topup == 0 and d_withdraw == 0 and d_payout == 0 and d_comm == 0 and d_bonus == 0 and d_mini_stake == 0 and d_mini_payout == 0:
-            continue
-
-        d_profit = (d_bet - d_payout - d_comm - d_bonus) + d_mini_net
-        d_company_bal = d_profit
+        # Select relevant values according to game_type filter
+        if gt_filter == "4D":
+            d_bet = d_bet_4d
+            d_payout = d_payout_4d
+            d_active_tickets = d_tickets_4d
+            d_profit = d_bet_4d - d_payout_4d
+            d_company_bal = d_profit
+            if d_bet == 0 and d_payout == 0:
+                continue
+        elif gt_filter == "2D":
+            d_bet = d_bet_2d
+            d_payout = d_payout_2d
+            d_active_tickets = d_tickets_2d
+            d_profit = d_bet_2d - d_payout_2d
+            d_company_bal = d_profit
+            if d_bet == 0 and d_payout == 0:
+                continue
+        elif gt_filter == "3D":
+            d_bet = d_bet_3d
+            d_payout = d_payout_3d
+            d_active_tickets = d_tickets_3d
+            d_profit = d_bet_3d - d_payout_3d
+            d_company_bal = d_profit
+            if d_bet == 0 and d_payout == 0:
+                continue
+        else: # ALL
+            d_bet = d_bet_total
+            d_payout = d_payout_total
+            d_active_tickets = d_tickets_4d + d_tickets_2d + d_tickets_3d
+            d_profit = (d_bet_total - d_payout_total - d_comm - d_bonus) + d_mini_net
+            d_company_bal = d_profit
+            if d_bet == 0 and d_topup == 0 and d_withdraw == 0 and d_payout == 0 and d_comm == 0 and d_bonus == 0 and d_mini_stake == 0 and d_mini_payout == 0:
+                continue
 
         tot_4d_bet += d_bet
         tot_top_up += d_topup
@@ -3655,10 +3777,23 @@ def get_reports_financial(
 
         reports.append({
             "report_date": d_str,
-            "four_d_bet": float(d_bet),
+            "game_type": gt_filter,
+            "total_bet": float(d_bet),
+            "four_d_bet": float(d_bet), # backward compatibility
+            "total_payout": -float(d_payout) if d_payout > 0 else 0.0,
+            "four_d_payout": -float(d_payout) if d_payout > 0 else 0.0, # backward compatibility
+            "bet_4d": float(d_bet_4d),
+            "payout_4d": -float(d_payout_4d) if d_payout_4d > 0 else 0.0,
+            "bet_2d": float(d_bet_2d),
+            "bet_2d_morning": float(d_bet_2d_morning),
+            "bet_2d_evening": float(d_bet_2d_evening),
+            "payout_2d": -float(d_payout_2d) if d_payout_2d > 0 else 0.0,
+            "bet_3d": float(d_bet_3d),
+            "payout_3d": -float(d_payout_3d) if d_payout_3d > 0 else 0.0,
+            "tickets_count": int(d_active_tickets),
+            "margin_percent": round(((d_bet - d_payout) / d_bet * 100.0), 2) if d_bet > 0 else 0.0,
             "top_up": float(d_topup),
             "withdraw": -float(d_withdraw) if d_withdraw > 0 else 0.0,
-            "four_d_payout": -float(d_payout) if d_payout > 0 else 0.0,
             "agent_commission": -float(d_comm) if d_comm > 0 else 0.0,
             "weekly_bonus": -float(d_bonus) if d_bonus > 0 else 0.0,
             "cash_back": -(float(d_comm) + float(d_bonus)),
@@ -3691,6 +3826,134 @@ def get_reports_financial(
         },
         "company_balance_oct": float(company_net_balance)
     }
+
+@router.get("/reports/draws-performance")
+def get_reports_draws_performance(
+    game_type: Optional[str] = "4D",
+    page: int = 1,
+    limit: int = 50,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    admin_user: User = Depends(get_current_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Dedicated Draw-by-Draw Financial Breakdown & Prize Audit
+    Supported game_type: '4D', '2D', '3D', 'ALL'
+    """
+    gtype = (game_type or "4D").strip().upper()
+
+    if gtype == "2D":
+        query = db.query(TwoDDraw)
+        if from_date:
+            query = query.filter(TwoDDraw.draw_date >= from_date)
+        if to_date:
+            query = query.filter(TwoDDraw.draw_date <= to_date)
+        total = query.count()
+        draws = query.order_by(TwoDDraw.draw_date.desc(), TwoDDraw.id.desc()).offset((page - 1) * limit).limit(limit).all()
+        results = []
+        for d in draws:
+            stats = db.query(
+                func.coalesce(func.sum(BetSlip.total_stake), 0.0).label("staked"),
+                func.coalesce(func.sum(BetSlip.total_payout), 0.0).label("payout"),
+                func.count(BetSlip.id).label("tickets_count")
+            ).filter(BetSlip.game_type == "2D", BetSlip.draw_id == d.id).first()
+            tot_stk = float(stats.staked or d.total_staked or 0.0)
+            tot_pay = float(stats.payout or d.total_payout or 0.0)
+            profit = tot_stk - tot_pay
+            margin = round((profit / tot_stk * 100.0), 2) if tot_stk > 0 else 0.0
+            results.append({
+                "id": d.id,
+                "game_type": "2D",
+                "date": d.draw_date,
+                "session": d.session,
+                "session_label": "Morning (12:01 PM)" if d.session == "morning" else "Evening (04:30 PM)",
+                "draw_no": f"2D-{d.draw_date}-{'AM' if d.session == 'morning' else 'PM'}",
+                "draw_time_mmt": d.draw_time_mmt,
+                "winning_number": d.winning_number or "-",
+                "set_index": d.set_index or "-",
+                "set_value": d.set_value or "-",
+                "total_bet_amount": tot_stk,
+                "total_payout_amount": tot_pay,
+                "profit": profit,
+                "margin_percent": margin,
+                "tickets_count": int(stats.tickets_count or 0),
+                "status": d.status
+            })
+        return {"results": results, "total": total, "page": page, "limit": limit, "game_type": "2D"}
+
+    elif gtype == "3D":
+        query = db.query(ThreeDDraw)
+        if from_date:
+            query = query.filter(ThreeDDraw.draw_date >= from_date)
+        if to_date:
+            query = query.filter(ThreeDDraw.draw_date <= to_date)
+        total = query.count()
+        draws = query.order_by(ThreeDDraw.draw_date.desc(), ThreeDDraw.id.desc()).offset((page - 1) * limit).limit(limit).all()
+        results = []
+        for d in draws:
+            stats = db.query(
+                func.coalesce(func.sum(BetSlip.total_stake), 0.0).label("staked"),
+                func.coalesce(func.sum(BetSlip.total_payout), 0.0).label("payout"),
+                func.count(BetSlip.id).label("tickets_count")
+            ).filter(BetSlip.game_type == "3D", BetSlip.draw_id == d.id).first()
+            tot_stk = float(stats.staked or 0.0)
+            tot_pay = float(stats.payout or 0.0)
+            profit = tot_stk - tot_pay
+            margin = round((profit / tot_stk * 100.0), 2) if tot_stk > 0 else 0.0
+            results.append({
+                "id": d.id,
+                "game_type": "3D",
+                "date": d.draw_date,
+                "draw_no": f"3D-{d.draw_date}",
+                "draw_time_mmt": d.draw_time_mmt or "03:30 PM MMT",
+                "winning_number": d.winning_number or "-",
+                "total_bet_amount": tot_stk,
+                "total_payout_amount": tot_pay,
+                "profit": profit,
+                "margin_percent": margin,
+                "tickets_count": int(stats.tickets_count or 0),
+                "status": d.status
+            })
+        return {"results": results, "total": total, "page": page, "limit": limit, "game_type": "3D"}
+
+    else: # 4D
+        query = db.query(LotteryDraw)
+        if from_date:
+            query = query.filter(LotteryDraw.draw_date >= from_date)
+        if to_date:
+            query = query.filter(LotteryDraw.draw_date <= to_date)
+        total = query.count()
+        draws = query.order_by(LotteryDraw.draw_date.desc(), LotteryDraw.id.desc()).offset((page - 1) * limit).limit(limit).all()
+        results = []
+        for d in draws:
+            stats = db.query(
+                func.coalesce(func.sum(BetSlip.total_stake), 0.0).label("staked"),
+                func.coalesce(func.sum(BetSlip.total_payout), 0.0).label("payout"),
+                func.count(BetSlip.id).label("tickets_count")
+            ).filter(BetSlip.game_type == "4D", BetSlip.draw_id == d.id).first()
+            tot_stk = float(stats.staked or d.total_pool_stake or 0.0)
+            tot_pay = float(stats.payout or 0.0)
+            profit = tot_stk - tot_pay
+            margin = round((profit / tot_stk * 100.0), 2) if tot_stk > 0 else 0.0
+            results.append({
+                "id": d.id,
+                "game_type": "4D",
+                "date": d.draw_date,
+                "draw_no": d.draw_number or f"DRAW-{d.id}",
+                "status": d.status,
+                "total_bet_amount": tot_stk,
+                "total_payout_amount": tot_pay,
+                "profit": profit,
+                "margin_percent": margin,
+                "tickets_count": int(stats.tickets_count or 0),
+                "first_prize": d.first_prize or "-",
+                "second_prize": d.second_prize or "-",
+                "third_prize": d.third_prize or "-",
+                "closed_count": len(d.closed_numbers) if d.closed_numbers else 0
+            })
+        return {"results": results, "total": total, "page": page, "limit": limit, "game_type": "4D"}
+
 
 @router.get("/reports/4d-bets")
 def get_reports_4d_bets(
