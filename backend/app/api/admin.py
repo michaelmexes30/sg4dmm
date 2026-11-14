@@ -4007,12 +4007,16 @@ def get_reports_user_bets(
     page: int = 1,
     limit: int = 50,
     search: Optional[str] = None,
+    game_type: Optional[str] = None,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
     admin_user: User = Depends(get_current_admin),
     db: Session = Depends(get_db)
 ):
     """
     100% LIVE Player Turnover Ranking:
     Orders real and registered players by total stake, showing live stats.
+    Supports game_type filtering ('4D', '2D', '3D', 'ALL') and date ranges.
     """
     query = db.query(User).filter(User.role == UserRole.USER)
     if search:
@@ -4021,26 +4025,58 @@ def get_reports_user_bets(
 
     users = query.all()
 
+    d_start = None
+    d_end = None
+    if from_date:
+        try:
+            d_start = datetime.strptime(from_date, "%Y-%m-%d")
+        except Exception:
+            pass
+    if to_date:
+        try:
+            d_end = datetime.strptime(to_date, "%Y-%m-%d") + timedelta(days=1)
+        except Exception:
+            pass
+
+    gt_filter = (game_type or "ALL").strip().upper()
+
     results = []
     for u in users:
+        bet_filters = [BetSlip.user_id == u.id]
+        if gt_filter != "ALL":
+            bet_filters.append(BetSlip.game_type == gt_filter)
+        if d_start:
+            bet_filters.append(BetSlip.created_at >= d_start)
+        if d_end:
+            bet_filters.append(BetSlip.created_at < d_end)
+
         stats = db.query(
             func.count(BetSlip.id).label("bet_count"),
             func.coalesce(func.sum(BetSlip.total_stake), 0.0).label("total_staked"),
             func.coalesce(func.sum(BetSlip.total_payout), 0.0).label("total_payout"),
             func.coalesce(func.max(BetSlip.total_stake), 0.0).label("max_stake"),
             func.max(BetSlip.created_at).label("last_bet_time")
-        ).filter(BetSlip.user_id == u.id).first()
+        ).filter(*bet_filters).first()
+
+        bet_count = int(stats.bet_count or 0)
+        total_staked = float(stats.total_staked or 0.0)
+
+        # If filtered by game or date range (unless a specific user is searched),
+        # only include users who actually placed bets in this scope
+        is_filtered = (gt_filter != "ALL") or bool(from_date) or bool(to_date)
+        if is_filtered and not search and bet_count == 0:
+            continue
 
         results.append({
             "id": u.id,
             "name": u.full_name or u.nickname or "Player",
             "phone": u.phone,
             "last_betted_game_date": stats.last_bet_time.strftime("%d/%m/%Y %I:%M %p") if stats and stats.last_bet_time else "-",
-            "total_bet_count": int(stats.bet_count or 0),
+            "total_bet_count": bet_count,
             "max_bet_amount_per_game": float(stats.max_stake or 0.0),
-            "fourd_total_bet": float(stats.total_staked or 0.0),
+            "fourd_total_bet": total_staked,
             "fourd_payout_amount": float(stats.total_payout or 0.0),
-            "net_profit": float((stats.total_staked or 0.0) - (stats.total_payout or 0.0)),
+            "net_profit": float(total_staked - (stats.total_payout or 0.0)),
             "balance": float(u.balance or 0.0),
             "is_suspended": bool(u.is_suspended)
         })

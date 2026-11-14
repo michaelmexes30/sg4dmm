@@ -201,30 +201,28 @@ export default function ReportsView({ onNotify, gameFilter = 'ALL', initialTab =
             🎯 {gameFilter === 'ALL' ? 'Draw-by-Draw Performance' : `${gameTitle} Draw Performance`}
           </button>
 
-          {gameFilter === 'ALL' && (
-            <>
-              <button
-                onClick={() => setReportType('user-bet')}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-                  reportType === 'user-bet'
-                    ? 'bg-amber-500 text-slate-950 font-black shadow-md'
-                    : 'bg-navy-800 text-slate-400 hover:text-white'
-                }`}
-              >
-                🏆 Player Turnover Ranking
-              </button>
+          <button
+            onClick={() => setReportType('user-bet')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+              reportType === 'user-bet'
+                ? 'bg-amber-500 text-slate-950 font-black shadow-md'
+                : 'bg-navy-800 text-slate-400 hover:text-white'
+            }`}
+          >
+            🏆 {gameFilter === 'ALL' ? 'Player Turnover Ranking' : `${gameTitle} Turnover Ranking`}
+          </button>
 
-              <button
-                onClick={() => setReportType('agents')}
-                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-                  reportType === 'agents'
-                    ? 'bg-amber-500 text-slate-950 font-black shadow-md'
-                    : 'bg-navy-800 text-slate-400 hover:text-white'
-                }`}
-              >
-                🦚 Agent Turnover Summary
-              </button>
-            </>
+          {gameFilter === 'ALL' && (
+            <button
+              onClick={() => setReportType('agents')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                reportType === 'agents'
+                  ? 'bg-amber-500 text-slate-950 font-black shadow-md'
+                  : 'bg-navy-800 text-slate-400 hover:text-white'
+              }`}
+            >
+              🦚 Agent Turnover Summary
+            </button>
           )}
         </div>
 
@@ -1117,7 +1115,9 @@ export default function ReportsView({ onNotify, gameFilter = 'ALL', initialTab =
             <div className="flex items-center gap-2">
               <Users className="w-5 h-5 text-gold-400" />
               <h3 className="text-sm font-bold text-white uppercase tracking-wider font-serif">
-                Player Turnover Ranking (Live Order by Stake Volume)
+                {gameFilter === 'ALL'
+                  ? 'Player Turnover Ranking (Live Order by Stake Volume)'
+                  : `${gameTitle} Player Turnover Ranking (Live Order by Stake Volume)`}
               </h3>
             </div>
             <span className="text-xs text-slate-400 font-mono">
@@ -1132,24 +1132,24 @@ export default function ReportsView({ onNotify, gameFilter = 'ALL', initialTab =
                   <th className="py-3 px-4">Rank / Player</th>
                   <th className="py-3 px-4">Phone Number</th>
                   <th className="py-3 px-4 text-center">Total Bets</th>
-                  <th className="py-3 px-4 text-right">Total Staked (Turnover)</th>
-                  <th className="py-3 px-4 text-right">Total Payout (Won)</th>
+                  <th className="py-3 px-4 text-right">{gameFilter === 'ALL' ? 'Total Staked (Turnover)' : `${gameTitle} Turnover`}</th>
+                  <th className="py-3 px-4 text-right">{gameFilter === 'ALL' ? 'Total Payout (Won)' : `${gameTitle} Payout`}</th>
                   <th className="py-3 px-4 text-right">Net Profit from Player</th>
                   <th className="py-3 px-4 text-right">Wallet Balance</th>
-                  <th className="py-3 px-4">Last Bet Placed</th>
+                  <th className="py-3 px-4">{gameFilter === 'ALL' ? 'Last Bet Placed' : `Last ${gameTitle} Bet`}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800 text-slate-300">
                 {loading ? (
                   <tr>
                     <td colSpan={8} className="py-12 text-center text-slate-500">
-                      Loading player turnover rankings...
+                      Loading {gameFilter === 'ALL' ? 'player' : gameTitle} turnover rankings...
                     </td>
                   </tr>
                 ) : !data?.results || data.results.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="py-12 text-center text-slate-500">
-                      No player betting records found.
+                      No {gameFilter === 'ALL' ? 'player' : gameTitle} betting records found.
                     </td>
                   </tr>
                 ) : (

@@ -451,7 +451,7 @@ export default function BetHistoryView({ onNotify }) {
             <thead className="bg-navy-950/80 text-slate-400 uppercase font-bold tracking-wider border-b border-gold-500/20">
               <tr>
                 <th className="py-3 px-4">No</th>
-                <th className="py-3 px-4">Game Date</th>
+                <th className="py-3 px-4">Game Date & Time</th>
                 <th className="py-3 px-4">Player</th>
                 <th className="py-3 px-4">Phone</th>
                 <th className="py-3 px-4 text-center">4D Number</th>
@@ -502,8 +502,14 @@ export default function BetHistoryView({ onNotify }) {
                       <td className="py-3 px-4 text-slate-500 font-mono">
                         {(page - 1) * pageSize + idx + 1}
                       </td>
-                      <td className="py-3 px-4 whitespace-nowrap font-medium text-slate-200">
-                        {drawDateDisplay}
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <div className="font-semibold text-slate-200 font-mono text-xs">{drawDateDisplay}</div>
+                        {bet.created_at && (
+                          <div className="text-[10px] text-slate-400 font-mono flex items-center gap-1 mt-0.5">
+                            <Clock className="w-2.5 h-2.5 text-gold-400/80 shrink-0" />
+                            <span>{bet.created_at}</span>
+                          </div>
+                        )}
                       </td>
                       <td className="py-3 px-4 font-semibold text-white">
                         {nameDisplay}
