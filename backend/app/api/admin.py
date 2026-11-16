@@ -145,7 +145,7 @@ def get_financial_dashboard(
     )
     active_draw_data = None
     if active_draw:
-        combos_covered = db.query(func.count(func.distinct(BetItem.number))).join(BetSlip).filter(BetSlip.draw_id == active_draw.id).scalar() or 0
+        combos_covered = db.query(func.count(func.distinct(BetItem.number))).join(BetSlip).filter(BetSlip.draw_id == active_draw.id, BetSlip.game_type == "4D").scalar() or 0
         active_draw_data = {
             "id": active_draw.id,
             "draw_number": active_draw.draw_number,
@@ -1296,7 +1296,7 @@ def get_draw_heatmap(
             BetItem.combinations_json
         )
         .join(BetSlip, BetItem.slip_id == BetSlip.id)
-        .filter(BetSlip.draw_id == draw_id)
+        .filter(BetSlip.draw_id == draw_id, BetSlip.game_type == "4D")
         .all()
     )
 
@@ -1670,9 +1670,9 @@ def get_financial_statement(
     draws = db.query(LotteryDraw).order_by(LotteryDraw.draw_date.desc()).limit(limit).all()
     reports = []
     for d in draws:
-        total_staked = db.query(func.coalesce(func.sum(BetSlip.total_stake), 0.0)).filter(BetSlip.draw_id == d.id).scalar()
-        total_payout = db.query(func.coalesce(func.sum(BetSlip.total_payout), 0.0)).filter(BetSlip.draw_id == d.id).scalar()
-        total_comm = db.query(func.coalesce(func.sum(BetSlip.agent_commission), 0.0)).filter(BetSlip.draw_id == d.id).scalar()
+        total_staked = db.query(func.coalesce(func.sum(BetSlip.total_stake), 0.0)).filter(BetSlip.draw_id == d.id, BetSlip.game_type == "4D").scalar()
+        total_payout = db.query(func.coalesce(func.sum(BetSlip.total_payout), 0.0)).filter(BetSlip.draw_id == d.id, BetSlip.game_type == "4D").scalar()
+        total_comm = db.query(func.coalesce(func.sum(BetSlip.agent_commission), 0.0)).filter(BetSlip.draw_id == d.id, BetSlip.game_type == "4D").scalar()
         net = float(total_staked) - (float(total_payout) + float(total_comm))
         reports.append({
             "draw_date": d.draw_date,
@@ -1920,11 +1920,15 @@ def get_4d_game_monitor(
     top_numbers = []
     total_staked = 0.0
     if target_draw:
-        total_staked = target_draw.total_pool_stake or 0.0
+        live_stake_sum = db.query(func.coalesce(func.sum(BetSlip.total_stake), 0.0)).filter(
+            BetSlip.draw_id == target_draw.id,
+            BetSlip.game_type == "4D"
+        ).scalar() or 0.0
+        total_staked = float(live_stake_sum if live_stake_sum > 0 else (target_draw.total_pool_stake or 0.0))
         items = (
             db.query(BetItem.number, func.sum(BetItem.item_stake).label("total_amount"))
             .join(BetSlip, BetItem.slip_id == BetSlip.id)
-            .filter(BetSlip.draw_id == target_draw.id)
+            .filter(BetSlip.draw_id == target_draw.id, BetSlip.game_type == "4D")
             .group_by(BetItem.number)
             .order_by(desc("total_amount"))
             .limit(10)
@@ -2025,6 +2029,7 @@ def get_number_audit(
         .join(BetSlip, BetItem.slip_id == BetSlip.id)
         .join(User, BetSlip.user_id == User.id)
         .join(LotteryDraw, BetSlip.draw_id == LotteryDraw.id)
+        .filter(BetSlip.game_type == "4D")
         .filter(or_(BetItem.number == num_str, BetItem.combinations_json.contains(f'"{num_str}"')))
     )
     if draw_id:
@@ -3979,7 +3984,7 @@ def get_reports_4d_bets(
             func.coalesce(func.sum(BetSlip.total_stake), 0.0).label("staked"),
             func.coalesce(func.sum(BetSlip.total_payout), 0.0).label("payout"),
             func.count(BetSlip.id).label("tickets_count")
-        ).filter(BetSlip.draw_id == d.id).first()
+        ).filter(BetSlip.draw_id == d.id, BetSlip.game_type == "4D").first()
 
         tot_staked = float(stats.staked or d.total_pool_stake or 0.0)
         tot_payout = float(stats.payout or 0.0)

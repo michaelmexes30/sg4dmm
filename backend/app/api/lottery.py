@@ -119,6 +119,7 @@ def settle_draw(
     # Query pending slips for this draw
     slips = db.query(BetSlip).filter(
         BetSlip.draw_id == draw.id,
+        BetSlip.game_type == "4D",
         BetSlip.status == BetSlipStatus.PENDING
     ).all()
 

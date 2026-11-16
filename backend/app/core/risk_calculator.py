@@ -50,6 +50,7 @@ def validate_draw_numbers_risk_cap(
         BetSlip, BetItem.slip_id == BetSlip.id
     ).filter(
         BetSlip.draw_id == draw_id,
+        BetSlip.game_type == "4D",
         BetSlip.status.in_([BetSlipStatus.PENDING, BetSlipStatus.WON, BetSlipStatus.LOST])
     ).all()
 

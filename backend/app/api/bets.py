@@ -429,6 +429,7 @@ def place_bet_slip(
         slip_code = f"SLIP-{current_time.strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
         bet_slip = BetSlip(
             slip_code=slip_code,
+            game_type="4D",
             user_id=current_user.id,
             agent_id=agent.id if agent else None,
             agent_commission=agent_commission_amount,
@@ -438,6 +439,7 @@ def place_bet_slip(
             status=BetSlipStatus.PENDING,
             created_at=current_time
         )
+        target_draw.total_pool_stake = (target_draw.total_pool_stake or 0.0) + total_single_draw_stake
         db.add(bet_slip)
         db.flush()
 
