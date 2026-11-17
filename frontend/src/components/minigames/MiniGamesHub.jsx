@@ -5,6 +5,7 @@ import { sound } from '../../utils/soundEffects';
 import LuckyWheelGame from './LuckyWheelGame';
 import CoinFlipGame from './CoinFlipGame';
 import DiceRollGame from './DiceRollGame';
+import CardWheelGame from './CardWheelGame';
 import { Sparkles, Wallet, PlusCircle, Volume2, VolumeX, History, Trophy, Clock, CheckCircle2, XCircle } from 'lucide-react';
 
 export default function MiniGamesHub({ onOpenDeposit }) {
@@ -89,7 +90,7 @@ export default function MiniGamesHub({ onOpenDeposit }) {
       </div>
 
       {/* Mini-Game Navigation Tabs */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5">
         {/* Lucky Wheel */}
         <button
           onClick={() => {
@@ -106,6 +107,25 @@ export default function MiniGamesHub({ onOpenDeposit }) {
           <div className="text-left leading-tight">
             <span className="block text-xs font-black">ကံစမ်းမဲဘီး</span>
             <span className={`text-[10px] block font-mono ${activeTab === 'wheel' ? 'text-black/80 font-bold' : 'text-amber-400'}`}>10x Max</span>
+          </div>
+        </button>
+
+        {/* Card Wheel */}
+        <button
+          onClick={() => {
+            sound.playClick();
+            setActiveTab('card_wheel');
+          }}
+          className={`py-3.5 px-3 rounded-2xl flex items-center justify-center gap-2 transition-all cursor-pointer border ${
+            activeTab === 'card_wheel'
+              ? 'bg-gradient-to-r from-rose-500 via-amber-500 to-amber-600 text-slate-950 font-black shadow-lg shadow-amber-950/40 border-amber-200 scale-[1.02]'
+              : 'bg-dark-card text-slate-300 hover:text-white border-slate-800 hover:border-slate-700'
+          }`}
+        >
+          <span className="text-lg">🃏</span>
+          <div className="text-left leading-tight">
+            <span className="block text-xs font-black">ဖဲချပ်ဘီးလှည့်</span>
+            <span className={`text-[10px] block font-mono ${activeTab === 'card_wheel' ? 'text-black/80 font-bold' : 'text-rose-400'}`}>12x + Streak</span>
           </div>
         </button>
 
@@ -172,6 +192,10 @@ export default function MiniGamesHub({ onOpenDeposit }) {
         <LuckyWheelGame onOpenDeposit={onOpenDeposit} onBalanceChange={() => refreshProfile()} />
       )}
 
+      {activeTab === 'card_wheel' && (
+        <CardWheelGame onOpenDeposit={onOpenDeposit} onBalanceChange={() => refreshProfile()} />
+      )}
+
       {activeTab === 'coin' && (
         <CoinFlipGame onOpenDeposit={onOpenDeposit} onBalanceChange={() => refreshProfile()} />
       )}
@@ -210,12 +234,12 @@ export default function MiniGamesHub({ onOpenDeposit }) {
                 <div key={item.id} className="py-3 flex items-center justify-between text-xs">
                   <div className="flex items-center gap-3">
                     <span className="text-xl">
-                      {item.game_type === 'WHEEL' ? '🎡' : item.game_type === 'COIN_FLIP' ? '🪙' : '🎲'}
+                      {item.game_type === 'WHEEL' ? '🎡' : item.game_type === 'CARD_WHEEL' ? '🃏' : item.game_type === 'COIN_FLIP' ? '🪙' : '🎲'}
                     </span>
                     <div>
                       <div className="font-bold text-white flex items-center gap-2">
                         <span>
-                          {item.game_type === 'WHEEL' ? 'ကံစမ်းမဲဘီး' : item.game_type === 'COIN_FLIP' ? 'ခေါင်း/ပန်း' : 'အန်စာတုံး'}
+                          {item.game_type === 'WHEEL' ? 'ကံစမ်းမဲဘီး' : item.game_type === 'CARD_WHEEL' ? 'ဖဲချပ်ဘီးလှည့်' : item.game_type === 'COIN_FLIP' ? 'ခေါင်း/ပန်း' : 'အန်စာတုံး'}
                         </span>
                         {item.player_choice && item.player_choice !== 'SPIN' && (
                           <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">

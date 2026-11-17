@@ -806,6 +806,13 @@ export const apiClient = {
     });
   },
 
+  spinCardWheel(payload) {
+    return this.request('/minigames/card-wheel/spin', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
   // Admin Mini-Games Management & Realtime Monitoring
   getAdminMiniGamesOverview() {
     return this.request('/admin/minigames/overview');

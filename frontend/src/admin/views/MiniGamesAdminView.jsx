@@ -857,6 +857,7 @@ export default function MiniGamesAdminView({ initialTab = 'game', onNotify }) {
                   {availableGames.length === 0 && (
                     <>
                       <option value="WHEEL">🎡 Lucky Wheel</option>
+                      <option value="CARD_WHEEL">🃏 Card Wheel</option>
                       <option value="COIN_FLIP">🪙 Head or Tail</option>
                       <option value="DICE">🎲 Dice Roll</option>
                     </>
@@ -951,9 +952,10 @@ export default function MiniGamesAdminView({ initialTab = 'game', onNotify }) {
                           <td className="py-2.5 px-3 font-sans">
                             <span className="inline-flex items-center gap-1 font-semibold text-slate-200">
                               {bet.game_type === 'WHEEL' && '🎡 Wheel'}
+                              {bet.game_type === 'CARD_WHEEL' && '🃏 Card Wheel'}
                               {bet.game_type === 'COIN_FLIP' && '🪙 Coin'}
                               {bet.game_type === 'DICE' && '🎲 Dice'}
-                              {!['WHEEL', 'COIN_FLIP', 'DICE'].includes(bet.game_type) && `🎮 ${bet.game_type}`}
+                              {!['WHEEL', 'CARD_WHEEL', 'COIN_FLIP', 'DICE'].includes(bet.game_type) && `🎮 ${bet.game_type}`}
                             </span>
                           </td>
                           <td className="py-2.5 px-3">
@@ -989,7 +991,13 @@ export default function MiniGamesAdminView({ initialTab = 'game', onNotify }) {
                                 {bet.result_data?.is_triple ? ' (Triple!)' : ''}
                               </span>
                             )}
-                            {!['WHEEL', 'COIN_FLIP', 'DICE'].includes(bet.game_type) && (
+                            {bet.game_type === 'CARD_WHEEL' && (
+                              <span className="font-mono">
+                                Sector: {bet.result_data?.sector?.rank === 'BANKER' ? '👑 BANKER' : `${bet.result_data?.sector?.rank}${bet.result_data?.sector?.suit}`}
+                                {bet.result_data?.streak_count > 1 && ` (🔥 ${bet.result_data.streak_multiplier}x Streak)`}
+                              </span>
+                            )}
+                            {!['WHEEL', 'CARD_WHEEL', 'COIN_FLIP', 'DICE'].includes(bet.game_type) && (
                               <span>{JSON.stringify(bet.result_data || {})}</span>
                             )}
                           </td>

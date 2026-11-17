@@ -966,6 +966,7 @@ def get_weekly_bonuses_live_preview(
     ).first() is None
 
     prev_slips_count = db.query(func.count(BetSlip.id)).join(LotteryDraw).filter(
+        BetSlip.game_type == "4D",
         LotteryDraw.draw_date >= prev_monday_str,
         LotteryDraw.draw_date <= prev_sunday_str
     ).scalar() or 0
@@ -982,6 +983,7 @@ def get_weekly_bonuses_live_preview(
 
     for player in players:
         slips = db.query(BetSlip).join(LotteryDraw).filter(
+            BetSlip.game_type == "4D",
             BetSlip.user_id == player.id,
             BetSlip.status != BetSlipStatus.VOID,
             BetSlip.status != BetSlipStatus.CANCELLED,
@@ -1308,22 +1310,27 @@ def get_draw_heatmap(
                 combos = json.loads(it.combinations_json)
                 per_combo = it.big_amount if it.big_amount > 0 else (it.item_stake / len(combos) if len(combos) > 0 else it.item_stake)
                 for c in combos:
-                    if c not in number_map:
-                        number_map[c] = {"number": c, "total_staked": 0.0, "bet_count": 0}
-                    number_map[c]["total_staked"] += float(per_combo)
-                    number_map[c]["bet_count"] += 1
+                    c_str = str(c).strip()
+                    if len(c_str) != 4 or not c_str.isdigit():
+                        continue
+                    if c_str not in number_map:
+                        number_map[c_str] = {"number": c_str, "total_staked": 0.0, "bet_count": 0}
+                    number_map[c_str]["total_staked"] += float(per_combo)
+                    number_map[c_str]["bet_count"] += 1
             except Exception:
-                num = it.number
+                num = str(it.number).strip()
+                if len(num) == 4 and num.isdigit():
+                    if num not in number_map:
+                        number_map[num] = {"number": num, "total_staked": 0.0, "bet_count": 0}
+                    number_map[num]["total_staked"] += float(it.item_stake)
+                    number_map[num]["bet_count"] += 1
+        else:
+            num = str(it.number).strip()
+            if len(num) == 4 and num.isdigit():
                 if num not in number_map:
                     number_map[num] = {"number": num, "total_staked": 0.0, "bet_count": 0}
                 number_map[num]["total_staked"] += float(it.item_stake)
                 number_map[num]["bet_count"] += 1
-        else:
-            num = it.number
-            if num not in number_map:
-                number_map[num] = {"number": num, "total_staked": 0.0, "bet_count": 0}
-            number_map[num]["total_staked"] += float(it.item_stake)
-            number_map[num]["bet_count"] += 1
 
     all_items_dicts = sorted(number_map.values(), key=lambda x: x["total_staked"], reverse=True)
     total_pool = sum(it["total_staked"] for it in all_items_dicts)
@@ -2160,6 +2167,7 @@ def get_4d_bets_history(
         .join(BetSlip, BetItem.slip_id == BetSlip.id)
         .join(User, BetSlip.user_id == User.id)
         .join(LotteryDraw, BetSlip.draw_id == LotteryDraw.id)
+        .filter(BetSlip.game_type == "4D")
     )
     if game_date:
         query = query.filter(LotteryDraw.draw_date.contains(game_date))
@@ -5709,7 +5717,8 @@ def get_minigames_admin_overview(
     game_configs = [
         {"type": "WHEEL", "name": "Lucky Wheel", "icon": "🎡"},
         {"type": "COIN_FLIP", "name": "Head or Tail", "icon": "🪙"},
-        {"type": "DICE", "name": "Dice Roll", "icon": "🎲"}
+        {"type": "DICE", "name": "Dice Roll", "icon": "🎲"},
+        {"type": "CARD_WHEEL", "name": "Card Wheel", "icon": "🃏"}
     ]
     for gc in game_configs:
         g_type = gc["type"]

@@ -186,6 +186,10 @@ export default function Game4DView({ onNotify, mode = 'live' }) {
 
   // Filter numbers based on UI controls
   const filteredNumbers = rawNumbers.filter((item) => {
+    // Strictly 4D numbers (4 digits) only
+    if (!item.number || String(item.number).trim().length !== 4) {
+      return false;
+    }
     // Search filter
     if (searchNumber.trim() && !item.number.includes(searchNumber.trim())) {
       return false;
