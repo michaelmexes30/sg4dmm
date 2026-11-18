@@ -206,22 +206,6 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
   const animFrameRef = useRef(null);
   const spinStartRef = useRef(0);
 
-  // Last winning card (for 49x HOT indicator)
-  const hotCard = useMemo(() => {
-    if (history.length === 0) return '9';
-    const top = history[0];
-    return top !== '0' && top !== 'CUSH' ? top : null;
-  }, [history]);
-
-  // Which row contains the hot card? (Row 1: 2,3,4,5 / Row 2: 6,7,8,9 / Row 3: J,Q,K)
-  const hotRowIndex = useMemo(() => {
-    if (!hotCard) return 1; // Default highlight row 2
-    if (['2', '3', '4', '5'].includes(hotCard)) return 0;
-    if (['6', '7', '8', '9'].includes(hotCard)) return 1;
-    if (['J', 'Q', 'K'].includes(hotCard)) return 2;
-    return 1;
-  }, [hotCard]);
-
   // Load history from backend
   useEffect(() => {
     const loadHistory = async () => {
@@ -362,34 +346,53 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
     }
   };
 
-  // High-performance physics animation for Wheel & Ball
+  // High-performance physics animation for Wheel & Ball (15-second suspense)
   const runRouletteAnimation = (targetPocketIndex, onComplete) => {
     const anglePerPocket = 360 / 24; // 15 degrees per slot
     // Sector 0 is at 12 o'clock (0°). Pocket index `i` is at `i * 15°` clockwise.
     // When ball settles in pocket `i`, its relative angle on wheel must align.
     const targetSlotAngle = targetPocketIndex * anglePerPocket;
 
-    const DURATION = 4600; // 4.6 seconds of suspense
+    const DURATION = 15000; // Strictly 15 seconds of suspense as requested
     const startTime = performance.now();
     spinStartRef.current = startTime;
 
-    // Wheel will do 4 full rotations
+    // Wheel will do 8 full rotations over 15 seconds
     const startWheelRot = wheelRotation % 360;
-    const targetWheelRot = startWheelRot + 360 * 4;
+    const numWheelRotations = 8;
+    const targetWheelRot = startWheelRot + 360 * numWheelRotations;
 
-    // Ball will do 8 full rotations in opposite or forward direction
+    // Ball will do 22 full rotations
+    const numBallRotations = 22;
     const startBallAngle = ballAngle % 360;
     // Final ball position: aligned with target pocket on the wheel
-    const finalBallAngle = targetWheelRot + targetSlotAngle + 360 * 8;
+    const finalBallAngle = targetWheelRot + targetSlotAngle + 360 * numBallRotations;
 
     let lastTickAngle = startBallAngle;
+    let lastTickTime = startTime;
 
     const animate = (now) => {
       const elapsed = now - startTime;
-      const progress = Math.min(1, elapsed / DURATION);
+      const p = Math.min(1, elapsed / DURATION);
 
-      // Quintic ease-out for realistic friction deceleration
-      const ease = 1 - Math.pow(1 - progress, 4.2);
+      // Realistic 3-phase physics curve for 15 seconds:
+      // Phase 1 (0 to 10s / p <= 0.67): Fast rim orbit with gradual friction
+      // Phase 2 (10s to 13.5s / 0.67 < p <= 0.90): Ball slows down and drops toward pockets
+      // Phase 3 (13.5s to 15s / 0.90 < p <= 1.0): Bouncing between pockets and settling cleanly into slot
+      let ease;
+      if (p <= 0.67) {
+        const t = p / 0.67;
+        // Covers 76% of angular distance during the first 10 seconds
+        ease = 0.76 * (1 - Math.pow(1 - t, 1.8));
+      } else if (p <= 0.90) {
+        const t = (p - 0.67) / 0.23;
+        // Covers from 76% to 96% during 10s - 13.5s with steeper deceleration
+        ease = 0.76 + 0.20 * (1 - Math.pow(1 - t, 2.2));
+      } else {
+        const t = (p - 0.90) / 0.10;
+        // Covers remaining 4% smoothly into the pocket during 13.5s - 15.0s
+        ease = 0.96 + 0.04 * (1 - Math.pow(1 - t, 2.0));
+      }
 
       // Current wheel rotation
       const curWheelRot = startWheelRot + (targetWheelRot - startWheelRot) * ease;
@@ -401,22 +404,26 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
 
       // Ball orbital radius: starts on outer track (122px), then drops into pocket ring (96px)
       let curRadius = 122;
-      if (progress > 0.65) {
-        // Drop into pocket
-        const dropProg = (progress - 0.65) / 0.35;
-        // Bouncing dampening
-        const bounce = Math.sin(dropProg * Math.PI * 4) * (1 - dropProg) * 6;
+      if (p > 0.67) {
+        const dropProg = (p - 0.67) / 0.33;
+        // Bouncing dampening as ball rattles across pocket dividers
+        const bounceDecay = Math.max(0, 1 - dropProg);
+        const bounce = Math.sin(dropProg * Math.PI * 6) * bounceDecay * 5;
         curRadius = 122 - (122 - 96) * dropProg + bounce;
       }
       setBallRadius(curRadius);
 
       // Play audio ticks as ball sweeps past pockets
-      if (Math.abs(curBallAngle - lastTickAngle) >= anglePerPocket) {
-        audio.playTick(600 + Math.random() * 400);
+      const angleDiff = Math.abs(curBallAngle - lastTickAngle);
+      const timeDiff = now - lastTickTime;
+      if (angleDiff >= (p < 0.6 ? anglePerPocket * 2 : anglePerPocket) && timeDiff > 45) {
+        const pitch = p > 0.85 ? 450 + Math.random() * 150 : 700 + Math.random() * 300;
+        audio.playTick(pitch);
         lastTickAngle = curBallAngle;
+        lastTickTime = now;
       }
 
-      if (progress < 1) {
+      if (p < 1) {
         animFrameRef.current = requestAnimationFrame(animate);
       } else {
         audio.playBallSnap();
@@ -737,23 +744,6 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
           {/* Center Neon-Green Grid Panel */}
           <div className="flex-1 relative rounded-2xl p-2 bg-[#05130b] border-2 border-[#00ff66] shadow-[0_0_15px_rgba(0,255,102,0.4),inset_0_0_12px_rgba(0,255,102,0.2)]">
             
-            {/* Left Chevron 49x Indicator Badge */}
-            <div
-              className="absolute -left-3.5 z-20 transition-all duration-300"
-              style={{
-                top: hotRowIndex === 0 ? '16%' : hotRowIndex === 1 ? '48%' : '80%',
-                transform: 'translateY(-50%)',
-              }}
-            >
-              <div className="flex items-center">
-                <div className="bg-[#021b0b] text-[#00ff66] border border-[#00ff66] font-mono font-black text-[10px] px-1.5 py-1 rounded-l-md shadow-[0_0_10px_#00ff66] animate-pulse">
-                  49x
-                </div>
-                {/* Arrow pointing right */}
-                <div className="w-0 h-0 border-t-[7px] border-t-transparent border-b-[7px] border-b-transparent border-l-[7px] border-l-[#00ff66]" />
-              </div>
-            </div>
-
             {/* Main Grid Structure */}
             <div className="grid grid-cols-5 gap-1.5 h-full">
               
@@ -763,7 +753,6 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
                 {/* ROW 1: [2, 3, 4, 5] */}
                 <div className="grid grid-cols-4 gap-1.5">
                   {['2', '3', '4', '5'].map((card) => {
-                    const isHot = hotCard === card;
                     const betAmt = bets[card] || 0;
                     const isWinningCell = lastWinResult?.hit_rank === card;
                     return (
@@ -779,13 +768,6 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
                             : 'bg-[#062012]/80 hover:bg-[#0b331c] border-[#00ff66]/60 active:scale-95'
                         }`}
                       >
-                        {/* HOT Badge */}
-                        {isHot && (
-                          <span className="absolute -top-1.5 left-0.5 text-[8px] bg-rose-600 text-white font-black px-1 rounded-full animate-bounce shadow">
-                            49x
-                          </span>
-                        )}
-
                         {/* Card Digit */}
                         <span className="text-base sm:text-lg font-black text-[#fef08a] drop-shadow-[0_0_5px_rgba(254,240,138,0.8)]">
                           {card}
@@ -805,7 +787,6 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
                 {/* ROW 2: [6, 7, 8, 9] */}
                 <div className="grid grid-cols-4 gap-1.5">
                   {['6', '7', '8', '9'].map((card) => {
-                    const isHot = hotCard === card;
                     const betAmt = bets[card] || 0;
                     const isWinningCell = lastWinResult?.hit_rank === card;
                     return (
@@ -821,13 +802,6 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
                             : 'bg-[#062012]/80 hover:bg-[#0b331c] border-[#00ff66]/60 active:scale-95'
                         }`}
                       >
-                        {/* HOT Badge */}
-                        {isHot && (
-                          <span className="absolute -top-1.5 left-0.5 text-[8px] bg-rose-600 text-white font-black px-1 rounded-full animate-bounce shadow">
-                            49x
-                          </span>
-                        )}
-
                         <span className="text-base sm:text-lg font-black text-[#fef08a] drop-shadow-[0_0_5px_rgba(254,240,138,0.8)]">
                           {card}
                         </span>
@@ -845,7 +819,6 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
                 {/* ROW 3: [J, Q, K] (3 Equal Wide Cells) */}
                 <div className="grid grid-cols-3 gap-1.5">
                   {['J', 'Q', 'K'].map((card) => {
-                    const isHot = hotCard === card;
                     const betAmt = bets[card] || 0;
                     const isWinningCell = lastWinResult?.hit_rank === card;
                     return (
@@ -861,12 +834,6 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
                             : 'bg-[#062012]/80 hover:bg-[#0b331c] border-[#00ff66]/60 active:scale-95'
                         }`}
                       >
-                        {isHot && (
-                          <span className="absolute -top-1.5 left-0.5 text-[8px] bg-rose-600 text-white font-black px-1 rounded-full animate-bounce shadow">
-                            49x
-                          </span>
-                        )}
-
                         <span className="text-base sm:text-lg font-black text-[#fef08a] drop-shadow-[0_0_5px_rgba(254,240,138,0.8)]">
                           {card}
                         </span>

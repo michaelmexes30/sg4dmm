@@ -182,7 +182,7 @@ def get_minigames_config(db: Session = Depends(get_db)):
                 "title": "Royal Crown (Card Roulette)",
                 "title_mm": "Royal Crown ဖဲချပ် ရူးလက်ဂိမ်း",
                 "icon": "👑",
-                "badge": "5x / 49x HOT",
+                "badge": "5x Multiplier",
                 "sectors": ROYAL_CROWN_SECTORS,
                 "payout_card": 5.0,
                 "payout_streak": 49.0,

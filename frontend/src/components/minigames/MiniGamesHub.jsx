@@ -125,7 +125,7 @@ export default function MiniGamesHub({ onOpenDeposit }) {
           <span className="text-lg">👑</span>
           <div className="text-left leading-tight">
             <span className="block text-xs font-black">Royal Crown</span>
-            <span className={`text-[10px] block font-mono ${activeTab === 'card_wheel' ? 'text-black/80 font-bold' : 'text-amber-400'}`}>5x / 49x HOT</span>
+            <span className={`text-[10px] block font-mono ${activeTab === 'card_wheel' ? 'text-black/80 font-bold' : 'text-amber-400'}`}>5x Payout</span>
           </div>
         </button>
 
