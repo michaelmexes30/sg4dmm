@@ -32,45 +32,53 @@ WHEEL_SEGMENTS = [
     {"index": 7, "multiplier": 10.0, "label": "10x JACKPOT", "color": "#eab308", "weight": 0.5},
 ]
 
-# 27 Sectors for Card Wheel / Card Roulette Mini-Game
+# 24 Slots for Royal Crown (Card Roulette) Arcade Machine
+# Strictly 2 Full Sets Clockwise: [0 (Red), 2, 3, 4, 5, 6, 7, 8, 9, J, Q, K (All Green)] x 2
 CARD_WHEEL_SECTORS = [
-    {"index": 0, "rank": "BANKER", "suit": "👑", "label": "BANKER", "color": "emerald", "bg": "#059669", "textColor": "#ffffff", "is_even": False, "is_odd": False, "tier": "BANKER"},
-    {"index": 1, "rank": "K", "suit": "♠", "label": "K♠", "color": "black", "bg": "#1e293b", "textColor": "#ffffff", "is_even": False, "is_odd": True, "tier": "HIGH"},
-    {"index": 2, "rank": "2", "suit": "♥", "label": "2♥", "color": "red", "bg": "#dc2626", "textColor": "#ffffff", "is_even": True, "is_odd": False, "tier": "LOW"},
-    {"index": 3, "rank": "7", "suit": "♣", "label": "7♣", "color": "black", "bg": "#1e293b", "textColor": "#ffffff", "is_even": False, "is_odd": True, "tier": "MID"},
-    {"index": 4, "rank": "4", "suit": "♥", "label": "4♥", "color": "red", "bg": "#dc2626", "textColor": "#ffffff", "is_even": True, "is_odd": False, "tier": "LOW"},
-    {"index": 5, "rank": "J", "suit": "♠", "label": "J♠", "color": "black", "bg": "#1e293b", "textColor": "#ffffff", "is_even": False, "is_odd": True, "tier": "HIGH"},
-    {"index": 6, "rank": "3", "suit": "♥", "label": "3♥", "color": "red", "bg": "#dc2626", "textColor": "#ffffff", "is_even": False, "is_odd": True, "tier": "LOW"},
-    {"index": 7, "rank": "8", "suit": "♣", "label": "8♣", "color": "black", "bg": "#1e293b", "textColor": "#ffffff", "is_even": True, "is_odd": False, "tier": "MID"},
-    {"index": 8, "rank": "5", "suit": "♦", "label": "5♦", "color": "red", "bg": "#dc2626", "textColor": "#ffffff", "is_even": False, "is_odd": True, "tier": "LOW"},
-    {"index": 9, "rank": "Q", "suit": "♠", "label": "Q♠", "color": "black", "bg": "#1e293b", "textColor": "#ffffff", "is_even": True, "is_odd": False, "tier": "HIGH"},
-    {"index": 10, "rank": "2", "suit": "♦", "label": "2♦", "color": "red", "bg": "#dc2626", "textColor": "#ffffff", "is_even": True, "is_odd": False, "tier": "LOW"},
-    {"index": 11, "rank": "6", "suit": "♣", "label": "6♣", "color": "black", "bg": "#1e293b", "textColor": "#ffffff", "is_even": True, "is_odd": False, "tier": "MID"},
-    {"index": 12, "rank": "4", "suit": "♠", "label": "4♠", "color": "black", "bg": "#1e293b", "textColor": "#ffffff", "is_even": True, "is_odd": False, "tier": "LOW"},
-    {"index": 13, "rank": "9", "suit": "♦", "label": "9♦", "color": "red", "bg": "#dc2626", "textColor": "#ffffff", "is_even": False, "is_odd": True, "tier": "MID"},
-    {"index": 14, "rank": "3", "suit": "♠", "label": "3♠", "color": "black", "bg": "#1e293b", "textColor": "#ffffff", "is_even": False, "is_odd": True, "tier": "LOW"},
-    {"index": 15, "rank": "K", "suit": "♥", "label": "K♥", "color": "red", "bg": "#dc2626", "textColor": "#ffffff", "is_even": False, "is_odd": True, "tier": "HIGH"},
-    {"index": 16, "rank": "5", "suit": "♠", "label": "5♠", "color": "black", "bg": "#1e293b", "textColor": "#ffffff", "is_even": False, "is_odd": True, "tier": "LOW"},
-    {"index": 17, "rank": "7", "suit": "♦", "label": "7♦", "color": "red", "bg": "#dc2626", "textColor": "#ffffff", "is_even": False, "is_odd": True, "tier": "MID"},
-    {"index": 18, "rank": "2", "suit": "♣", "label": "2♣", "color": "black", "bg": "#1e293b", "textColor": "#ffffff", "is_even": True, "is_odd": False, "tier": "LOW"},
-    {"index": 19, "rank": "J", "suit": "♥", "label": "J♥", "color": "red", "bg": "#dc2626", "textColor": "#ffffff", "is_even": False, "is_odd": True, "tier": "HIGH"},
-    {"index": 20, "rank": "4", "suit": "♣", "label": "4♣", "color": "black", "bg": "#1e293b", "textColor": "#ffffff", "is_even": True, "is_odd": False, "tier": "LOW"},
-    {"index": 21, "rank": "8", "suit": "♦", "label": "8♦", "color": "red", "bg": "#dc2626", "textColor": "#ffffff", "is_even": True, "is_odd": False, "tier": "MID"},
-    {"index": 22, "rank": "3", "suit": "♣", "label": "3♣", "color": "black", "bg": "#1e293b", "textColor": "#ffffff", "is_even": False, "is_odd": True, "tier": "LOW"},
-    {"index": 23, "rank": "Q", "suit": "♥", "label": "Q♥", "color": "red", "bg": "#dc2626", "textColor": "#ffffff", "is_even": True, "is_odd": False, "tier": "HIGH"},
-    {"index": 24, "rank": "5", "suit": "♥", "label": "5♥", "color": "red", "bg": "#dc2626", "textColor": "#ffffff", "is_even": False, "is_odd": True, "tier": "LOW"},
-    {"index": 25, "rank": "6", "suit": "♥", "label": "6♥", "color": "red", "bg": "#dc2626", "textColor": "#ffffff", "is_even": True, "is_odd": False, "tier": "MID"},
-    {"index": 26, "rank": "9", "suit": "♠", "label": "9♠", "color": "black", "bg": "#1e293b", "textColor": "#ffffff", "is_even": False, "is_odd": True, "tier": "MID"}
+    # Set 1 (pockets 0 to 11)
+    {"index": 0, "rank": "0", "label": "0", "color": "red", "bg": "#dc2626", "textColor": "#ffffff", "is_cush": True},
+    {"index": 1, "rank": "2", "label": "2", "color": "green", "bg": "#15803d", "textColor": "#ffffff", "is_cush": False},
+    {"index": 2, "rank": "3", "label": "3", "color": "green", "bg": "#15803d", "textColor": "#ffffff", "is_cush": False},
+    {"index": 3, "rank": "4", "label": "4", "color": "green", "bg": "#15803d", "textColor": "#ffffff", "is_cush": False},
+    {"index": 4, "rank": "5", "label": "5", "color": "green", "bg": "#15803d", "textColor": "#ffffff", "is_cush": False},
+    {"index": 5, "rank": "6", "label": "6", "color": "green", "bg": "#15803d", "textColor": "#ffffff", "is_cush": False},
+    {"index": 6, "rank": "7", "label": "7", "color": "green", "bg": "#15803d", "textColor": "#ffffff", "is_cush": False},
+    {"index": 7, "rank": "8", "label": "8", "color": "green", "bg": "#15803d", "textColor": "#ffffff", "is_cush": False},
+    {"index": 8, "rank": "9", "label": "9", "color": "green", "bg": "#15803d", "textColor": "#ffffff", "is_cush": False},
+    {"index": 9, "rank": "J", "label": "J", "color": "green", "bg": "#15803d", "textColor": "#ffffff", "is_cush": False},
+    {"index": 10, "rank": "Q", "label": "Q", "color": "green", "bg": "#15803d", "textColor": "#ffffff", "is_cush": False},
+    {"index": 11, "rank": "K", "label": "K", "color": "green", "bg": "#15803d", "textColor": "#ffffff", "is_cush": False},
+    # Set 2 (pockets 12 to 23)
+    {"index": 12, "rank": "0", "label": "0", "color": "red", "bg": "#dc2626", "textColor": "#ffffff", "is_cush": True},
+    {"index": 13, "rank": "2", "label": "2", "color": "green", "bg": "#15803d", "textColor": "#ffffff", "is_cush": False},
+    {"index": 14, "rank": "3", "label": "3", "color": "green", "bg": "#15803d", "textColor": "#ffffff", "is_cush": False},
+    {"index": 15, "rank": "4", "label": "4", "color": "green", "bg": "#15803d", "textColor": "#ffffff", "is_cush": False},
+    {"index": 16, "rank": "5", "label": "5", "color": "green", "bg": "#15803d", "textColor": "#ffffff", "is_cush": False},
+    {"index": 17, "rank": "6", "label": "6", "color": "green", "bg": "#15803d", "textColor": "#ffffff", "is_cush": False},
+    {"index": 18, "rank": "7", "label": "7", "color": "green", "bg": "#15803d", "textColor": "#ffffff", "is_cush": False},
+    {"index": 19, "rank": "8", "label": "8", "color": "green", "bg": "#15803d", "textColor": "#ffffff", "is_cush": False},
+    {"index": 20, "rank": "9", "label": "9", "color": "green", "bg": "#15803d", "textColor": "#ffffff", "is_cush": False},
+    {"index": 21, "rank": "J", "label": "J", "color": "green", "bg": "#15803d", "textColor": "#ffffff", "is_cush": False},
+    {"index": 22, "rank": "Q", "label": "Q", "color": "green", "bg": "#15803d", "textColor": "#ffffff", "is_cush": False},
+    {"index": 23, "rank": "K", "label": "K", "color": "green", "bg": "#15803d", "textColor": "#ffffff", "is_cush": False},
 ]
+ROYAL_CROWN_SECTORS = CARD_WHEEL_SECTORS
 
 
 def get_minigame_controls(db: Session):
     """Retrieves live RTP rate, master toggle, and stake limits from SystemSetting."""
-    setting = db.query(SystemSetting).first()
-    is_enabled = bool(getattr(setting, "is_mini_games_enabled", True) if setting else True)
-    rtp_rate = float(getattr(setting, "minigames_rtp_rate", DEFAULT_RTP_RATE) or DEFAULT_RTP_RATE) if setting else DEFAULT_RTP_RATE
-    min_stake = float(getattr(setting, "minigames_min_bet", DEFAULT_MIN_STAKE) or DEFAULT_MIN_STAKE) if setting else DEFAULT_MIN_STAKE
-    max_stake = float(getattr(setting, "minigames_max_bet", DEFAULT_MAX_STAKE) or DEFAULT_MAX_STAKE) if setting else DEFAULT_MAX_STAKE
+    try:
+        setting = db.query(SystemSetting).first()
+        is_enabled = bool(getattr(setting, "is_mini_games_enabled", True) if setting else True)
+        rtp_rate = float(getattr(setting, "minigames_rtp_rate", DEFAULT_RTP_RATE) or DEFAULT_RTP_RATE) if setting else DEFAULT_RTP_RATE
+        min_stake = float(getattr(setting, "minigames_min_bet", DEFAULT_MIN_STAKE) or DEFAULT_MIN_STAKE) if setting else DEFAULT_MIN_STAKE
+        max_stake = float(getattr(setting, "minigames_max_bet", DEFAULT_MAX_STAKE) or DEFAULT_MAX_STAKE) if setting else DEFAULT_MAX_STAKE
+    except Exception:
+        db.rollback()
+        is_enabled = True
+        rtp_rate = DEFAULT_RTP_RATE
+        min_stake = DEFAULT_MIN_STAKE
+        max_stake = DEFAULT_MAX_STAKE
 
     # Clamp RTP safely between 70.0% and 98.0%
     rtp_rate = max(70.0, min(98.0, rtp_rate))
@@ -117,10 +125,17 @@ class DiceRollRequest(BaseModel):
     choice: str = Field(..., pattern="^(SMALL|BIG|TRIPLE)$", example="BIG")
     stake: float = Field(..., ge=1.0, example=100.0)
 
+class RoyalCrownBetItem(BaseModel):
+    choice: str = Field(..., example="9") # "2".."9", "J", "Q", "K", "CUSH" / "0"
+    stake: float = Field(..., ge=1.0, example=100.0)
+
 class CardWheelSpinRequest(BaseModel):
-    bet_type: str = Field(..., pattern="^(CARD_RANK|EVEN|ODD|RED|BLACK|STREAK_DOUBLE)$", example="CARD_RANK")
-    choice: str = Field(..., example="9")
-    stake: float = Field(..., ge=1.0, example=500.0)
+    # Multiple simultaneous bets on board
+    bets: Optional[List[RoyalCrownBetItem]] = None
+    # Single-bet fallback
+    bet_type: Optional[str] = "CARD_RANK"
+    choice: Optional[str] = None
+    stake: Optional[float] = None
 
 
 @router.get("/config")
@@ -164,21 +179,14 @@ def get_minigames_config(db: Session = Depends(get_db)):
             },
             {
                 "id": "card_wheel",
-                "title": "Card Wheel (Card Roulette)",
-                "title_mm": "ဖဲချပ် ဘီးလှည့် ရူးလက်ဂိမ်း",
-                "icon": "🃏",
-                "badge": "12x High / Streak Bonus",
-                "sectors": CARD_WHEEL_SECTORS,
-                "multipliers": {
-                    "LOW": 2.0,
-                    "MID": 3.5,
-                    "HIGH": 12.0,
-                    "EVEN": 1.95,
-                    "ODD": 1.95,
-                    "RED": 1.95,
-                    "BLACK": 1.95,
-                    "STREAK_DOUBLE": 10.0
-                }
+                "title": "Royal Crown (Card Roulette)",
+                "title_mm": "Royal Crown ဖဲချပ် ရူးလက်ဂိမ်း",
+                "icon": "👑",
+                "badge": "5x / 49x HOT",
+                "sectors": ROYAL_CROWN_SECTORS,
+                "payout_card": 5.0,
+                "payout_streak": 49.0,
+                "payout_cush": 11.0
             }
         ]
     }
@@ -628,6 +636,40 @@ def roll_dice(
         )
 
 
+@router.get("/card-wheel/history")
+def get_card_wheel_history(
+    limit: int = 10,
+    db: Session = Depends(get_db)
+):
+    """Returns recent winning results (cards) for Royal Crown history display."""
+    recent_bets = db.query(MiniGameBet).filter(
+        MiniGameBet.game_type == "CARD_WHEEL"
+    ).order_by(MiniGameBet.id.desc()).limit(limit * 3).all()
+
+    results = []
+    seen_ids = set()
+    for b in recent_bets:
+        if isinstance(b.result_data, dict):
+            gid = b.result_data.get("game_id")
+            if gid and gid in seen_ids:
+                continue
+            if gid:
+                seen_ids.add(gid)
+            sec = b.result_data.get("sector") or {}
+            rank = sec.get("rank") or b.result_data.get("hit_rank")
+            if rank:
+                results.append(str(rank))
+            if len(results) >= limit:
+                break
+
+    # Fallback seed if history is empty
+    if len(results) < 5:
+        defaults = ["9", "K", "0", "4", "9", "J", "7", "0"]
+        results = (results + defaults)[:limit]
+
+    return {"status": "success", "history": results}
+
+
 @router.post("/card-wheel/spin")
 def spin_card_wheel(
     req: CardWheelSpinRequest,
@@ -635,158 +677,154 @@ def spin_card_wheel(
     db: Session = Depends(get_db)
 ):
     """
-    Card Wheel / Card Roulette Mini-Game:
-    27 Sectors (12 Low, 8 Mid, 6 High, 1 Banker).
-    Supports Single Card Ranks (2-9, J, Q, K), Side Bets (EVEN/ODD, RED/BLACK, STREAK_DOUBLE).
-    Includes consecutive streak multipliers (2 in a row = 2x, 3 in a row = 5x, 4+ = 10x).
+    Royal Crown (Card Roulette) Arcade Machine:
+    - 24 Slots (Strictly 2 sets: 0 Red, 2..K Green).
+    - Multi-bet support on betting grid (2-9, J, Q, K, CUSH).
+    - Standard Card Hit: 5x Payout.
+    - Consecutive Hit Multiplier (Same Card 2 in a row): 49x Payout!
+    - CUSH (0) Hit: 11x Payout for CUSH bets, house wins otherwise.
     """
     try:
         is_enabled, rtp_rate, min_stake, max_stake = get_minigame_controls(db)
         if not is_enabled:
             raise HTTPException(status_code=403, detail="မီနီဂိမ်းများကို စနစ်ထိန်းသိမ်းမှုအရ ခေတ္တပိတ်ထားပါသည် (Mini-games are temporarily disabled).")
 
-        stake = float(req.stake)
-        if stake < min_stake or stake > max_stake:
+        # 1. Normalize and validate incoming bets
+        incoming_bets = []
+        if req.bets and len(req.bets) > 0:
+            for b in req.bets:
+                if b.stake and b.stake > 0:
+                    c = b.choice.strip().upper()
+                    if c == "0":
+                        c = "CUSH"
+                    incoming_bets.append({"choice": c, "stake": float(b.stake)})
+        elif req.choice and req.stake and req.stake > 0:
+            c = req.choice.strip().upper()
+            if c == "0":
+                c = "CUSH"
+            incoming_bets.append({"choice": c, "stake": float(req.stake)})
+
+        if not incoming_bets:
+            raise HTTPException(status_code=400, detail="ကျေးဇူးပြု၍ လောင်းကြေး အနည်းဆုံး ၁ ခု ရွေးချယ်ပါ (Please place at least one bet).")
+
+        total_stake = round(sum(b["stake"] for b in incoming_bets), 2)
+        if total_stake < min_stake or total_stake > max_stake:
             raise HTTPException(
                 status_code=400,
-                detail=f"ထိုးကြေးမှာ အနည်းဆုံး {min_stake:,.0f} MMK မှ အများဆုံး {max_stake:,.0f} MMK အတွင်း ဖြစ်ရပါမည်။"
+                detail=f"စုစုပေါင်း ထိုးကြေးမှာ အနည်းဆုံး {min_stake:,.0f} MMK မှ အများဆုံး {max_stake:,.0f} MMK အတွင်း ဖြစ်ရပါမည်။"
             )
 
-        if float(current_user.balance or 0.0) < stake:
+        if float(current_user.balance or 0.0) < total_stake:
             raise HTTPException(status_code=400, detail="လက်ကျန်ငွေ မလုံလောက်ပါခင်ဗျာ။ ငွေဖြည့်သွင်းပေးပါရန် (Insufficient balance).")
 
-        bet_type = req.bet_type.strip().upper()
-        choice = req.choice.strip().upper()
-
-        # Retrieve last spin result for this user to compute consecutive streak bonus
+        # 2. Retrieve last spin outcome for streak bonus check
         last_bet = db.query(MiniGameBet).filter(
             MiniGameBet.user_id == current_user.id,
             MiniGameBet.game_type == "CARD_WHEEL"
         ).order_by(MiniGameBet.id.desc()).first()
 
         last_rank = None
-        last_streak_count = 0
         if last_bet and isinstance(last_bet.result_data, dict):
-            last_sec = last_bet.result_data.get("sector") or {}
-            last_rank = last_sec.get("rank")
-            last_streak_count = int(last_bet.result_data.get("streak_count") or 1)
+            sec = last_bet.result_data.get("sector") or {}
+            last_rank = sec.get("rank") or last_bet.result_data.get("hit_rank")
 
-        # Calibrate Banker weight based on Admin RTP rate (default 95.0%)
-        # Base weight for 26 cards = 1.0 each. Banker base weight = 1.0 (approx 3.7% house edge).
-        banker_weight = max(0.5, (100.0 - rtp_rate) / 5.0)
-        sector_weights = [banker_weight if s["rank"] == "BANKER" else 1.0 for s in CARD_WHEEL_SECTORS]
+        # 3. Calibrate CUSH (0) weight against live RTP rate (default 95%)
+        # 24 sectors = 2 CUSH + 22 Card slots
+        cush_weight = max(0.4, (100.0 - rtp_rate) / 4.0)
+        sector_weights = [cush_weight if s.get("is_cush") else 1.0 for s in ROYAL_CROWN_SECTORS]
 
         # Secure RNG pick
         chosen_sector = secrets.choice(
-            [s for s, w in zip(CARD_WHEEL_SECTORS, sector_weights) for _ in range(max(1, int(w * 10)))]
+            [s for s, w in zip(ROYAL_CROWN_SECTORS, sector_weights) for _ in range(max(1, int(w * 10)))]
         )
 
         hit_rank = chosen_sector["rank"]
-        hit_suit = chosen_sector["suit"]
-        hit_color = chosen_sector["color"]
-        is_banker = (hit_rank == "BANKER")
+        is_cush = chosen_sector.get("is_cush", False)
 
-        # Evaluate Bet Outcome
-        is_win = False
-        base_multiplier = 0.0
-        streak_count = 1
-        streak_multiplier = 1.0
+        # 4. Determine Consecutive Streak (49x on same card 2 spins in a row)
+        is_streak = False
+        card_payout_mult = 5.0
+        if not is_cush and last_rank and (last_rank == hit_rank) and last_rank not in ["0", "CUSH"]:
+            is_streak = True
+            card_payout_mult = 49.0
+        else:
+            is_streak = False
+            card_payout_mult = 5.0
 
-        if is_banker:
-            # Banker takes all player bets
-            is_win = False
-            base_multiplier = 0.0
-            streak_count = 1
-            streak_multiplier = 1.0
-        elif bet_type == "CARD_RANK":
-            if choice == hit_rank:
-                is_win = True
-                tier = chosen_sector["tier"]
-                base_multiplier = 2.0 if tier == "LOW" else (3.5 if tier == "MID" else 12.0)
-                
-                # Check consecutive streak hit on same rank
-                if last_rank and last_rank == hit_rank:
-                    streak_count = last_streak_count + 1
-                    if streak_count == 2:
-                        streak_multiplier = 2.0
-                    elif streak_count == 3:
-                        streak_multiplier = 5.0
-                    else:
-                        streak_multiplier = 10.0
-                else:
-                    streak_count = 1
-                    streak_multiplier = 1.0
+        # 5. Evaluate all placed bets
+        total_payout = 0.0
+        bet_results = []
+        winning_choices = []
+
+        for b in incoming_bets:
+            b_choice = b["choice"]
+            b_stake = b["stake"]
+            b_won = False
+            b_mult = 0.0
+            b_payout = 0.0
+
+            if is_cush:
+                # Landed on 0 (CUSH)
+                if b_choice in ["CUSH", "0"]:
+                    b_won = True
+                    b_mult = 11.0 # 11x for landing on 0
+                    b_payout = round(b_stake * b_mult, 2)
+                    winning_choices.append("CUSH")
             else:
-                is_win = False
-                base_multiplier = 0.0
-                streak_count = 1
-                streak_multiplier = 1.0
-        elif bet_type == "EVEN":
-            if chosen_sector["is_even"]:
-                is_win = True
-                base_multiplier = 1.95
-        elif bet_type == "ODD":
-            if chosen_sector["is_odd"]:
-                is_win = True
-                base_multiplier = 1.95
-        elif bet_type == "RED":
-            if hit_color == "red":
-                is_win = True
-                base_multiplier = 1.95
-        elif bet_type == "BLACK":
-            if hit_color == "black":
-                is_win = True
-                base_multiplier = 1.95
-        elif bet_type == "STREAK_DOUBLE":
-            # Player bet that this spin will hit the same rank as the previous spin
-            if last_rank and hit_rank == last_rank and not is_banker:
-                is_win = True
-                base_multiplier = 10.0
-                streak_count = last_streak_count + 1
-                streak_multiplier = 1.0
-            else:
-                is_win = False
-                base_multiplier = 0.0
-                streak_count = 1
+                # Landed on Card (2-K)
+                if b_choice == hit_rank:
+                    b_won = True
+                    b_mult = card_payout_mult # 5.0x or 49.0x
+                    b_payout = round(b_stake * b_mult, 2)
+                    winning_choices.append(hit_rank)
 
-        final_multiplier = round(base_multiplier * streak_multiplier, 2) if is_win else 0.0
-        payout = round(stake * final_multiplier, 2) if is_win else 0.0
+            total_payout += b_payout
+            bet_results.append({
+                "choice": b_choice,
+                "stake": b_stake,
+                "is_won": b_won,
+                "multiplier": b_mult,
+                "payout": b_payout
+            })
 
-        # Calculate wheel target landing angle:
-        # 27 sectors -> each sector is 360 / 27 = 13.3333333333 deg
-        angle_step = 360.0 / 27.0
+        is_win = total_payout > 0
+        total_payout = round(total_payout, 2)
+        final_multiplier = round(total_payout / total_stake, 2) if (is_win and total_stake > 0) else 0.0
+
+        # 6. Calculate wheel landing angle: 24 sectors -> 15 deg per sector
+        angle_step = 360.0 / 24.0
         sector_angle = chosen_sector["index"] * angle_step
-        jitter = float(secrets.randbelow(7) - 3)
+        jitter = float(secrets.randbelow(5) - 2)
         final_angle = round((360.0 - sector_angle + jitter) % 360.0, 2)
 
         curr_time = now_mmt()
         today_str = curr_time.strftime("%Y-%m-%d")
 
-        # Update User Balance
-        current_user.balance = float(current_user.balance or 0.0) - stake + payout
-        game_id_str = f"CW-{curr_time.strftime('%Y%m%d%H%M%S')}-{secrets.token_hex(3).upper()}"
+        # 7. Update User Balance
+        current_user.balance = float(current_user.balance or 0.0) - total_stake + total_payout
+        game_id_str = f"RC-{curr_time.strftime('%Y%m%d%H%M%S')}-{secrets.token_hex(3).upper()}"
 
-        # Ledger Entry: Stake
+        # 8. Ledger Entry: Stake
         db.add(FinancialLedger(
             entry_type=LedgerEntryType.BET_REVENUE,
-            amount=stake,
+            amount=total_stake,
             running_balance=current_user.balance,
             reference_id=game_id_str,
             reference_type="MINI_GAME_STAKE",
-            description=f"Card Wheel ထိုးကြေး ({bet_type}:{choice} - {stake:,.0f} MMK)",
+            description=f"Royal Crown ထိုးကြေး ({len(incoming_bets)} bets - {total_stake:,.0f} MMK)",
             logged_at_mmt=curr_time,
             date_str=today_str
         ))
 
-        # Ledger Entry: Payout
-        if is_win and payout > 0:
+        # 9. Ledger Entry: Payout
+        if is_win and total_payout > 0:
             db.add(FinancialLedger(
                 entry_type=LedgerEntryType.PAYOUT_EXPENSE,
-                amount=payout,
+                amount=total_payout,
                 running_balance=current_user.balance,
                 reference_id=game_id_str,
                 reference_type="MINI_GAME_PAYOUT",
-                description=f"Card Wheel အနိုင်ရငွေ ({final_multiplier}x - {payout:,.0f} MMK)",
+                description=f"Royal Crown အနိုင်ရငွေ ({final_multiplier}x - {total_payout:,.0f} MMK)",
                 logged_at_mmt=curr_time,
                 date_str=today_str
             ))
@@ -794,10 +832,10 @@ def spin_card_wheel(
                 db.add(Transaction(
                     user_id=current_user.id,
                     tx_type=TransactionType.WIN_PAYOUT,
-                    gateway="Card Wheel",
+                    gateway="Royal Crown",
                     transaction_id=game_id_str,
                     receiver_id=f"Player #{current_user.id} ({current_user.phone})",
-                    amount=payout,
+                    amount=total_payout,
                     slip_image_url=None,
                     client_timezone="MMT",
                     tx_timestamp_mmt=curr_time,
@@ -807,35 +845,34 @@ def spin_card_wheel(
                     is_receiver_valid=True,
                     is_tx_unique=True,
                     status=TransactionStatus.COMPLETED,
-                    verification_notes=f"Card Wheel Win {final_multiplier}x ({payout:,.0f} MMK)",
+                    verification_notes=f"Royal Crown Win {final_multiplier}x ({total_payout:,.0f} MMK)",
                     created_at=curr_time
                 ))
             except Exception as tx_err:
                 print(f"Notice: skipped transaction record for win payout: {tx_err}")
 
-        # Save MiniGameBet Record
+        # 10. Save MiniGameBet Record
         bet_rec = MiniGameBet(
             user_id=current_user.id,
             game_type="CARD_WHEEL",
-            stake_amount=stake,
+            stake_amount=total_stake,
             payout_multiplier=final_multiplier,
-            payout_amount=payout,
+            payout_amount=total_payout,
             is_win=is_win,
-            player_choice=f"{bet_type}:{choice}",
+            player_choice=",".join([b["choice"] for b in incoming_bets]),
             result_data={
+                "game_title": "Royal Crown",
                 "sector": chosen_sector,
                 "hit_rank": hit_rank,
-                "hit_suit": hit_suit,
-                "hit_color": hit_color,
-                "bet_type": bet_type,
-                "choice": choice,
-                "is_win": is_win,
-                "base_multiplier": base_multiplier,
-                "streak_count": streak_count,
-                "streak_multiplier": streak_multiplier,
+                "is_cush": is_cush,
+                "is_streak": is_streak,
+                "card_payout_mult": card_payout_mult,
                 "final_multiplier": final_multiplier,
+                "total_stake": total_stake,
+                "total_payout": total_payout,
                 "target_angle": final_angle,
                 "previous_rank": last_rank,
+                "bets": bet_results,
                 "game_id": game_id_str
             },
             created_at=curr_time,
@@ -849,19 +886,17 @@ def spin_card_wheel(
             "game_id": game_id_str,
             "sector": chosen_sector,
             "hit_rank": hit_rank,
-            "hit_suit": hit_suit,
-            "hit_color": hit_color,
-            "bet_type": bet_type,
-            "choice": choice,
-            "is_win": is_win,
-            "base_multiplier": base_multiplier,
-            "streak_count": streak_count,
-            "streak_multiplier": streak_multiplier,
+            "is_cush": is_cush,
+            "is_streak": is_streak,
+            "multiplier": card_payout_mult if (not is_cush and is_win) else (11.0 if (is_cush and is_win) else 0.0),
             "final_multiplier": final_multiplier,
-            "stake": stake,
-            "payout": payout,
+            "is_win": is_win,
+            "total_stake": total_stake,
+            "payout": total_payout,
             "target_angle": final_angle,
             "previous_rank": last_rank,
+            "winning_choices": winning_choices,
+            "bets": bet_results,
             "new_balance": current_user.balance
         }
     except HTTPException:
@@ -873,5 +908,5 @@ def spin_card_wheel(
         traceback.print_exc()
         raise HTTPException(
             status_code=500,
-            detail=f"Card Wheel error: {str(e)}"
+            detail=f"Royal Crown error: {str(e)}"
         )

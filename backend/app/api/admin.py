@@ -5718,7 +5718,7 @@ def get_minigames_admin_overview(
         {"type": "WHEEL", "name": "Lucky Wheel", "icon": "🎡"},
         {"type": "COIN_FLIP", "name": "Head or Tail", "icon": "🪙"},
         {"type": "DICE", "name": "Dice Roll", "icon": "🎲"},
-        {"type": "CARD_WHEEL", "name": "Card Wheel", "icon": "🃏"}
+        {"type": "CARD_WHEEL", "name": "Royal Crown", "icon": "👑"}
     ]
     for gc in game_configs:
         g_type = gc["type"]

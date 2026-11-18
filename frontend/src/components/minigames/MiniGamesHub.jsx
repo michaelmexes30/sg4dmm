@@ -122,10 +122,10 @@ export default function MiniGamesHub({ onOpenDeposit }) {
               : 'bg-dark-card text-slate-300 hover:text-white border-slate-800 hover:border-slate-700'
           }`}
         >
-          <span className="text-lg">🃏</span>
+          <span className="text-lg">👑</span>
           <div className="text-left leading-tight">
-            <span className="block text-xs font-black">ဖဲချပ်ဘီးလှည့်</span>
-            <span className={`text-[10px] block font-mono ${activeTab === 'card_wheel' ? 'text-black/80 font-bold' : 'text-rose-400'}`}>12x + Streak</span>
+            <span className="block text-xs font-black">Royal Crown</span>
+            <span className={`text-[10px] block font-mono ${activeTab === 'card_wheel' ? 'text-black/80 font-bold' : 'text-amber-400'}`}>5x / 49x HOT</span>
           </div>
         </button>
 

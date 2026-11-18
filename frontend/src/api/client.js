@@ -813,6 +813,10 @@ export const apiClient = {
     });
   },
 
+  getCardWheelHistory(limit = 10) {
+    return this.request(`/minigames/card-wheel/history?limit=${limit}`);
+  },
+
   // Admin Mini-Games Management & Realtime Monitoring
   getAdminMiniGamesOverview() {
     return this.request('/admin/minigames/overview');
