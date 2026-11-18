@@ -114,6 +114,26 @@ class ArcadeAudioEngine {
     } catch (e) {}
   }
 
+  playFretClick(pitch = 500) {
+    if (!this.enabled) return;
+    this.init();
+    if (!this.ctx) return;
+    try {
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      // Realistic wood/metal fret impact clack
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(pitch, this.ctx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(100, this.ctx.currentTime + 0.04);
+      gain.gain.setValueAtTime(0.35, this.ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.04);
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start();
+      osc.stop(this.ctx.currentTime + 0.04);
+    } catch (e) {}
+  }
+
   playBallSnap() {
     if (!this.enabled) return;
     this.init();
@@ -346,90 +366,126 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
     }
   };
 
-  // High-performance physics animation for Wheel & Ball (15-second suspense)
+  // High-performance authentic physics animation for Wheel & Ball (15-second suspense)
   const runRouletteAnimation = (targetPocketIndex, onComplete) => {
-    const anglePerPocket = 360 / 24; // 15 degrees per slot
-    // Sector 0 is at 12 o'clock (0°). Pocket index `i` is at `i * 15°` clockwise.
-    // When ball settles in pocket `i`, its relative angle on wheel must align.
-    const targetSlotAngle = targetPocketIndex * anglePerPocket;
+    const anglePerPocket = 360 / 24; // 15 degrees per pocket
+    const pocketOffsetAngle = targetPocketIndex * anglePerPocket;
 
-    const DURATION = 15000; // Strictly 15 seconds of suspense as requested
+    const DURATION = 15000; // Strictly 15 seconds
     const startTime = performance.now();
     spinStartRef.current = startTime;
 
-    // Wheel will do 8 full rotations over 15 seconds
-    const startWheelRot = wheelRotation % 360;
-    const numWheelRotations = 8;
-    const targetWheelRot = startWheelRot + 360 * numWheelRotations;
+    // Wheel initial state:
+    // Heavy brass flywheel rotating clockwise (+) with gentle bearing friction
+    const initialWheelRot = wheelRotation % 360;
+    const totalWheelRevs = 6;
+    const wheelTravel = 360 * totalWheelRevs;
+    const finalWheelRot = initialWheelRot + wheelTravel;
 
-    // Ball will do 22 full rotations
-    const numBallRotations = 22;
-    const startBallAngle = ballAngle % 360;
-    // Final ball position: aligned with target pocket on the wheel
-    const finalBallAngle = targetWheelRot + targetSlotAngle + 360 * numBallRotations;
+    // Ball initial state:
+    // Ball launched Counter-Clockwise (-) opposite to the wheel rotation
+    // Total relative travel against the oncoming wheel pocket: 18 revolutions
+    const totalBallRevs = 18;
+    const totalRelativeTravel = 360 * totalBallRevs;
 
-    let lastTickAngle = startBallAngle;
+    let lastTickAngle = null;
     let lastTickTime = startTime;
+    let hasPlayedSnap = false;
 
     const animate = (now) => {
-      const elapsed = now - startTime;
-      const p = Math.min(1, elapsed / DURATION);
+      const elapsed = Math.max(0, now - startTime);
+      const u = Math.min(1, elapsed / DURATION);
 
-      // Realistic 3-phase physics curve for 15 seconds:
-      // Phase 1 (0 to 10s / p <= 0.67): Fast rim orbit with gradual friction
-      // Phase 2 (10s to 13.5s / 0.67 < p <= 0.90): Ball slows down and drops toward pockets
-      // Phase 3 (13.5s to 15s / 0.90 < p <= 1.0): Bouncing between pockets and settling cleanly into slot
-      let ease;
-      if (p <= 0.67) {
-        const t = p / 0.67;
-        // Covers 76% of angular distance during the first 10 seconds
-        ease = 0.76 * (1 - Math.pow(1 - t, 1.8));
-      } else if (p <= 0.90) {
-        const t = (p - 0.67) / 0.23;
-        // Covers from 76% to 96% during 10s - 13.5s with steeper deceleration
-        ease = 0.76 + 0.20 * (1 - Math.pow(1 - t, 2.2));
-      } else {
-        const t = (p - 0.90) / 0.10;
-        // Covers remaining 4% smoothly into the pocket during 13.5s - 15.0s
-        ease = 0.96 + 0.04 * (1 - Math.pow(1 - t, 2.0));
-      }
-
-      // Current wheel rotation
-      const curWheelRot = startWheelRot + (targetWheelRot - startWheelRot) * ease;
+      // ---------------------------------------------------------------------
+      // 1. WHEEL PHYSICS (Clockwise, high inertia flywheel with smooth friction)
+      // ---------------------------------------------------------------------
+      const wheelProgress = (u - 0.15 * u * u) / 0.85;
+      const curWheelRot = initialWheelRot + wheelTravel * wheelProgress;
       setWheelRotation(curWheelRot);
 
-      // Current ball angle
-      const curBallAngle = startBallAngle + (finalBallAngle - startBallAngle) * ease;
+      // Exact world angle of the target pocket on the wheel
+      const targetPocketWorldAngle = curWheelRot + pocketOffsetAngle;
+
+      // ---------------------------------------------------------------------
+      // 2. BALL ORBITAL ANGLE (Counter-Clockwise with C^2 Hermite Deceleration)
+      // ---------------------------------------------------------------------
+      // Smooth continuous Hermite curve: f(0)=0, f(1)=1, f'(1)=0, f''(1)=0 (zero jerks!)
+      const f_u = 1 - Math.pow(1 - u, 3) * (1 + 2 * u);
+      const relAngle = -totalRelativeTravel * (1 - f_u);
+
+      // Pocket Fret Bouncing (13.0s to 14.7s / u in [0.86, 0.98])
+      // When ball strikes oncoming brass frets, it deflects and rattles
+      let bounceAngle = 0;
+      let bounceRadius = 0;
+      if (u >= 0.86 && u < 0.98) {
+        const tau = (u - 0.86) / 0.12; // 0 to 1
+        const decay = Math.pow(1 - tau, 2);
+        // Angular hop back and forth across frets
+        bounceAngle = 10 * decay * Math.sin(tau * Math.PI * 3);
+        // Micro vertical hop over fret divider
+        bounceRadius = 3.5 * decay * Math.abs(Math.sin(tau * Math.PI * 3));
+      }
+
+      // Ball World Angle = Target Pocket World Angle + Relative Travel + Fret Bounce
+      const curBallAngle = targetPocketWorldAngle + relAngle + bounceAngle;
       setBallAngle(curBallAngle);
 
-      // Ball orbital radius: starts on outer track (122px), then drops into pocket ring (96px)
-      let curRadius = 122;
-      if (p > 0.67) {
-        const dropProg = (p - 0.67) / 0.33;
-        // Bouncing dampening as ball rattles across pocket dividers
-        const bounceDecay = Math.max(0, 1 - dropProg);
-        const bounce = Math.sin(dropProg * Math.PI * 6) * bounceDecay * 5;
-        curRadius = 122 - (122 - 96) * dropProg + bounce;
+      // ---------------------------------------------------------------------
+      // 3. BALL RADIUS (Track Descent from Outer Rim to Pocket Center)
+      // ---------------------------------------------------------------------
+      // u < 0.70 (0 - 10.5s): Centrifugal force holds ball on outer rim track (121px)
+      // 0.70 <= u <= 0.88 (10.5s - 13.2s): Smooth descent from 121px down to 95px
+      // u > 0.88 (13.2s - 15.0s): Ball is inside pocket ring (95px + fret micro-hops)
+      let curRadius = 121;
+      if (u >= 0.70 && u < 0.88) {
+        const s = (u - 0.70) / 0.18;
+        const h_s = 3 * s * s - 2 * s * s * s; // Smoothstep
+        curRadius = 121 - (121 - 95) * h_s;
+      } else if (u >= 0.88) {
+        curRadius = 95 + bounceRadius;
       }
       setBallRadius(curRadius);
 
-      // Play audio ticks as ball sweeps past pockets
-      const angleDiff = Math.abs(curBallAngle - lastTickAngle);
-      const timeDiff = now - lastTickTime;
-      if (angleDiff >= (p < 0.6 ? anglePerPocket * 2 : anglePerPocket) && timeDiff > 45) {
-        const pitch = p > 0.85 ? 450 + Math.random() * 150 : 700 + Math.random() * 300;
-        audio.playTick(pitch);
-        lastTickAngle = curBallAngle;
-        lastTickTime = now;
+      // ---------------------------------------------------------------------
+      // 4. REALISTIC ARCADE AUDIO SYNC
+      // ---------------------------------------------------------------------
+      if (lastTickAngle === null) lastTickAngle = curBallAngle;
+      const angleMoved = Math.abs(curBallAngle - lastTickAngle);
+      const timeSinceTick = now - lastTickTime;
+
+      if (u < 0.86) {
+        // Upper Track Ticks (interval widens as ball decelerates: 40ms -> 300ms)
+        const minInterval = 40 + Math.pow(u / 0.86, 2.5) * 320;
+        if (angleMoved >= 12 && timeSinceTick >= minInterval) {
+          const tickPitch = 750 - (u / 0.86) * 250 + Math.random() * 80;
+          audio.playTick(tickPitch);
+          lastTickAngle = curBallAngle;
+          lastTickTime = now;
+        }
+      } else if (u < 0.98) {
+        // Pocket Fret Clatter / Rattling as ball hits dividers
+        if (timeSinceTick >= 85) {
+          const fretPitch = 480 + Math.random() * 140;
+          audio.playFretClick(fretPitch);
+          lastTickAngle = curBallAngle;
+          lastTickTime = now;
+        }
+      } else if (u >= 0.98 && !hasPlayedSnap) {
+        // Final solid pocket snap
+        hasPlayedSnap = true;
+        audio.playBallSnap();
       }
 
-      if (p < 1) {
+      // ---------------------------------------------------------------------
+      // 5. ANIMATION COMPLETION
+      // ---------------------------------------------------------------------
+      if (u < 1) {
         animFrameRef.current = requestAnimationFrame(animate);
       } else {
-        audio.playBallSnap();
-        setWheelRotation(targetWheelRot % 360);
-        setBallAngle((targetWheelRot + targetSlotAngle) % 360);
-        setBallRadius(96);
+        // Snap locked directly to pocket
+        setWheelRotation(finalWheelRot % 360);
+        setBallAngle((finalWheelRot + pocketOffsetAngle) % 360);
+        setBallRadius(95);
         if (onComplete) onComplete();
       }
     };
@@ -598,7 +654,7 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
 
             {/* Rotating Wheel Dish (Carries the 24 Pockets & Central Spindle) */}
             <div
-              className="absolute w-[240px] h-[240px] rounded-full transition-transform"
+              className="absolute w-[240px] h-[240px] rounded-full"
               style={{
                 transform: `rotate(${wheelRotation}deg)`,
                 willChange: 'transform',
@@ -644,14 +700,16 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
                   const tx = 120 + textR * Math.cos(midRad);
                   const ty = 120 + textR * Math.sin(midRad);
 
+                  const isWinningPocket = !spinning && lastWinResult?.sector?.index === sec.index;
+
                   return (
                     <g key={sec.index}>
                       {/* Pocket Background */}
                       <path
                         d={pathD}
-                        fill={sec.is_cush ? '#b91c1c' : '#14532d'}
-                        stroke="url(#goldSpoke)"
-                        strokeWidth="1.2"
+                        fill={isWinningPocket ? '#ca8a04' : sec.is_cush ? '#b91c1c' : '#14532d'}
+                        stroke={isWinningPocket ? '#fde047' : 'url(#goldSpoke)'}
+                        strokeWidth={isWinningPocket ? '2.5' : '1.2'}
                       />
                       {/* Card Rank Label */}
                       <text
@@ -704,20 +762,56 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
               </svg>
             </div>
 
-            {/* The Animated Ivory White Ball */}
-            <div
-              className="absolute pointer-events-none z-20"
-              style={{
-                width: '14px',
-                height: '14px',
-                borderRadius: '50%',
-                background: 'radial-gradient(circle at 35% 35%, #ffffff 0%, #f1f5f9 45%, #94a3b8 100%)',
-                boxShadow: '0 2px 5px rgba(0,0,0,0.9), 0 0 8px rgba(255,255,255,0.8)',
-                transform: `rotate(${ballAngle}deg) translate(0px, -${ballRadius}px) rotate(-${ballAngle}deg)`,
-                willChange: 'transform',
-                transition: spinning ? 'none' : 'transform 0.2s ease-out',
-              }}
-            />
+            {/* Realistically Shaded 3D Ivory White Ball in SVG Coordinates (Zero CSS Scale Error) */}
+            <svg
+              className="absolute inset-0 w-full h-full pointer-events-none z-20"
+              viewBox="0 0 300 300"
+            >
+              <defs>
+                <radialGradient id="ballIvory3D" cx="35%" cy="30%" r="65%">
+                  <stop offset="0%" stopColor="#ffffff" />
+                  <stop offset="35%" stopColor="#f8fafc" />
+                  <stop offset="70%" stopColor="#cbd5e1" />
+                  <stop offset="100%" stopColor="#64748b" />
+                </radialGradient>
+                <radialGradient id="ballShadow3D" cx="50%" cy="50%" r="50%">
+                  <stop offset="0%" stopColor="rgba(0,0,0,0.85)" />
+                  <stop offset="60%" stopColor="rgba(0,0,0,0.4)" />
+                  <stop offset="100%" stopColor="rgba(0,0,0,0)" />
+                </radialGradient>
+              </defs>
+
+              {/* Realistic Contact Shadow on Track */}
+              <ellipse
+                cx={150 + (ballRadius - 1.5) * Math.sin((ballAngle * Math.PI) / 180) + 1.8}
+                cy={150 - (ballRadius - 1.5) * Math.cos((ballAngle * Math.PI) / 180) + 2.5}
+                rx="6.5"
+                ry="4.5"
+                fill="url(#ballShadow3D)"
+              />
+
+              {/* 3D Ivory Ball Body */}
+              <circle
+                cx={150 + ballRadius * Math.sin((ballAngle * Math.PI) / 180)}
+                cy={150 - ballRadius * Math.cos((ballAngle * Math.PI) / 180)}
+                r="6.5"
+                fill="url(#ballIvory3D)"
+                stroke="#ffffff"
+                strokeWidth="0.8"
+                style={{
+                  filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.7))',
+                }}
+              />
+
+              {/* Specular Glint Highlight */}
+              <circle
+                cx={150 + ballRadius * Math.sin((ballAngle * Math.PI) / 180) - 1.8}
+                cy={150 - ballRadius * Math.cos((ballAngle * Math.PI) / 180) - 1.8}
+                r="1.8"
+                fill="#ffffff"
+                opacity="0.9"
+              />
+            </svg>
           </div>
         </div>
 
