@@ -16,23 +16,26 @@ const DICE_DOTS = {
   6: [{ top: '25%', left: '25%' }, { top: '25%', left: '75%' }, { top: '50%', left: '25%' }, { top: '50%', left: '75%' }, { top: '75%', left: '25%' }, { top: '75%', left: '75%' }],
 };
 
-function DieFace({ value, rolling }) {
+function DieFace({ value, rolling, delay = '0s' }) {
   const dots = DICE_DOTS[value] || DICE_DOTS[1];
   const isRed = value === 1 || value === 4;
 
   return (
     <div
-      className={`w-16 h-16 sm:w-20 sm:h-20 bg-white rounded-2xl shadow-xl border-2 border-slate-300 relative flex items-center justify-center transition-all ${
-        rolling ? 'animate-bounce scale-110 rotate-12' : 'scale-100 rotate-0'
+      className={`w-16 h-16 sm:w-20 sm:h-20 bg-white rounded-2xl shadow-lg border-2 border-slate-300 relative flex items-center justify-center transition-all ${
+        rolling ? 'animate-bounce scale-105' : 'scale-100 rotate-0'
       }`}
       style={{
-        boxShadow: 'inset 0 2px 4px rgba(255,255,255,0.8), 0 8px 16px rgba(0,0,0,0.5)',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+        willChange: 'transform',
+        transform: 'translateZ(0)',
+        animationDelay: delay,
       }}
     >
       {dots.map((dot, idx) => (
         <span
           key={idx}
-          className={`absolute w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full -translate-x-1/2 -translate-y-1/2 shadow-inner ${
+          className={`absolute w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full -translate-x-1/2 -translate-y-1/2 shadow-sm ${
             isRed ? 'bg-rose-600' : 'bg-slate-900'
           }`}
           style={{ top: dot.top, left: dot.left }}
@@ -69,17 +72,7 @@ export default function DiceRollGame({ onOpenDeposit, onBalanceChange }) {
       // Play dice tumbling clatter sound
       sound.playDice();
 
-      // Jitter animation interval
-      const jitterInterval = setInterval(() => {
-        setDiceValues([
-          Math.floor(Math.random() * 6) + 1,
-          Math.floor(Math.random() * 6) + 1,
-          Math.floor(Math.random() * 6) + 1,
-        ]);
-      }, 100);
-
       setTimeout(() => {
-        clearInterval(jitterInterval);
         setDiceValues(res.dice);
         setRolling(false);
         setLastResult(res);
@@ -92,7 +85,7 @@ export default function DiceRollGame({ onOpenDeposit, onBalanceChange }) {
 
         refreshProfile();
         if (onBalanceChange) onBalanceChange(res.new_balance);
-      }, 1500);
+      }, 1200);
 
     } catch (err) {
       setRolling(false);
@@ -106,12 +99,15 @@ export default function DiceRollGame({ onOpenDeposit, onBalanceChange }) {
     <div className="space-y-6">
       {/* Dice Arena Felt Stage Area */}
       <div className="bg-gradient-to-b from-emerald-950 via-dark-card to-dark-bg border border-emerald-500/30 rounded-3xl p-6 shadow-2xl relative overflow-hidden flex flex-col items-center">
+        {/* Glow ambient background (GPU-friendly radial gradient) */}
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(16,185,129,0.12)_0%,transparent_70%)] pointer-events-none" />
+
         {/* Felt Bowl Container */}
         <div className="w-full max-w-md bg-emerald-900/40 border-2 border-emerald-500/40 rounded-3xl p-6 py-8 shadow-inner flex flex-col items-center justify-center my-2 relative">
           <div className="flex items-center justify-center gap-4 sm:gap-6">
-            <DieFace value={diceValues[0]} rolling={rolling} />
-            <DieFace value={diceValues[1]} rolling={rolling} />
-            <DieFace value={diceValues[2]} rolling={rolling} />
+            <DieFace value={diceValues[0]} rolling={rolling} delay="0s" />
+            <DieFace value={diceValues[1]} rolling={rolling} delay="0.1s" />
+            <DieFace value={diceValues[2]} rolling={rolling} delay="0.2s" />
           </div>
 
           {/* Sum badge */}

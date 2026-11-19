@@ -63,15 +63,18 @@ export default function CoinFlipGame({ onOpenDeposit, onBalanceChange }) {
     <div className="space-y-6">
       {/* 3D Coin Stage Area */}
       <div className="bg-gradient-to-b from-dark-card to-dark-bg border border-amber-500/30 rounded-3xl p-8 shadow-2xl relative overflow-hidden flex flex-col items-center">
-        {/* Glow ambient background */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+        {/* Glow ambient background (Optimized CSS Radial Gradient for low-budget GPUs) */}
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(245,158,11,0.12)_0%,transparent_70%)] pointer-events-none" />
 
-        {/* 3D Coin Object */}
+        {/* 3D Coin Object (Hardware-Accelerated GPU Layer) */}
         <div className="w-36 h-36 sm:w-44 sm:h-44 my-4 [perspective:1000px]">
           <div
             className="w-full h-full relative [transform-style:preserve-3d] transition-transform duration-1000 ease-out"
             style={{
-              transform: `rotateY(${flipDegree}deg)`,
+              transform: `rotateY(${flipDegree}deg) translateZ(0)`,
+              willChange: 'transform',
+              backfaceVisibility: 'hidden',
+              WebkitBackfaceVisibility: 'hidden',
               transitionDuration: flipping ? '1.5s' : '0.3s',
             }}
           >

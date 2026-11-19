@@ -89,25 +89,28 @@ export default function LuckyWheelGame({ onOpenDeposit, onBalanceChange }) {
     <div className="space-y-6">
       {/* Game Stage Area */}
       <div className="bg-gradient-to-b from-dark-card to-dark-bg border border-amber-500/30 rounded-3xl p-6 shadow-2xl relative overflow-hidden flex flex-col items-center">
-        {/* Glow ambient background */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+        {/* Glow ambient background (Optimized CSS Radial Gradient for low-budget GPUs) */}
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(245,158,11,0.12)_0%,transparent_70%)] pointer-events-none" />
 
         {/* Pointer indicator */}
-        <div className="relative z-20 -mb-4 flex flex-col items-center filter drop-shadow-[0_4px_8px_rgba(0,0,0,0.8)]">
-          <div className="w-0 h-0 border-l-[14px] border-l-transparent border-r-[14px] border-r-transparent border-t-[28px] border-t-amber-400 animate-bounce" />
+        <div className="relative z-20 -mb-4 flex flex-col items-center">
+          <div className="w-0 h-0 border-l-[14px] border-l-transparent border-r-[14px] border-r-transparent border-t-[28px] border-t-amber-400 drop-shadow-md animate-bounce" />
           <div className="w-4 h-4 rounded-full bg-amber-300 -mt-7 shadow-md" />
         </div>
 
         {/* Wheel SVG Container */}
         <div className="relative w-64 h-64 sm:w-72 sm:h-72 my-2">
           {/* Wheel Frame Ring */}
-          <div className="absolute inset-0 rounded-full border-4 border-amber-500/60 shadow-[0_0_30px_rgba(245,158,11,0.3)] pointer-events-none z-10" />
+          <div className="absolute inset-0 rounded-full border-4 border-amber-500/60 shadow-[0_0_20px_rgba(245,158,11,0.25)] pointer-events-none z-10" />
 
-          {/* Rotating Wheel */}
+          {/* Rotating Wheel (Dedicated GPU Layer) */}
           <div
             className="w-full h-full rounded-full overflow-hidden shadow-2xl"
             style={{
-              transform: `rotate(${rotation}deg)`,
+              transform: `rotate(${rotation}deg) translateZ(0)`,
+              willChange: 'transform',
+              backfaceVisibility: 'hidden',
+              WebkitBackfaceVisibility: 'hidden',
               transition: spinning ? 'transform 4.5s cubic-bezier(0.12, 0.8, 0.2, 1)' : 'none',
             }}
           >
