@@ -208,9 +208,40 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
 
   // Spin & Animation state
   const [spinning, setSpinning] = useState(false);
-  const [wheelRotation, setWheelRotation] = useState(0);
-  const [ballAngle, setBallAngle] = useState(0); // Ball angle in degrees
-  const [ballRadius, setBallRadius] = useState(115); // Distance from wheel center in px
+
+  // High-performance direct DOM refs (Zero React re-render during 15s RAF spin)
+  const wheelDishRef = useRef(null);
+  const ballElemRef = useRef(null);
+  const ballShadowRef = useRef(null);
+  const ballGlintRef = useRef(null);
+
+  // Persistent geometry coordinates stored in refs
+  const currentWheelRotRef = useRef(0);
+  const currentBallAngleRef = useRef(0);
+  const currentBallRadiusRef = useRef(95);
+
+  // Direct GPU DOM updater (Bypasses React Virtual DOM reconciliation completely)
+  const updateWheelAndBallDOM = (wheelDeg, bAngleDeg, bRadiusPx) => {
+    if (wheelDishRef.current) {
+      wheelDishRef.current.style.transform = `rotate(${wheelDeg}deg) translateZ(0)`;
+    }
+    const rad = (bAngleDeg * Math.PI) / 180;
+    const bx = 150 + bRadiusPx * Math.sin(rad);
+    const by = 150 - bRadiusPx * Math.cos(rad);
+
+    if (ballElemRef.current) {
+      ballElemRef.current.setAttribute('cx', bx);
+      ballElemRef.current.setAttribute('cy', by);
+    }
+    if (ballShadowRef.current) {
+      ballShadowRef.current.setAttribute('cx', bx + 1.8);
+      ballShadowRef.current.setAttribute('cy', by + 2.5);
+    }
+    if (ballGlintRef.current) {
+      ballGlintRef.current.setAttribute('cx', bx - 1.8);
+      ballGlintRef.current.setAttribute('cy', by - 1.8);
+    }
+  };
 
   // Results & History
   const [history, setHistory] = useState(['9', 'K', '0', '4', '9']);
@@ -225,6 +256,15 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
   // Wheel animation refs
   const animFrameRef = useRef(null);
   const spinStartRef = useRef(0);
+
+  // Initial DOM synchronization on mount
+  useEffect(() => {
+    updateWheelAndBallDOM(
+      currentWheelRotRef.current,
+      currentBallAngleRef.current,
+      currentBallRadiusRef.current
+    );
+  }, []);
 
   // Load history from backend
   useEffect(() => {
@@ -241,11 +281,12 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
     loadHistory();
   }, []);
 
-  // Bulb cycling animation timer during spin
+  // Bulb cycling animation timer during idle only (never during spin so 0 re-renders occur)
   useEffect(() => {
+    if (spinning) return;
     const interval = setInterval(() => {
       setBulbPhase((p) => (p + 1) % 4);
-    }, spinning ? 120 : 700);
+    }, 700);
     return () => clearInterval(interval);
   }, [spinning]);
 
@@ -377,7 +418,7 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
 
     // Wheel initial state:
     // Heavy brass flywheel rotating clockwise (+) with gentle bearing friction
-    const initialWheelRot = wheelRotation % 360;
+    const initialWheelRot = currentWheelRotRef.current % 360;
     const totalWheelRevs = 6;
     const wheelTravel = 360 * totalWheelRevs;
     const finalWheelRot = initialWheelRot + wheelTravel;
@@ -401,7 +442,6 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
       // ---------------------------------------------------------------------
       const wheelProgress = (u - 0.15 * u * u) / 0.85;
       const curWheelRot = initialWheelRot + wheelTravel * wheelProgress;
-      setWheelRotation(curWheelRot);
 
       // Exact world angle of the target pocket on the wheel
       const targetPocketWorldAngle = curWheelRot + pocketOffsetAngle;
@@ -428,7 +468,6 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
 
       // Ball World Angle = Target Pocket World Angle + Relative Travel + Fret Bounce
       const curBallAngle = targetPocketWorldAngle + relAngle + bounceAngle;
-      setBallAngle(curBallAngle);
 
       // ---------------------------------------------------------------------
       // 3. BALL RADIUS (Track Descent from Outer Rim to Pocket Center)
@@ -444,7 +483,11 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
       } else if (u >= 0.88) {
         curRadius = 95 + bounceRadius;
       }
-      setBallRadius(curRadius);
+
+      // ---------------------------------------------------------------------
+      // DIRECT HARDWARE GPU DOM UPDATE (Zero React state re-render overhead!)
+      // ---------------------------------------------------------------------
+      updateWheelAndBallDOM(curWheelRot, curBallAngle, curRadius);
 
       // ---------------------------------------------------------------------
       // 4. REALISTIC ARCADE AUDIO SYNC
@@ -482,10 +525,11 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
       if (u < 1) {
         animFrameRef.current = requestAnimationFrame(animate);
       } else {
-        // Snap locked directly to pocket
-        setWheelRotation(finalWheelRot % 360);
-        setBallAngle((finalWheelRot + pocketOffsetAngle) % 360);
-        setBallRadius(95);
+        // Snap locked directly to pocket in refs and DOM
+        currentWheelRotRef.current = finalWheelRot % 360;
+        currentBallAngleRef.current = (finalWheelRot + pocketOffsetAngle) % 360;
+        currentBallRadiusRef.current = 95;
+        updateWheelAndBallDOM(currentWheelRotRef.current, currentBallAngleRef.current, 95);
         if (onComplete) onComplete();
       }
     };
@@ -602,7 +646,7 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
             
             {/* Outer Walnut Wood Bezel + Brass Rivet Ring */}
             <svg
-              className="absolute inset-0 w-full h-full pointer-events-none drop-shadow-[0_10px_20px_rgba(0,0,0,0.9)]"
+              className="absolute inset-0 w-full h-full pointer-events-none"
               viewBox="0 0 300 300"
             >
               <defs>
@@ -654,9 +698,10 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
 
             {/* Rotating Wheel Dish (Carries the 24 Pockets & Central Spindle) */}
             <div
+              ref={wheelDishRef}
               className="absolute w-[240px] h-[240px] rounded-full"
               style={{
-                transform: `rotate(${wheelRotation}deg)`,
+                transform: 'rotate(0deg) translateZ(0)',
                 willChange: 'transform',
               }}
             >
@@ -716,15 +761,14 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
                         x={tx}
                         y={ty}
                         fill={sec.is_cush ? '#ffffff' : '#fef08a'}
+                        stroke={sec.is_cush ? '#7f1d1d' : '#062810'}
+                        strokeWidth="0.4"
                         fontSize="11.5"
                         fontWeight="900"
                         fontFamily="Outfit, Padauk, sans-serif"
                         textAnchor="middle"
                         dominantBaseline="central"
                         transform={`rotate(${angle}, ${tx}, ${ty})`}
-                        style={{
-                          filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.8))',
-                        }}
                       >
                         {sec.label}
                       </text>
@@ -783,8 +827,9 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
 
               {/* Realistic Contact Shadow on Track */}
               <ellipse
-                cx={150 + (ballRadius - 1.5) * Math.sin((ballAngle * Math.PI) / 180) + 1.8}
-                cy={150 - (ballRadius - 1.5) * Math.cos((ballAngle * Math.PI) / 180) + 2.5}
+                ref={ballShadowRef}
+                cx="150"
+                cy={150 - 95 + 2.5}
                 rx="6.5"
                 ry="4.5"
                 fill="url(#ballShadow3D)"
@@ -792,8 +837,9 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
 
               {/* 3D Ivory Ball Body */}
               <circle
-                cx={150 + ballRadius * Math.sin((ballAngle * Math.PI) / 180)}
-                cy={150 - ballRadius * Math.cos((ballAngle * Math.PI) / 180)}
+                ref={ballElemRef}
+                cx="150"
+                cy={150 - 95}
                 r="6.5"
                 fill="url(#ballIvory3D)"
                 stroke="#ffffff"
@@ -805,8 +851,9 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
 
               {/* Specular Glint Highlight */}
               <circle
-                cx={150 + ballRadius * Math.sin((ballAngle * Math.PI) / 180) - 1.8}
-                cy={150 - ballRadius * Math.cos((ballAngle * Math.PI) / 180) - 1.8}
+                ref={ballGlintRef}
+                cx="148.2"
+                cy={150 - 95 - 1.8}
                 r="1.8"
                 fill="#ffffff"
                 opacity="0.9"
