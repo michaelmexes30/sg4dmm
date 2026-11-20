@@ -109,11 +109,37 @@ def fetch_live_threed_from_mthai() -> List[Dict[str, Any]]:
     return results
 
 def get_latest_threed_results() -> List[Dict[str, Any]]:
-    """Tries Sanook first, then MThai fallback."""
-    res = fetch_live_threed_from_sanook()
-    if res:
-        return res
-    return fetch_live_threed_from_mthai()
+    """
+    Fetches from both Sanook and MThai, merging results by draw_date.
+    Ensures that if one source (like MThai) has the newest flash result first,
+    it won't be shadowed by older archives from the other source.
+    """
+    results_map: Dict[str, Dict[str, Any]] = {}
+    try:
+        sanook_res = fetch_live_threed_from_sanook()
+        for r in sanook_res:
+            if r.get("draw_date"):
+                results_map[r["draw_date"]] = r
+    except Exception as e:
+        logger.warning(f"Error fetching from Sanook: {e}")
+
+    try:
+        mthai_res = fetch_live_threed_from_mthai()
+        for r in mthai_res:
+            d_date = r.get("draw_date")
+            if d_date:
+                # Merge or prioritize fresher update
+                if d_date not in results_map or not results_map[d_date].get("winning_number"):
+                    results_map[d_date] = r
+                else:
+                    results_map[d_date]["thai_first_prize"] = r.get("thai_first_prize") or results_map[d_date].get("thai_first_prize")
+                    results_map[d_date]["winning_number"] = r.get("winning_number") or results_map[d_date].get("winning_number")
+    except Exception as e:
+        logger.warning(f"Error fetching from MThai: {e}")
+
+    # Return all merged results sorted by date descending (newest first)
+    merged = sorted(results_map.values(), key=lambda x: x.get("draw_date", ""), reverse=True)
+    return merged
 
 def settle_threed_draw_internal(
     db: Session,
@@ -287,15 +313,7 @@ def poll_and_settle_3d_job():
     logger.info("Executing automated 3D background polling job...")
     db = SessionLocal()
     try:
-        open_draws = db.query(ThreeDDraw).filter(ThreeDDraw.status == "OPEN").order_by(ThreeDDraw.draw_date.asc()).all()
-        if not open_draws:
-            logger.info("No OPEN 3D draws found for settlement.")
-            return {"status": "skipped", "message": "No OPEN 3D draws"}
-
-        current_time = now_mmt()
-        today_date_str = current_time.strftime("%Y-%m-%d")
-
-        # Fetch live lottery results
+        # Fetch live lottery results first
         scraped_results = get_latest_threed_results()
         if not scraped_results:
             logger.warning("No 3D results fetched from online sources.")
@@ -303,14 +321,18 @@ def poll_and_settle_3d_job():
 
         results_by_date = {r["draw_date"]: r for r in scraped_results}
 
+        # Pending draws include both OPEN and CLOSED (since cutoff at 2:30 PM marks them CLOSED before 3:30 PM draw)
+        pending_draws = db.query(ThreeDDraw).filter(
+            ThreeDDraw.status.in_(["OPEN", "CLOSED"])
+        ).order_by(ThreeDDraw.draw_date.asc()).all()
+
         settled_count = 0
         details = []
 
-        for draw in open_draws:
-            # Check if this draw date is in scraped results
+        # 1. Settle any existing pending draws in DB
+        for draw in pending_draws:
             res = results_by_date.get(draw.draw_date)
             if res and res.get("winning_number") and len(res["winning_number"]) == 3:
-                # Settle draw
                 settle_res = settle_threed_draw_internal(
                     db=db,
                     draw=draw,
@@ -320,6 +342,29 @@ def poll_and_settle_3d_job():
                 settled_count += 1
                 details.append(settle_res)
                 logger.info(f"Auto-settled 3D draw {draw.draw_date} with winning number {res['winning_number']} (1st Prize: {res.get('thai_first_prize')})")
+
+        # 2. Check if recent scraped results exist that aren't yet in DB at all (e.g. past draws after database init)
+        existing_dates = {d[0] for d in db.query(ThreeDDraw.draw_date).all()}
+        for r in scraped_results:
+            d_date = r.get("draw_date")
+            if d_date and d_date not in existing_dates and r.get("winning_number"):
+                new_draw = ThreeDDraw(
+                    draw_date=d_date,
+                    draw_time_mmt="03:30 PM MMT",
+                    cutoff_time_mmt="02:30 PM MMT",
+                    status="CLOSED"
+                )
+                db.add(new_draw)
+                db.flush()
+                settle_res = settle_threed_draw_internal(
+                    db=db,
+                    draw=new_draw,
+                    winning_number=r["winning_number"],
+                    thai_first_prize=r.get("thai_first_prize")
+                )
+                settled_count += 1
+                details.append(settle_res)
+                logger.info(f"Auto-created and settled past 3D draw {d_date} with winning number {r['winning_number']}")
 
         return {
             "status": "success",
