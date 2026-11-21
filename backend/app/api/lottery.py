@@ -471,7 +471,7 @@ def get_3d_results(limit: int = 15, db: Session = Depends(get_db)):
     from app.api.admin import ensure_threed_draws_exist
     ensure_threed_draws_exist(db)
 
-    draws = db.query(ThreeDDraw).filter(ThreeDDraw.status == "SETTLED").order_by(ThreeDDraw.id.desc()).limit(limit).all()
+    draws = db.query(ThreeDDraw).filter(ThreeDDraw.status == "SETTLED").order_by(ThreeDDraw.draw_date.desc(), ThreeDDraw.id.desc()).limit(limit).all()
     return [
         {
             "id": d.id,
