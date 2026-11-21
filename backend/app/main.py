@@ -403,19 +403,31 @@ async def lifespan(app: FastAPI):
 
         # 8. Thai 3D Live Results Polling & Settlement:
     # Official Thai Government Lottery (GLO) drawn on 1st & 16th of each month (~03:30 PM MMT)
+    # Starts fast-polling at 03:28 PM MMT to guarantee complete settlement by 03:30 PM ~ 03:33 PM MMT
     from app.core.threed_service import poll_and_settle_3d_job
     try:
         poll_and_settle_3d_job()
     except Exception as e:
         print(f"Startup 3D settlement notice: {e}")
 
-    # Frequent polling between 15:30 and 17:30 MMT on the 1st and 16th
+    # Critical rush-window polling every single minute from 03:28 PM to 03:36 PM on 1st & 16th
+    scheduler.add_job(
+        poll_and_settle_3d_job,
+        "cron",
+        day="1,16",
+        hour=15,
+        minute="28,29,30,31,32,33,34,35,36,37,38,39,40",
+        id="thai_3d_fast_settlement_cron",
+        replace_existing=True
+    )
+
+    # Secondary polling every 2 minutes between 15:41 and 17:30 MMT on draw days
     scheduler.add_job(
         poll_and_settle_3d_job,
         "cron",
         day="1,16",
         hour="15,16,17",
-        minute="*/3",
+        minute="*/2",
         id="thai_3d_settlement_cron",
         replace_existing=True
     )

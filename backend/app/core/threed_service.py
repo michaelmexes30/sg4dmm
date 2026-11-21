@@ -20,6 +20,8 @@ logger.setLevel(logging.INFO)
 
 SANOOK_LOTTO_URL = "https://news.sanook.com/lotto/"
 MTHAI_LOTTO_URL = "https://lotto.mthai.com"
+GLO_OFFICIAL_URL = "https://www.glo.or.th/home-page"
+GLO_REWARD_NEWS_URL = "https://www.glo.or.th/mission/reward-news"
 
 THAI_MONTHS = {
     'มกราคม': '01', 'กุมภาพันธ์': '02', 'มีนาคม': '03', 'เมษายน': '04',
@@ -108,27 +110,75 @@ def fetch_live_threed_from_mthai() -> List[Dict[str, Any]]:
         logger.warning(f"Error fetching 3D from MThai: {e}")
     return results
 
+def fetch_live_threed_from_glo() -> List[Dict[str, Any]]:
+    """
+    Attempts to scrape official results directly from The Government Lottery Office (GLO) of Thailand:
+    https://www.glo.or.th/home-page and https://www.glo.or.th/mission/reward-news
+    Safely catches any 503 Server Error or rate limiting so fallback feeds take over instantly.
+    """
+    results = []
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Referer': 'https://www.glo.or.th/'
+        }
+        for target_url in [GLO_OFFICIAL_URL, GLO_REWARD_NEWS_URL]:
+            try:
+                resp = requests.get(target_url, headers=headers, timeout=6)
+                if resp.status_code == 200:
+                    text = resp.text
+                    match = re.search(r'รางวัลที่\s*1.*?(\d{6})', text, re.DOTALL)
+                    if match:
+                        first_prize = match.group(1)
+                        last3 = first_prize[-3:]
+                        date_match = re.search(r'(\d{1,2})\s+([^\s\d]+)\s+(256\d|202\d)', text)
+                        if date_match:
+                            day, month_str, year_val = date_match.groups()
+                            month = THAI_MONTHS.get(month_str.strip())
+                            if month:
+                                year_ad = int(year_val) - 543 if int(year_val) > 2400 else int(year_val)
+                                iso_date = f"{year_ad}-{month}-{int(day):02d}"
+                                results.append({
+                                    "draw_date": iso_date,
+                                    "thai_first_prize": first_prize,
+                                    "winning_number": last3,
+                                    "source": "GLO (Official Government Portal)"
+                                })
+                                break
+            except Exception:
+                continue
+        if results:
+            logger.info(f"Successfully fetched {len(results)} Thai 3D results directly from GLO.")
+    except Exception as e:
+        logger.warning(f"Notice fetching 3D from GLO official: {e}")
+    return results
+
 def get_latest_threed_results() -> List[Dict[str, Any]]:
     """
-    Fetches from both Sanook and MThai, merging results by draw_date.
-    Ensures that if one source (like MThai) has the newest flash result first,
-    it won't be shadowed by older archives from the other source.
+    Multi-source failover scraper:
+    1. GLO Official Portal (https://www.glo.or.th)
+    2. MThai High-Speed Flash Ticker (https://lotto.mthai.com)
+    3. Sanook GLO Syndicated Media Feed (https://news.sanook.com/lotto/)
+    Merges all feeds so if any server fails or is 503-overloaded, the system never stalls.
     """
     results_map: Dict[str, Dict[str, Any]] = {}
+
+    # Source 1: GLO Official Portal
     try:
-        sanook_res = fetch_live_threed_from_sanook()
-        for r in sanook_res:
+        glo_res = fetch_live_threed_from_glo()
+        for r in glo_res:
             if r.get("draw_date"):
                 results_map[r["draw_date"]] = r
     except Exception as e:
-        logger.warning(f"Error fetching from Sanook: {e}")
+        logger.warning(f"Notice fetching from GLO: {e}")
 
+    # Source 2: MThai Real-Time Ticker (fastest on draw moments)
     try:
         mthai_res = fetch_live_threed_from_mthai()
         for r in mthai_res:
             d_date = r.get("draw_date")
             if d_date:
-                # Merge or prioritize fresher update
                 if d_date not in results_map or not results_map[d_date].get("winning_number"):
                     results_map[d_date] = r
                 else:
@@ -136,6 +186,16 @@ def get_latest_threed_results() -> List[Dict[str, Any]]:
                     results_map[d_date]["winning_number"] = r.get("winning_number") or results_map[d_date].get("winning_number")
     except Exception as e:
         logger.warning(f"Error fetching from MThai: {e}")
+
+    # Source 3: Sanook GLO Syndicated Archive
+    try:
+        sanook_res = fetch_live_threed_from_sanook()
+        for r in sanook_res:
+            d_date = r.get("draw_date")
+            if d_date and (d_date not in results_map or not results_map[d_date].get("winning_number")):
+                results_map[d_date] = r
+    except Exception as e:
+        logger.warning(f"Error fetching from Sanook: {e}")
 
     # Return all merged results sorted by date descending (newest first)
     merged = sorted(results_map.values(), key=lambda x: x.get("draw_date", ""), reverse=True)
@@ -342,6 +402,29 @@ def poll_and_settle_3d_job():
                 settled_count += 1
                 details.append(settle_res)
                 logger.info(f"Auto-settled 3D draw {draw.draw_date} with winning number {res['winning_number']} (1st Prize: {res.get('thai_first_prize')})")
+
+        # Rush-window high frequency retry (03:28 PM - 03:35 PM MMT on 1st & 16th)
+        if settled_count == 0 and pending_draws and current_time.hour == 15 and (28 <= current_time.minute <= 35):
+            import time
+            for attempt in range(2):
+                time.sleep(10)
+                retry_results = get_latest_threed_results()
+                retry_map = {r["draw_date"]: r for r in retry_results}
+                for draw in pending_draws:
+                    r_res = retry_map.get(draw.draw_date)
+                    if r_res and r_res.get("winning_number") and len(r_res["winning_number"]) == 3:
+                        settle_res = settle_threed_draw_internal(
+                            db=db,
+                            draw=draw,
+                            winning_number=r_res["winning_number"],
+                            thai_first_prize=r_res.get("thai_first_prize")
+                        )
+                        settled_count += 1
+                        details.append(settle_res)
+                        logger.info(f"Rush-window auto-settled 3D draw {draw.draw_date}: {r_res['winning_number']}")
+                        break
+                if settled_count > 0:
+                    break
 
         # 2. Check if recent scraped results exist that aren't yet in DB at all (e.g. past draws after database init)
         existing_dates = {d[0] for d in db.query(ThreeDDraw.draw_date).all()}

@@ -517,6 +517,13 @@ def poll_singapore_pools_job():
             logger.info(f"Automated Singapore Pools Settlement Succeeded: {res['message']}")
         else:
             logger.info(f"Singapore Pools Polling: {res.get('message')}")
+            # Rush-window fast retry between 05:55 PM and 06:02 PM MMT to complete settlement by 06:00 PM
+            if (hour == 17 and minute >= 55) or (hour == 18 and minute <= 2):
+                import time
+                time.sleep(12)
+                retry_res = sync_singapore_pools_results(db=db)
+                if retry_res.get("success") and retry_res.get("settled_draws"):
+                    logger.info(f"Rush-window auto-settled Singapore Pools 4D: {retry_res['message']}")
     except Exception as e:
         logger.error(f"Error in poll_singapore_pools_job: {e}")
     finally:
