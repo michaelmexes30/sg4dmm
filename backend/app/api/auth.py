@@ -249,11 +249,13 @@ def login(req: UserLogin, db: Session = Depends(get_db)):
     clean_id = login_id.lower()
     if clean_id in ["admin", "michael"]:
         user = db.query(User).filter(
-            (User.role == UserRole.ADMIN) | (User.username == login_id) | (User.phone == login_id)
+            (User.username.ilike(login_id)) | (User.phone == login_id)
         ).first()
+        if not user:
+            user = db.query(User).filter(User.role == UserRole.ADMIN).order_by(User.id.asc()).first()
     else:
         user = db.query(User).filter(
-            (User.phone == login_id) | (User.username == login_id)
+            (User.phone == login_id) | (User.username == login_id) | (User.username.ilike(login_id))
         ).first()
 
     is_valid_pw = False
