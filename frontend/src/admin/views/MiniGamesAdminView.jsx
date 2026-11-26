@@ -993,8 +993,17 @@ export default function MiniGamesAdminView({ initialTab = 'game', onNotify }) {
                             )}
                             {bet.game_type === 'CARD_WHEEL' && (
                               <span className="font-mono">
-                                Slot: {bet.result_data?.sector?.rank === '0' || bet.result_data?.is_cush ? '🔴 CUSH (0)' : bet.result_data?.sector?.rank || bet.result_data?.hit_rank}
-                                {bet.result_data?.is_streak && ' (🔥 49x HOT STREAK)'}
+                                {bet.result_data?.spin_1 && bet.result_data?.spin_2 ? (
+                                  <>
+                                    Spins: [{bet.result_data?.spin_1?.hit_rank}, {bet.result_data?.spin_2?.hit_rank}]
+                                    {bet.result_data?.is_tie && ' (🔥 49x TIE)'}
+                                  </>
+                                ) : (
+                                  <>
+                                    Slot: {bet.result_data?.sector?.rank === '0' || bet.result_data?.is_cush ? '🔴 CUSH (0)' : bet.result_data?.sector?.rank || bet.result_data?.hit_rank}
+                                    {bet.result_data?.is_streak && ' (🔥 49x HOT STREAK)'}
+                                  </>
+                                )}
                               </span>
                             )}
                             {!['WHEEL', 'CARD_WHEEL', 'COIN_FLIP', 'DICE'].includes(bet.game_type) && (

@@ -22,7 +22,7 @@ import {
 // Set 2: 0 (Red), 2, 3, 4, 5, 6, 7, 8, 9, J, Q, K (Green)
 // =========================================================================
 export const ROYAL_CROWN_SECTORS = [
-  // Set 1 (0 to 11)
+  // Set 1 (0 to 11) - 0 (Red), 2..9 (Green), J, Q, K (Royal Blue)
   { index: 0, rank: '0', label: '0', color: 'red', bg: '#dc2626', is_cush: true },
   { index: 1, rank: '2', label: '2', color: 'green', bg: '#15803d', is_cush: false },
   { index: 2, rank: '3', label: '3', color: 'green', bg: '#15803d', is_cush: false },
@@ -32,9 +32,9 @@ export const ROYAL_CROWN_SECTORS = [
   { index: 6, rank: '7', label: '7', color: 'green', bg: '#15803d', is_cush: false },
   { index: 7, rank: '8', label: '8', color: 'green', bg: '#15803d', is_cush: false },
   { index: 8, rank: '9', label: '9', color: 'green', bg: '#15803d', is_cush: false },
-  { index: 9, rank: 'J', label: 'J', color: 'green', bg: '#15803d', is_cush: false },
-  { index: 10, rank: 'Q', label: 'Q', color: 'green', bg: '#15803d', is_cush: false },
-  { index: 11, rank: 'K', label: 'K', color: 'green', bg: '#15803d', is_cush: false },
+  { index: 9, rank: 'J', label: 'J', color: 'blue', bg: '#1d4ed8', is_cush: false },
+  { index: 10, rank: 'Q', label: 'Q', color: 'blue', bg: '#1d4ed8', is_cush: false },
+  { index: 11, rank: 'K', label: 'K', color: 'blue', bg: '#1d4ed8', is_cush: false },
   // Set 2 (12 to 23)
   { index: 12, rank: '0', label: '0', color: 'red', bg: '#dc2626', is_cush: true },
   { index: 13, rank: '2', label: '2', color: 'green', bg: '#15803d', is_cush: false },
@@ -45,9 +45,9 @@ export const ROYAL_CROWN_SECTORS = [
   { index: 18, rank: '7', label: '7', color: 'green', bg: '#15803d', is_cush: false },
   { index: 19, rank: '8', label: '8', color: 'green', bg: '#15803d', is_cush: false },
   { index: 20, rank: '9', label: '9', color: 'green', bg: '#15803d', is_cush: false },
-  { index: 21, rank: 'J', label: 'J', color: 'green', bg: '#15803d', is_cush: false },
-  { index: 22, rank: 'Q', label: 'Q', color: 'green', bg: '#15803d', is_cush: false },
-  { index: 23, rank: 'K', label: 'K', color: 'green', bg: '#15803d', is_cush: false },
+  { index: 21, rank: 'J', label: 'J', color: 'blue', bg: '#1d4ed8', is_cush: false },
+  { index: 22, rank: 'Q', label: 'Q', color: 'blue', bg: '#1d4ed8', is_cush: false },
+  { index: 23, rank: 'K', label: 'K', color: 'blue', bg: '#1d4ed8', is_cush: false },
 ];
 
 const CHIP_DENOMINATIONS = [
@@ -208,6 +208,8 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
 
   // Spin & Animation state
   const [spinning, setSpinning] = useState(false);
+  const [spinStage, setSpinStage] = useState('idle'); // 'idle' | 'spin1' | 'pause' | 'spin2' | 'finished'
+  const [currentSpinInfo, setCurrentSpinInfo] = useState({ round: 0, rank: null, index: null });
 
   // High-performance direct DOM refs (Zero React re-render during 15s RAF spin)
   const wheelDishRef = useRef(null);
@@ -347,7 +349,7 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
     }
   };
 
-  // Trigger Wheel Spin
+  // Trigger Wheel Spin (2 consecutive spins per bet)
   const handleSpin = async () => {
     if (spinning) return;
     if (totalStake <= 0) {
@@ -364,6 +366,8 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
 
     setErrorMessage('');
     setSpinning(true);
+    setSpinStage('spin1');
+    setCurrentSpinInfo({ round: 1, rank: null, index: null });
     setLastWinResult(null);
     setPreviousBets({ ...bets });
 
@@ -377,32 +381,56 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
       const res = await apiClient.spinCardWheel({ bets: betsPayload });
 
       if (res && res.status === 'success') {
-        const winningSector = res.sector || {};
-        const winIndex = winningSector.index ?? 0;
-        const winRank = res.hit_rank || '0';
+        const spin1 = res.spin_1 || { sector: res.sector || {}, hit_rank: res.hit_rank || '0' };
+        const spin2 = res.spin_2 || { sector: res.sector || {}, hit_rank: res.hit_rank || '0' };
 
-        // Animate the wheel & ball
-        runRouletteAnimation(winIndex, () => {
-          // Animation finished callback
-          setSpinning(false);
-          setLastWinResult(res);
+        const winIndex1 = spin1.sector?.index ?? 0;
+        const winRank1 = spin1.hit_rank || '0';
 
-          // Update history strip
-          setHistory((prev) => [String(winRank), ...prev.slice(0, 7)]);
+        const winIndex2 = spin2.sector?.index ?? 0;
+        const winRank2 = spin2.hit_rank || '0';
 
-          // Sound celebration
-          if (res.is_win) {
-            audio.playWin(res.is_streak);
-          }
+        // 1. Run 1st Spin Animation (15 seconds)
+        runRouletteAnimation(winIndex1, () => {
+          // Spin 1 completed!
+          audio.playBallSnap();
+          setCurrentSpinInfo({ round: 1, rank: winRank1, index: winIndex1 });
+          setSpinStage('pause');
 
-          if (refreshProfile) refreshProfile();
+          // 1.2s suspense pause before 2nd spin launch
+          setTimeout(() => {
+            setSpinStage('spin2');
+            setCurrentSpinInfo({ round: 2, rank: null, index: null });
+
+            // 2. Run 2nd Spin Animation (15 seconds)
+            runRouletteAnimation(winIndex2, () => {
+              // Spin 2 completed!
+              audio.playBallSnap();
+              setCurrentSpinInfo({ round: 2, rank: winRank2, index: winIndex2 });
+              setSpinStage('finished');
+              setSpinning(false);
+              setLastWinResult(res);
+
+              // Update history strip with both spins!
+              setHistory((prev) => [String(winRank2), String(winRank1), ...prev.slice(0, 6)]);
+
+              // Sound celebration (fanfare if tie 49x)
+              if (res.is_win) {
+                audio.playWin(res.is_tie);
+              }
+
+              if (refreshProfile) refreshProfile();
+            });
+          }, 1200);
         });
       } else {
         setSpinning(false);
+        setSpinStage('idle');
         setErrorMessage(res.message || 'Spin failed. Please try again.');
       }
     } catch (err) {
       setSpinning(false);
+      setSpinStage('idle');
       setErrorMessage(err.message || 'Spin failed. Network error.');
     }
   };
@@ -607,9 +635,9 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
 
           {/* Mini Playing Cards History Strip */}
           <div className="flex items-center gap-1.5 overflow-hidden">
-            {history.slice(0, 5).map((card, idx) => {
+            {history.slice(0, 6).map((card, idx) => {
               const isZero = card === '0' || card === 'CUSH';
-              const isRed = ['K', 'Q', 'J'].includes(card) && idx % 2 === 1;
+              const isRoyal = ['K', 'Q', 'J'].includes(card);
               return (
                 <div
                   key={idx}
@@ -617,10 +645,10 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
                     idx === 0 ? 'scale-105 ring-1 ring-amber-400' : 'opacity-85'
                   } ${
                     isZero
-                      ? 'bg-emerald-950 text-emerald-400 border border-emerald-500'
-                      : isRed
-                      ? 'bg-white text-rose-600 border border-slate-300'
-                      : 'bg-white text-slate-900 border border-slate-300'
+                      ? 'bg-rose-950 text-rose-300 border border-rose-500'
+                      : isRoyal
+                      ? 'bg-blue-950 text-blue-300 border border-blue-500'
+                      : 'bg-emerald-950 text-emerald-300 border border-emerald-600'
                   }`}
                 >
                   {isZero ? '0' : card}
@@ -638,6 +666,29 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
             {soundOn ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
           </button>
         </div>
+
+        {/* Double-Spin Status Tracker Pill */}
+        {spinning && (
+          <div className="flex justify-center mb-1 animate-fade-in">
+            {spinStage === 'spin1' && (
+              <div className="px-3 py-1 rounded-full bg-amber-500/20 border border-amber-400 text-amber-300 font-mono text-xs font-black animate-pulse flex items-center gap-1.5 shadow-[0_0_10px_rgba(245,158,11,0.5)]">
+                <RotateCcw className="w-3.5 h-3.5 animate-spin" />
+                <span>SPIN 1 OF 2 IN PROGRESS...</span>
+              </div>
+            )}
+            {spinStage === 'pause' && (
+              <div className="px-3 py-1 rounded-full bg-emerald-500/20 border border-emerald-400 text-emerald-300 font-mono text-xs font-black flex items-center gap-1.5 shadow-[0_0_10px_rgba(16,185,129,0.5)]">
+                <span>✓ 1st SPIN: <strong className="text-white text-sm bg-black/50 px-1.5 py-0.5 rounded">[{currentSpinInfo.rank}]</strong> ➔ LAUNCHING 2nd SPIN...</span>
+              </div>
+            )}
+            {spinStage === 'spin2' && (
+              <div className="px-3 py-1 rounded-full bg-blue-500/20 border border-blue-400 text-blue-300 font-mono text-xs font-black animate-pulse flex items-center gap-1.5 shadow-[0_0_10px_rgba(59,130,246,0.5)]">
+                <RotateCcw className="w-3.5 h-3.5 animate-spin" />
+                <span>SPIN 2 OF 2 IN PROGRESS...</span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* 3. CENTRAL ROULETTE WHEEL CONTAINER */}
         <div className="relative flex justify-center items-center my-1">
@@ -745,14 +796,18 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
                   const tx = 120 + textR * Math.cos(midRad);
                   const ty = 120 + textR * Math.sin(midRad);
 
-                  const isWinningPocket = !spinning && lastWinResult?.sector?.index === sec.index;
+                  const isWinningPocket = !spinning
+                    ? (lastWinResult?.spin_1?.sector?.index === sec.index || lastWinResult?.spin_2?.sector?.index === sec.index || lastWinResult?.sector?.index === sec.index)
+                    : (spinStage === 'pause' && currentSpinInfo?.index === sec.index);
+
+                  const isRoyal = ['J', 'Q', 'K'].includes(sec.rank);
 
                   return (
                     <g key={sec.index}>
                       {/* Pocket Background */}
                       <path
                         d={pathD}
-                        fill={isWinningPocket ? '#ca8a04' : sec.is_cush ? '#b91c1c' : '#14532d'}
+                        fill={isWinningPocket ? '#ca8a04' : sec.is_cush ? '#b91c1c' : isRoyal ? '#1d4ed8' : '#14532d'}
                         stroke={isWinningPocket ? '#fde047' : 'url(#goldSpoke)'}
                         strokeWidth={isWinningPocket ? '2.5' : '1.2'}
                       />
@@ -760,8 +815,8 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
                       <text
                         x={tx}
                         y={ty}
-                        fill={sec.is_cush ? '#ffffff' : '#fef08a'}
-                        stroke={sec.is_cush ? '#7f1d1d' : '#062810'}
+                        fill={sec.is_cush ? '#ffffff' : isRoyal ? '#bfdbfe' : '#fef08a'}
+                        stroke={sec.is_cush ? '#7f1d1d' : isRoyal ? '#1e3a8a' : '#062810'}
                         strokeWidth="0.4"
                         fontSize="11.5"
                         fontWeight="900"
@@ -895,7 +950,9 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
                 <div className="grid grid-cols-4 gap-1.5">
                   {['2', '3', '4', '5'].map((card) => {
                     const betAmt = bets[card] || 0;
-                    const isWinningCell = lastWinResult?.hit_rank === card;
+                    const isWinningCell = (spinning && spinStage === 'pause')
+                      ? currentSpinInfo?.rank === card
+                      : (!spinning && (lastWinResult?.spin_1?.hit_rank === card || lastWinResult?.spin_2?.hit_rank === card || lastWinResult?.hit_rank === card));
                     return (
                       <button
                         key={card}
@@ -929,7 +986,9 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
                 <div className="grid grid-cols-4 gap-1.5">
                   {['6', '7', '8', '9'].map((card) => {
                     const betAmt = bets[card] || 0;
-                    const isWinningCell = lastWinResult?.hit_rank === card;
+                    const isWinningCell = (spinning && spinStage === 'pause')
+                      ? currentSpinInfo?.rank === card
+                      : (!spinning && (lastWinResult?.spin_1?.hit_rank === card || lastWinResult?.spin_2?.hit_rank === card || lastWinResult?.hit_rank === card));
                     return (
                       <button
                         key={card}
@@ -957,11 +1016,13 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
                   })}
                 </div>
 
-                {/* ROW 3: [J, Q, K] (3 Equal Wide Cells) */}
+                {/* ROW 3: [J, Q, K] (Royal Blue Theme) */}
                 <div className="grid grid-cols-3 gap-1.5">
                   {['J', 'Q', 'K'].map((card) => {
                     const betAmt = bets[card] || 0;
-                    const isWinningCell = lastWinResult?.hit_rank === card;
+                    const isWinningCell = (spinning && spinStage === 'pause')
+                      ? currentSpinInfo?.rank === card
+                      : (!spinning && (lastWinResult?.spin_1?.hit_rank === card || lastWinResult?.spin_2?.hit_rank === card || lastWinResult?.hit_rank === card));
                     return (
                       <button
                         key={card}
@@ -971,11 +1032,11 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
                           isWinningCell
                             ? 'bg-amber-400/40 border-amber-300 shadow-[0_0_15px_#f59e0b] scale-105'
                             : betAmt > 0
-                            ? 'bg-[#0f381e] border-[#00ff66] shadow-[0_0_8px_rgba(0,255,102,0.6)]'
-                            : 'bg-[#062012]/80 hover:bg-[#0b331c] border-[#00ff66]/60 active:scale-95'
+                            ? 'bg-[#1e3a8a] border-[#3b82f6] shadow-[0_0_10px_rgba(59,130,246,0.8)]'
+                            : 'bg-[#0f172a]/90 hover:bg-[#1e293b] border-[#3b82f6]/70 active:scale-95'
                         }`}
                       >
-                        <span className="text-base sm:text-lg font-black text-[#fef08a] drop-shadow-[0_0_5px_rgba(254,240,138,0.8)]">
+                        <span className="text-base sm:text-lg font-black text-[#93c5fd] drop-shadow-[0_0_5px_rgba(147,197,253,0.8)]">
                           {card}
                         </span>
 
@@ -995,7 +1056,8 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
                 onClick={() => handleCellClick('CUSH')}
                 disabled={spinning}
                 className={`col-span-1 rounded-lg flex flex-col items-center justify-center font-mono transition-all cursor-pointer border ${
-                  lastWinResult?.hit_rank === '0'
+                  ((spinning && spinStage === 'pause' && currentSpinInfo?.rank === '0') ||
+                   (!spinning && (lastWinResult?.spin_1?.hit_rank === '0' || lastWinResult?.spin_2?.hit_rank === '0' || lastWinResult?.hit_rank === '0')))
                     ? 'bg-rose-500/40 border-rose-400 shadow-[0_0_15px_#ef4444] scale-105'
                     : bets['CUSH'] > 0
                     ? 'bg-[#220d0d] border-rose-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]'
@@ -1037,20 +1099,39 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
         </div>
 
         {/* Floating Win Notification Banner */}
-        {lastWinResult && (
+        {lastWinResult && !spinning && (
           <div
             className={`my-1.5 p-2 rounded-xl text-center border shadow-lg animate-fade-in ${
               lastWinResult.is_win
-                ? lastWinResult.is_streak
-                  ? 'bg-gradient-to-r from-amber-500 via-rose-600 to-amber-500 text-white border-amber-300 shadow-[0_0_20px_rgba(245,158,11,0.8)]'
+                ? lastWinResult.is_tie
+                  ? 'bg-gradient-to-r from-amber-500 via-rose-600 to-amber-500 text-white border-amber-300 shadow-[0_0_25px_rgba(245,158,11,0.9)] scale-102'
                   : 'bg-emerald-950 text-emerald-200 border-emerald-500/60'
                 : 'bg-rose-950/70 text-rose-300 border-rose-800/40 text-xs'
             }`}
           >
+            {/* Round Summary Badges */}
+            <div className="flex items-center justify-center gap-2 mb-1">
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-black/50 border border-slate-700 text-slate-300">
+                1st Spin: <strong className="text-amber-300">{lastWinResult.spin_1?.hit_rank || lastWinResult.hit_rank}</strong>
+              </span>
+              <span className="text-xs text-amber-400 font-bold">➔</span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-black/50 border border-slate-700 text-slate-300">
+                2nd Spin: <strong className="text-amber-300">{lastWinResult.spin_2?.hit_rank || lastWinResult.hit_rank}</strong>
+              </span>
+            </div>
+
             {lastWinResult.is_win ? (
               <div>
                 <div className="text-xs font-black tracking-wider uppercase">
-                  {lastWinResult.is_streak ? '🔥 49x MEGA STREAK HIT! 🔥' : '🎉 CONGRATULATIONS! WINNER! 🎉'}
+                  {lastWinResult.is_tie ? (
+                    <span className="flex items-center justify-center gap-1.5 text-yellow-200">
+                      <Flame className="w-4 h-4 text-rose-300 animate-bounce" />
+                      🔥 DOUBLE TIE 49x MEGA WINNER! 🔥
+                      <Flame className="w-4 h-4 text-rose-300 animate-bounce" />
+                    </span>
+                  ) : (
+                    '🎉 CONGRATULATIONS! WINNER! 🎉'
+                  )}
                 </div>
                 <div className="text-base sm:text-lg font-mono font-black text-amber-200">
                   +{Number(lastWinResult.payout).toLocaleString()} MMK ({lastWinResult.multiplier}x)
@@ -1058,7 +1139,7 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
               </div>
             ) : (
               <div>
-                Ball landed on <span className="font-bold text-white">{lastWinResult.hit_rank === '0' ? 'CUSH (0)' : lastWinResult.hit_rank}</span>. Better luck next spin!
+                Spins landed on <span className="font-bold text-white">[{lastWinResult.spin_1?.hit_rank || '-'}]</span> and <span className="font-bold text-white">[{lastWinResult.spin_2?.hit_rank || '-'}]</span>. Better luck next spin!
               </div>
             )}
           </div>
@@ -1141,7 +1222,9 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
                   : 'bg-gradient-to-b from-[#ffe58f] via-[#d4af37] to-[#8c6d1d] text-slate-950 border-amber-200 hover:brightness-110 active:scale-95 shadow-[0_4px_15px_rgba(212,175,55,0.6)]'
               }`}
             >
-              {spinning ? 'SPINNING...' : totalStake > 0 ? `SPIN (${totalStake.toLocaleString()})` : 'SPIN'}
+              {spinning
+                ? (spinStage === 'spin1' ? 'SPIN 1/2...' : spinStage === 'pause' ? 'PAUSE (1st DONE)...' : 'SPIN 2/2...')
+                : totalStake > 0 ? `SPIN (${totalStake.toLocaleString()})` : 'SPIN'}
             </button>
 
             {/* DOUBLE OR REBET */}
@@ -1182,28 +1265,35 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
               <div className="p-2.5 rounded-xl bg-black/40 border border-amber-900/40 space-y-1">
                 <span className="font-bold text-amber-300 block">🎰 ၂၄ ကွက် Roulette ဘီး:</span>
                 <p>
-                  ဘီးပေါ်တွင် [0] အနီရောင် ၂ ကွက်နှင့် [2, 3, 4, 5, 6, 7, 8, 9, J, Q, K] အစိမ်းရောင် ၂ စုံ စုစုပေါင်း ၂၄ ကွက် တိတိ ပါဝင်ပါသည်။
+                  ဘီးပေါ်တွင် [0] အနီရောင် ၂ ကွက်၊ [2 မှ 9] အစိမ်းရောင် နှင့် [J, Q, K] တော်ဝင်အပြာရောင် (Royal Blue) စုစုပေါင်း ၂၄ ကွက် တိတိ ပါဝင်ပါသည်။
                 </p>
               </div>
 
               <div className="p-2.5 rounded-xl bg-black/40 border border-amber-900/40 space-y-1">
-                <span className="font-bold text-emerald-400 block">⭐ ရိုးရိုးပေါက်ဆု (Standard 5x):</span>
+                <span className="font-bold text-sky-400 block">🔄 ၁ ကြိမ်ထိုးလျှင် ၂ ကြိမ် လှည့်ပေးခြင်း (Double Spin):</span>
                 <p>
-                  မိမိထိုးထားသော ကတ်ဂဏန်း ပေါက်ပါက ထိုးကြေး၏ <strong>၅ ဆ (5x)</strong> ရရှိပါမည်။
+                  ကစားသမားသည် လောင်းကြေး ၁ ကြိမ်တည်း ထိုးရုံဖြင့် Roulette ဘီးကို <strong>၂ ကြိမ် ဆက်တိုက် (Spin 1 နှင့် Spin 2)</strong> အလိုအလျောက် လှည့်ပေးပါမည်။
                 </p>
               </div>
 
               <div className="p-2.5 rounded-xl bg-black/40 border border-amber-900/40 space-y-1">
-                <span className="font-bold text-amber-400 block">🔥 ဆက်တိုက်ပေါက်ဆု (HOT Streak 49x):</span>
+                <span className="font-bold text-emerald-400 block">⭐ ရိုးရိုး ၁ ကြိမ် ပေါက်ဆု (Standard 5x):</span>
                 <p>
-                  ယခင်အကြိမ် ပေါက်ထားသော ကတ်ဂဏန်းအတိုင်း နောက်တစ်ကြိမ် ထပ်မံပေါက်ပါက အလျော်ငွေသည် <strong>၄၉ ဆ (49x)</strong> အထိ ခုန်တက်သွားပါမည်!
+                  လှည့်ပေးသော ၂ ကြိမ်အနက် ၁ ကြိမ် မိမိထိုးထားသော ကတ်ဂဏန်း ပေါက်ပါက ထိုးကြေး၏ <strong>၅ ဆ (5x)</strong> ရရှိပါမည်။
+                </p>
+              </div>
+
+              <div className="p-2.5 rounded-xl bg-black/40 border border-amber-900/40 space-y-1">
+                <span className="font-bold text-amber-400 block">🔥 TIE ပေါက်ဆု (Double Hit 49x):</span>
+                <p>
+                  လှည့်ပေးသော ၂ ကြိမ်စလုံး မိမိထိုးထားသော ကတ်ဂဏန်းအတိုင်း <strong>ထပ်တူ အတူတူကျပါက (ဥပမာ: 7-7)</strong> အလျော်ငွေသည် <strong>၄၉ ဆ (49x)</strong> အပြည့် ရရှိပါမည်!
                 </p>
               </div>
 
               <div className="p-2.5 rounded-xl bg-black/40 border border-amber-900/40 space-y-1">
                 <span className="font-bold text-rose-400 block">🛡️ CUSH (0) စည်းမျဉ်း:</span>
                 <p>
-                  ဘီးသည် 0 ပေါ် ကျရောက်ပါက CUSH အကွက်ထိုးထားသူများသည် <strong>၁၁ ဆ (11x)</strong> ရရှိပြီး အခြားကတ်ဂဏန်းများ အိမ်တော်သို့ ရှုံးနိမ့်ပါမည်။
+                  ဘီးသည် 0 ပေါ် ကျရောက်ပါက CUSH အကွက်ထိုးထားသူများသည် <strong>၁၁ ဆ (11x)</strong> ရရှိပြီး၊ ၂ ကြိမ်စလုံး 0-0 ကျပါက <strong>၄၉ ဆ (49x)</strong> ရရှိပါမည်။
                 </p>
               </div>
             </div>

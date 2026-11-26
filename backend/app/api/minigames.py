@@ -33,7 +33,7 @@ WHEEL_SEGMENTS = [
 ]
 
 # 24 Slots for Royal Crown (Card Roulette) Arcade Machine
-# Strictly 2 Full Sets Clockwise: [0 (Red), 2, 3, 4, 5, 6, 7, 8, 9, J, Q, K (All Green)] x 2
+# Strictly 2 Full Sets Clockwise: 0 (Red), 2..9 (Green), J, Q, K (Royal Blue) x 2
 CARD_WHEEL_SECTORS = [
     # Set 1 (pockets 0 to 11)
     {"index": 0, "rank": "0", "label": "0", "color": "red", "bg": "#dc2626", "textColor": "#ffffff", "is_cush": True},
@@ -45,9 +45,9 @@ CARD_WHEEL_SECTORS = [
     {"index": 6, "rank": "7", "label": "7", "color": "green", "bg": "#15803d", "textColor": "#ffffff", "is_cush": False},
     {"index": 7, "rank": "8", "label": "8", "color": "green", "bg": "#15803d", "textColor": "#ffffff", "is_cush": False},
     {"index": 8, "rank": "9", "label": "9", "color": "green", "bg": "#15803d", "textColor": "#ffffff", "is_cush": False},
-    {"index": 9, "rank": "J", "label": "J", "color": "green", "bg": "#15803d", "textColor": "#ffffff", "is_cush": False},
-    {"index": 10, "rank": "Q", "label": "Q", "color": "green", "bg": "#15803d", "textColor": "#ffffff", "is_cush": False},
-    {"index": 11, "rank": "K", "label": "K", "color": "green", "bg": "#15803d", "textColor": "#ffffff", "is_cush": False},
+    {"index": 9, "rank": "J", "label": "J", "color": "blue", "bg": "#1d4ed8", "textColor": "#ffffff", "is_cush": False},
+    {"index": 10, "rank": "Q", "label": "Q", "color": "blue", "bg": "#1d4ed8", "textColor": "#ffffff", "is_cush": False},
+    {"index": 11, "rank": "K", "label": "K", "color": "blue", "bg": "#1d4ed8", "textColor": "#ffffff", "is_cush": False},
     # Set 2 (pockets 12 to 23)
     {"index": 12, "rank": "0", "label": "0", "color": "red", "bg": "#dc2626", "textColor": "#ffffff", "is_cush": True},
     {"index": 13, "rank": "2", "label": "2", "color": "green", "bg": "#15803d", "textColor": "#ffffff", "is_cush": False},
@@ -58,9 +58,9 @@ CARD_WHEEL_SECTORS = [
     {"index": 18, "rank": "7", "label": "7", "color": "green", "bg": "#15803d", "textColor": "#ffffff", "is_cush": False},
     {"index": 19, "rank": "8", "label": "8", "color": "green", "bg": "#15803d", "textColor": "#ffffff", "is_cush": False},
     {"index": 20, "rank": "9", "label": "9", "color": "green", "bg": "#15803d", "textColor": "#ffffff", "is_cush": False},
-    {"index": 21, "rank": "J", "label": "J", "color": "green", "bg": "#15803d", "textColor": "#ffffff", "is_cush": False},
-    {"index": 22, "rank": "Q", "label": "Q", "color": "green", "bg": "#15803d", "textColor": "#ffffff", "is_cush": False},
-    {"index": 23, "rank": "K", "label": "K", "color": "green", "bg": "#15803d", "textColor": "#ffffff", "is_cush": False},
+    {"index": 21, "rank": "J", "label": "J", "color": "blue", "bg": "#1d4ed8", "textColor": "#ffffff", "is_cush": False},
+    {"index": 22, "rank": "Q", "label": "Q", "color": "blue", "bg": "#1d4ed8", "textColor": "#ffffff", "is_cush": False},
+    {"index": 23, "rank": "K", "label": "K", "color": "blue", "bg": "#1d4ed8", "textColor": "#ffffff", "is_cush": False},
 ]
 ROYAL_CROWN_SECTORS = CARD_WHEEL_SECTORS
 
@@ -655,10 +655,15 @@ def get_card_wheel_history(
                 continue
             if gid:
                 seen_ids.add(gid)
-            sec = b.result_data.get("sector") or {}
-            rank = sec.get("rank") or b.result_data.get("hit_rank")
-            if rank:
-                results.append(str(rank))
+            spins = b.result_data.get("spins")
+            if spins and isinstance(spins, list):
+                for r in reversed(spins):
+                    results.append(str(r))
+            else:
+                sec = b.result_data.get("sector") or {}
+                rank = sec.get("rank") or b.result_data.get("hit_rank")
+                if rank:
+                    results.append(str(rank))
             if len(results) >= limit:
                 break
 
@@ -667,7 +672,7 @@ def get_card_wheel_history(
         defaults = ["9", "K", "0", "4", "9", "J", "7", "0"]
         results = (results + defaults)[:limit]
 
-    return {"status": "success", "history": results}
+    return {"status": "success", "history": results[:limit]}
 
 
 @router.post("/card-wheel/spin")
@@ -678,11 +683,11 @@ def spin_card_wheel(
 ):
     """
     Royal Crown (Card Roulette) Arcade Machine:
-    - 24 Slots (Strictly 2 sets: 0 Red, 2..K Green).
+    - 24 Slots (Strictly 2 sets: 0 Red, 2..9 Green, J, Q, K Royal Blue).
     - Multi-bet support on betting grid (2-9, J, Q, K, CUSH).
-    - Standard Card Hit: 5x Payout.
-    - Consecutive Hit Multiplier (Same Card 2 in a row): 49x Payout!
-    - CUSH (0) Hit: 11x Payout for CUSH bets, house wins otherwise.
+    - 2 SPINS PER BET: Wheel spins 2 consecutive times per placed wager!
+    - Single Hit: 5x Payout (or 11x for CUSH).
+    - TIE Hit (Both spins land on same card): 49x Payout!
     """
     try:
         is_enabled, rtp_rate, min_stake, max_stake = get_minigame_controls(db)
@@ -717,41 +722,26 @@ def spin_card_wheel(
         if float(current_user.balance or 0.0) < total_stake:
             raise HTTPException(status_code=400, detail="လက်ကျန်ငွေ မလုံလောက်ပါခင်ဗျာ။ ငွေဖြည့်သွင်းပေးပါရန် (Insufficient balance).")
 
-        # 2. Retrieve last spin outcome for streak bonus check
-        last_bet = db.query(MiniGameBet).filter(
-            MiniGameBet.user_id == current_user.id,
-            MiniGameBet.game_type == "CARD_WHEEL"
-        ).order_by(MiniGameBet.id.desc()).first()
-
-        last_rank = None
-        if last_bet and isinstance(last_bet.result_data, dict):
-            sec = last_bet.result_data.get("sector") or {}
-            last_rank = sec.get("rank") or last_bet.result_data.get("hit_rank")
-
-        # 3. Calibrate CUSH (0) weight against live RTP rate (default 95%)
+        # 2. Calibrate CUSH (0) weight against live RTP rate (default 95%)
         # 24 sectors = 2 CUSH + 22 Card slots
         cush_weight = max(0.4, (100.0 - rtp_rate) / 4.0)
         sector_weights = [cush_weight if s.get("is_cush") else 1.0 for s in ROYAL_CROWN_SECTORS]
+        weighted_pool = [s for s, w in zip(ROYAL_CROWN_SECTORS, sector_weights) for _ in range(max(1, int(w * 10)))]
 
-        # Secure RNG pick
-        chosen_sector = secrets.choice(
-            [s for s, w in zip(ROYAL_CROWN_SECTORS, sector_weights) for _ in range(max(1, int(w * 10)))]
-        )
+        # 3. Secure RNG Pick for TWO consecutive spins
+        chosen_sector_1 = secrets.choice(weighted_pool)
+        chosen_sector_2 = secrets.choice(weighted_pool)
 
-        hit_rank = chosen_sector["rank"]
-        is_cush = chosen_sector.get("is_cush", False)
+        hit_rank_1 = chosen_sector_1["rank"]
+        is_cush_1 = chosen_sector_1.get("is_cush", False)
 
-        # 4. Determine Consecutive Streak (49x on same card 2 spins in a row)
-        is_streak = False
-        card_payout_mult = 5.0
-        if not is_cush and last_rank and (last_rank == hit_rank) and last_rank not in ["0", "CUSH"]:
-            is_streak = True
-            card_payout_mult = 49.0
-        else:
-            is_streak = False
-            card_payout_mult = 5.0
+        hit_rank_2 = chosen_sector_2["rank"]
+        is_cush_2 = chosen_sector_2.get("is_cush", False)
 
-        # 5. Evaluate all placed bets
+        # Check if both spins landed on identical rank (TIE / PAIR)
+        is_tie = (hit_rank_1 == hit_rank_2)
+
+        # 4. Evaluate all placed bets against the 2 spins
         total_payout = 0.0
         bet_results = []
         winning_choices = []
@@ -763,20 +753,39 @@ def spin_card_wheel(
             b_mult = 0.0
             b_payout = 0.0
 
-            if is_cush:
-                # Landed on 0 (CUSH)
-                if b_choice in ["CUSH", "0"]:
+            if is_tie:
+                # Both spins landed on identical rank!
+                # If player bet on this exact card / CUSH:
+                if (is_cush_1 and is_cush_2 and b_choice in ["CUSH", "0"]) or (not is_cush_1 and b_choice == hit_rank_1):
                     b_won = True
-                    b_mult = 11.0 # 11x for landing on 0
+                    b_mult = 49.0 # TIE 49x Payout!
                     b_payout = round(b_stake * b_mult, 2)
-                    winning_choices.append("CUSH")
+                    winning_choices.append(b_choice)
             else:
-                # Landed on Card (2-K)
-                if b_choice == hit_rank:
+                # Different cards landed on Spin 1 and Spin 2
+                s1_match = False
+                s1_mult = 0.0
+                if is_cush_1 and b_choice in ["CUSH", "0"]:
+                    s1_match = True
+                    s1_mult = 11.0
+                elif not is_cush_1 and b_choice == hit_rank_1:
+                    s1_match = True
+                    s1_mult = 5.0
+
+                s2_match = False
+                s2_mult = 0.0
+                if is_cush_2 and b_choice in ["CUSH", "0"]:
+                    s2_match = True
+                    s2_mult = 11.0
+                elif not is_cush_2 and b_choice == hit_rank_2:
+                    s2_match = True
+                    s2_mult = 5.0
+
+                if s1_match or s2_match:
                     b_won = True
-                    b_mult = card_payout_mult # 5.0x or 49.0x
+                    b_mult = s1_mult + s2_mult
                     b_payout = round(b_stake * b_mult, 2)
-                    winning_choices.append(hit_rank)
+                    winning_choices.append(b_choice)
 
             total_payout += b_payout
             bet_results.append({
@@ -791,20 +800,25 @@ def spin_card_wheel(
         total_payout = round(total_payout, 2)
         final_multiplier = round(total_payout / total_stake, 2) if (is_win and total_stake > 0) else 0.0
 
-        # 6. Calculate wheel landing angle: 24 sectors -> 15 deg per sector
+        # 5. Calculate wheel landing angles for both spins (15 deg per sector)
         angle_step = 360.0 / 24.0
-        sector_angle = chosen_sector["index"] * angle_step
-        jitter = float(secrets.randbelow(5) - 2)
-        final_angle = round((360.0 - sector_angle + jitter) % 360.0, 2)
+
+        sector_angle_1 = chosen_sector_1["index"] * angle_step
+        jitter_1 = float(secrets.randbelow(5) - 2)
+        final_angle_1 = round((360.0 - sector_angle_1 + jitter_1) % 360.0, 2)
+
+        sector_angle_2 = chosen_sector_2["index"] * angle_step
+        jitter_2 = float(secrets.randbelow(5) - 2)
+        final_angle_2 = round((360.0 - sector_angle_2 + jitter_2) % 360.0, 2)
 
         curr_time = now_mmt()
         today_str = curr_time.strftime("%Y-%m-%d")
 
-        # 7. Update User Balance
+        # 6. Update User Balance
         current_user.balance = float(current_user.balance or 0.0) - total_stake + total_payout
         game_id_str = f"RC-{curr_time.strftime('%Y%m%d%H%M%S')}-{secrets.token_hex(3).upper()}"
 
-        # 8. Ledger Entry: Stake
+        # 7. Ledger Entry: Stake
         db.add(FinancialLedger(
             entry_type=LedgerEntryType.BET_REVENUE,
             amount=total_stake,
@@ -816,7 +830,7 @@ def spin_card_wheel(
             date_str=today_str
         ))
 
-        # 9. Ledger Entry: Payout
+        # 8. Ledger Entry: Payout
         if is_win and total_payout > 0:
             db.add(FinancialLedger(
                 entry_type=LedgerEntryType.PAYOUT_EXPENSE,
@@ -851,7 +865,7 @@ def spin_card_wheel(
             except Exception as tx_err:
                 print(f"Notice: skipped transaction record for win payout: {tx_err}")
 
-        # 10. Save MiniGameBet Record
+        # 9. Save MiniGameBet Record with 2-spin data
         bet_rec = MiniGameBet(
             user_id=current_user.id,
             game_type="CARD_WHEEL",
@@ -862,18 +876,32 @@ def spin_card_wheel(
             player_choice=",".join([b["choice"] for b in incoming_bets]),
             result_data={
                 "game_title": "Royal Crown",
-                "sector": chosen_sector,
-                "hit_rank": hit_rank,
-                "is_cush": is_cush,
-                "is_streak": is_streak,
-                "card_payout_mult": card_payout_mult,
+                "game_id": game_id_str,
+                "spin_1": {
+                    "sector": chosen_sector_1,
+                    "hit_rank": hit_rank_1,
+                    "is_cush": is_cush_1,
+                    "target_angle": final_angle_1
+                },
+                "spin_2": {
+                    "sector": chosen_sector_2,
+                    "hit_rank": hit_rank_2,
+                    "is_cush": is_cush_2,
+                    "target_angle": final_angle_2
+                },
+                "spins": [hit_rank_1, hit_rank_2],
+                "is_tie": is_tie,
+                "tie_rank": hit_rank_1 if is_tie else None,
+                "is_streak": is_tie,
+                # Backward compatibility
+                "sector": chosen_sector_2,
+                "hit_rank": hit_rank_2,
+                "is_cush": is_cush_2,
+                "target_angle": final_angle_2,
                 "final_multiplier": final_multiplier,
                 "total_stake": total_stake,
                 "total_payout": total_payout,
-                "target_angle": final_angle,
-                "previous_rank": last_rank,
-                "bets": bet_results,
-                "game_id": game_id_str
+                "bets": bet_results
             },
             created_at=curr_time,
             date_str=today_str
@@ -884,21 +912,47 @@ def spin_card_wheel(
         return {
             "status": "success",
             "game_id": game_id_str,
-            "sector": chosen_sector,
-            "hit_rank": hit_rank,
-            "is_cush": is_cush,
-            "is_streak": is_streak,
-            "multiplier": card_payout_mult if (not is_cush and is_win) else (11.0 if (is_cush and is_win) else 0.0),
+            "spin_1": {
+                "sector": chosen_sector_1,
+                "hit_rank": hit_rank_1,
+                "is_cush": is_cush_1,
+                "target_angle": final_angle_1
+            },
+            "spin_2": {
+                "sector": chosen_sector_2,
+                "hit_rank": hit_rank_2,
+                "is_cush": is_cush_2,
+                "target_angle": final_angle_2
+            },
+            "spins": [hit_rank_1, hit_rank_2],
+            "is_tie": is_tie,
+            "tie_rank": hit_rank_1 if is_tie else None,
+            "is_streak": is_tie,
+            # Backward compatibility
+            "sector": chosen_sector_2,
+            "hit_rank": hit_rank_2,
+            "is_cush": is_cush_2,
+            "target_angle": final_angle_2,
+            "multiplier": 49.0 if (is_tie and is_win) else (final_multiplier if is_win else 0.0),
             "final_multiplier": final_multiplier,
             "is_win": is_win,
             "total_stake": total_stake,
             "payout": total_payout,
-            "target_angle": final_angle,
-            "previous_rank": last_rank,
             "winning_choices": winning_choices,
             "bets": bet_results,
             "new_balance": current_user.balance
         }
+    except HTTPException:
+        db.rollback()
+        raise
+    except Exception as e:
+        db.rollback()
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Royal Crown error: {str(e)}"
+        )
     except HTTPException:
         db.rollback()
         raise
