@@ -1,28 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  Trophy, 
-  Coins, 
-  Wallet, 
-  Award, 
-  RefreshCw, 
-  Sparkles, 
-  ArrowUpRight, 
-  ArrowDownRight, 
-  Calendar, 
-  Clock, 
-  CheckCircle2, 
-  FileSpreadsheet, 
+import {
+  TrendingUp,
+  Trophy,
+  Coins,
+  Wallet,
+  RefreshCw,
+  ArrowUpRight,
+  ArrowDownRight,
+  Calendar,
+  Clock,
   ArrowRight,
-  ShieldCheck,
-  ExternalLink,
   Dices,
   Users,
   UserCheck,
-  Receipt,
-  AlertCircle,
-  Gamepad2
+  Receipt
 } from 'lucide-react';
 import { apiClient } from '../../api/client';
 
@@ -34,11 +25,23 @@ export default function DashboardOverviewView({ onNotify, onNavigate }) {
 
   useEffect(() => {
     loadDashboardData();
-    // Auto-refresh every 12 seconds for real-time live pulse
     const timer = setInterval(() => {
-      loadDashboardData(false);
-    }, 12000);
-    return () => clearInterval(timer);
+      if (document.visibilityState === 'visible') {
+        loadDashboardData(false);
+      }
+    }, 30000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        loadDashboardData(false);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
   const loadDashboardData = async (showLoading = true) => {
@@ -64,7 +67,16 @@ export default function DashboardOverviewView({ onNotify, onNavigate }) {
     }
   };
 
+  const formatSignedKs = (val) => {
+    const num = Number(val || 0);
+    return num < 0 ? `-Ks ${Math.abs(num).toLocaleString()}` : `Ks ${num.toLocaleString()}`;
+  };
+
+  const currentMonthLabel = balanceData?.month || new Date().toLocaleString('en-US', { month: 'short', year: 'numeric' });
   const companyBalance = balanceData?.company_balance ?? 0;
+  const monthBets = balanceData?.total_bets ?? 0;
+  const monthMiniNet = balanceData?.mini_game_net ?? 0;
+
   const totalBets = stats?.total_bets_all_time ?? 0;
   const totalPayouts = stats?.total_payouts_all_time ?? 0;
   const totalCommissions = stats?.total_commissions_all_time ?? 0;
@@ -76,16 +88,41 @@ export default function DashboardOverviewView({ onNotify, onNavigate }) {
   const lastDraw = stats?.last_settled_draw;
   const masterAgent = stats?.master_agent;
 
+  const gameBadgeClass = (gt) => {
+    if (gt === '2D') return 'bg-amber-500/20 text-amber-300 border-amber-500/30';
+    if (gt === '3D') return 'bg-purple-500/20 text-purple-300 border-purple-500/30';
+    return 'bg-blue-500/20 text-blue-300 border-blue-500/30';
+  };
+
+  const ledgerBadgeClass = (entryType) => {
+    switch (entryType) {
+      case 'BET_REVENUE':
+      case 'BET_STAKE':
+      case 'DEPOSIT':
+        return 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
+      case 'PAYOUT_EXPENSE':
+      case 'PRIZE_PAYOUT':
+      case 'WITHDRAWAL':
+        return 'bg-rose-500/20 text-rose-300 border border-rose-500/30';
+      case 'AGENT_COMMISSION':
+        return 'bg-amber-500/20 text-gold-300 border border-gold-500/30';
+      case 'WEEKLY_BONUS':
+        return 'bg-purple-500/20 text-purple-300 border border-purple-500/30';
+      default:
+        return 'bg-navy-800 text-slate-300 border border-slate-700';
+    }
+  };
+
   return (
     <div className="space-y-6">
-      {/* View Header with Live Pulse and Actions */}
+      {/* 1. Header */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2 font-serif">
-              <span className="text-gold-400">✨</span>
+              <span className="text-gold-400">🦚</span>
               <span className="bg-gradient-to-r from-gold-200 via-gold-400 to-amber-500 bg-clip-text text-transparent">
-                Financial Ledger & Revenue Overview
+                Executive Audit & Revenue Overview
               </span>
             </h2>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5">
@@ -94,8 +131,8 @@ export default function DashboardOverviewView({ onNotify, onNavigate }) {
             </span>
           </div>
           <p className="text-xs text-slate-400 mt-1">
-            Real-time business intelligence, daily turnover, 30% agent commissions, and reconciled company balance.
-            {lastUpdated && <span className="ml-2 text-slate-500 font-mono">Last synced: {lastUpdated}</span>}
+            Real-time platform health across 4D, 2D, 3D, Mini-Games, Deposits/Withdrawals & Agent Network.
+            {lastUpdated && <span className="ml-2 text-slate-500 font-mono">Synced: {lastUpdated}</span>}
           </p>
         </div>
 
@@ -105,97 +142,59 @@ export default function DashboardOverviewView({ onNotify, onNavigate }) {
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-navy-900 border border-gold-500/30 hover:border-gold-400 text-gold-300 text-xs font-bold transition-all cursor-pointer shadow-md"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-gold-400' : ''}`} />
-            <span>Refresh Overview</span>
+            <span>Refresh</span>
           </button>
 
           <a
             href="/"
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 text-xs font-black transition-all shadow-md cursor-pointer"
-            title="Go to 4D Betting Page"
+            title="Go to Player App"
           >
             <Dices className="w-3.5 h-3.5" />
-            <span>4D ထီထိုးစာမျက်နှာ</span>
+            <span>Player App</span>
           </a>
         </div>
       </div>
 
-      {/* 4 Golden Financial KPI Overview Cards (100% Real Database Grounded) */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
-        {/* Card 1: Gross Sales / Total Bets */}
-        <div className="p-5 rounded-2xl bg-gradient-to-br from-navy-900 via-navy-900 to-navy-950 border border-gold-500/30 shadow-xl relative overflow-hidden group hover:border-gold-400/60 transition-all">
-          <div className="absolute top-3 right-3 w-10 h-10 rounded-xl bg-gold-500/10 border border-gold-500/20 flex items-center justify-center text-gold-400">
-            <Coins className="w-5 h-5" />
-          </div>
-          <p className="text-[11px] uppercase font-bold tracking-wider text-slate-400">Total Bets (Gross Volume)</p>
-          <h3 className="text-2xl font-black text-white font-mono mt-1.5">
-            Ks {totalBets.toLocaleString()}
-          </h3>
-          <div className="flex items-center justify-between text-[11px] text-slate-400 mt-3 pt-2.5 border-t border-navy-800">
-            <span className="flex items-center text-emerald-400 font-semibold gap-1">
-              <TrendingUp className="w-3.5 h-3.5" />
-              {(stats?.total_bets_count || 0).toLocaleString()} Slips Placed
-            </span>
-            <span className="text-slate-500 font-mono">
-              Today: Ks {(stats?.today_bets || 0).toLocaleString()}
-            </span>
-          </div>
-        </div>
-
-        {/* Card 2: Total Winning Payouts */}
-        <div className="p-5 rounded-2xl bg-gradient-to-br from-navy-900 via-navy-900 to-navy-950 border border-rose-500/30 shadow-xl relative overflow-hidden group hover:border-rose-400/60 transition-all">
-          <div className="absolute top-3 right-3 w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400">
-            <Trophy className="w-5 h-5" />
-          </div>
-          <p className="text-[11px] uppercase font-bold tracking-wider text-slate-400">Total Winning Payouts</p>
-          <h3 className="text-2xl font-black text-rose-400 font-mono mt-1.5">
-            Ks {totalPayouts.toLocaleString()}
-          </h3>
-          <div className="text-[11px] text-slate-400 mt-3 pt-2.5 border-t border-navy-800 font-mono flex items-center justify-between">
-            <span className="truncate">Last Draw: Ks {(lastDraw?.total_payout || 0).toLocaleString()}</span>
-            <span className="text-slate-500 text-[10px]">100% Settled</span>
-          </div>
-        </div>
-
-        {/* Card 3: 30% Master Agent Commission */}
-        <div className="p-5 rounded-2xl bg-gradient-to-br from-navy-900 via-navy-900 to-navy-950 border border-gold-500/40 shadow-xl relative overflow-hidden group hover:border-gold-400 transition-all gold-border-glow">
-          <div className="absolute top-3 right-3 w-10 h-10 rounded-xl bg-gold-500/15 border border-gold-500/30 flex items-center justify-center text-gold-400">
-            <span className="text-base">🦚</span>
-          </div>
-          <p className="text-[11px] uppercase font-bold tracking-wider text-gold-300">30% Agent Commission</p>
-          <h3 className="text-2xl font-black text-gold-400 font-mono mt-1.5">
-            Ks {totalCommissions.toLocaleString()}
-          </h3>
-          <div className="flex items-center justify-between text-[11px] text-slate-400 mt-3 pt-2.5 border-t border-navy-800">
-            <span className="text-gold-300 font-medium truncate">
-              {masterAgent?.name ? `${masterAgent.name}` : 'Daw Hla Hla'}
-            </span>
-            <span className="px-1.5 py-0.5 rounded bg-gold-500/20 text-gold-300 font-mono text-[10px] font-bold">
-              Pending: Ks {pendingCommissions.toLocaleString()}
-            </span>
-          </div>
-        </div>
-
-        {/* Card 4: Net Company Profit */}
-        <div className="p-5 rounded-2xl bg-gradient-to-br from-navy-900 via-navy-900 to-navy-950 border border-emerald-500/30 shadow-xl relative overflow-hidden group hover:border-emerald-400/60 transition-all">
-          <div className="absolute top-3 right-3 w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
-            <Wallet className="w-5 h-5" />
-          </div>
-          <p className="text-[11px] uppercase font-bold tracking-wider text-slate-400">Net Profit / Loss</p>
-          <h3 className={`text-2xl font-black font-mono mt-1.5 ${totalNetProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-            Ks {totalNetProfit.toLocaleString()}
-          </h3>
-          <div className="text-[11px] text-slate-400 mt-3 pt-2.5 border-t border-navy-800 flex items-center justify-between">
-            <span className="truncate">Turnover - (Payout + Exp)</span>
-            <span className={`font-bold font-mono ${(stats?.today_net_profit || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-              Today: Ks {(stats?.today_net_profit || 0).toLocaleString()}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Operational Pulse Bar (Real-time Platform Activity) */}
+      {/* 2. Action Queue & Platform Pulse (5 Quick Audit Tiles) */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        <div 
+        <div
+          onClick={() => onNavigate && onNavigate('top-up')}
+          className={`bg-navy-900/90 border p-3.5 rounded-xl transition-all cursor-pointer group ${
+            (stats?.pending_deposits_count || 0) > 0
+              ? 'border-amber-400/60 hover:border-amber-300'
+              : 'border-gold-500/20 hover:border-gold-400/50'
+          }`}
+        >
+          <div className="flex items-center justify-between text-slate-400 text-xs">
+            <span>Deposit Review</span>
+            <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400 group-hover:scale-110 transition-transform" />
+          </div>
+          <div className={`text-lg font-black font-mono mt-1 ${(stats?.pending_deposits_count || 0) > 0 ? 'text-amber-400 animate-pulse' : 'text-slate-300'}`}>
+            {(stats?.pending_deposits_count || 0)} Pending
+          </div>
+          <span className="text-[10px] text-slate-400">Approved: Ks {(stats?.total_deposits_all_time || 0).toLocaleString()}</span>
+        </div>
+
+        <div
+          onClick={() => onNavigate && onNavigate('withdraw')}
+          className={`bg-navy-900/90 border p-3.5 rounded-xl transition-all cursor-pointer group ${
+            (stats?.pending_withdrawals_count || 0) > 0
+              ? 'border-rose-400/60 hover:border-rose-300'
+              : 'border-gold-500/20 hover:border-gold-400/50'
+          }`}
+        >
+          <div className="flex items-center justify-between text-slate-400 text-xs">
+            <span>Withdraw Review</span>
+            <ArrowDownRight className="w-3.5 h-3.5 text-rose-400 group-hover:scale-110 transition-transform" />
+          </div>
+          <div className={`text-lg font-black font-mono mt-1 ${(stats?.pending_withdrawals_count || 0) > 0 ? 'text-rose-400 animate-pulse' : 'text-slate-300'}`}>
+            {(stats?.pending_withdrawals_count || 0)} Pending
+          </div>
+          <span className="text-[10px] text-slate-400">Paid: Ks {(stats?.total_withdrawals_all_time || 0).toLocaleString()}</span>
+        </div>
+
+        <div
           onClick={() => onNavigate && onNavigate('app-users')}
           className="bg-navy-900/90 border border-gold-500/20 hover:border-gold-400/50 p-3.5 rounded-xl transition-all cursor-pointer group"
         >
@@ -209,7 +208,7 @@ export default function DashboardOverviewView({ onNotify, onNavigate }) {
           <span className="text-[10px] text-blue-300 font-medium">Real Accounts</span>
         </div>
 
-        <div 
+        <div
           onClick={() => onNavigate && onNavigate('agent-commissions')}
           className="bg-navy-900/90 border border-gold-500/20 hover:border-gold-400/50 p-3.5 rounded-xl transition-all cursor-pointer group"
         >
@@ -223,35 +222,7 @@ export default function DashboardOverviewView({ onNotify, onNavigate }) {
           <span className="text-[10px] text-gold-400 font-medium">30% Tier Network</span>
         </div>
 
-        <div 
-          onClick={() => onNavigate && onNavigate('withdraw')}
-          className="bg-navy-900/90 border border-gold-500/20 hover:border-gold-400/50 p-3.5 rounded-xl transition-all cursor-pointer group"
-        >
-          <div className="flex items-center justify-between text-slate-400 text-xs">
-            <span>Withdraw Review</span>
-            <ArrowDownRight className="w-3.5 h-3.5 text-rose-400 group-hover:scale-110 transition-transform" />
-          </div>
-          <div className={`text-lg font-black font-mono mt-1 ${(stats?.pending_withdrawals_count || 0) > 0 ? 'text-rose-400 animate-pulse' : 'text-slate-300'}`}>
-            {(stats?.pending_withdrawals_count || 0)} Pending
-          </div>
-          <span className="text-[10px] text-slate-400">Total: Ks {(stats?.total_withdrawals_all_time || 0).toLocaleString()}</span>
-        </div>
-
-        <div 
-          onClick={() => onNavigate && onNavigate('top-up')}
-          className="bg-navy-900/90 border border-gold-500/20 hover:border-gold-400/50 p-3.5 rounded-xl transition-all cursor-pointer group"
-        >
-          <div className="flex items-center justify-between text-slate-400 text-xs">
-            <span>Deposit Review</span>
-            <ArrowUpRight className="w-3.5 h-3.5 text-emerald-400 group-hover:scale-110 transition-transform" />
-          </div>
-          <div className={`text-lg font-black font-mono mt-1 ${(stats?.pending_deposits_count || 0) > 0 ? 'text-amber-400 animate-pulse' : 'text-slate-300'}`}>
-            {(stats?.pending_deposits_count || 0)} Pending
-          </div>
-          <span className="text-[10px] text-slate-400">Total: Ks {(stats?.total_deposits_all_time || 0).toLocaleString()}</span>
-        </div>
-
-        <div 
+        <div
           onClick={() => onNavigate && onNavigate('reports-financial')}
           className="bg-navy-900/90 border border-gold-500/20 hover:border-gold-400/50 p-3.5 rounded-xl transition-all cursor-pointer group col-span-2 sm:col-span-1"
         >
@@ -262,67 +233,113 @@ export default function DashboardOverviewView({ onNotify, onNavigate }) {
           <div className="text-lg font-black text-purple-300 font-mono mt-1">
             Ks {(stats?.total_customer_balance || 0).toLocaleString()}
           </div>
-          <span className="text-[10px] text-slate-400">Platform Player Vault</span>
+          <span className="text-[10px] text-slate-400">Player Wallets Vault</span>
         </div>
       </div>
 
-      {/* Reconciled Company Monthly Balance Banner */}
-      <div className="p-6 rounded-2xl bg-gradient-to-r from-navy-900 via-navy-900 to-navy-950 border border-gold-500/40 shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-6 gold-border-glow">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-full bg-gold-500/20 text-gold-300 text-[11px] font-bold border border-gold-500/30">
-              Salone4D Reconciled Vault
-            </span>
-            <span className="text-xs text-slate-400">October 2026 Audit</span>
+      {/* 3. 4 Core Financial KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
+        {/* Card 1: Monthly Company Balance */}
+        <div
+          onClick={() => onNavigate && onNavigate('reports-financial')}
+          className="p-5 rounded-2xl bg-gradient-to-br from-navy-900 via-navy-900 to-navy-950 border border-gold-500/40 shadow-xl relative overflow-hidden group hover:border-gold-400 transition-all gold-border-glow cursor-pointer"
+        >
+          <div className="absolute top-3 right-3 w-10 h-10 rounded-xl bg-gold-500/15 border border-gold-500/30 flex items-center justify-center text-gold-400">
+            <Wallet className="w-5 h-5" />
           </div>
-          <div className="text-sm font-semibold text-slate-300">Company Monthly Reserve Balance</div>
-          <div className="text-3xl sm:text-4xl font-black font-mono text-white tracking-tight flex items-baseline gap-2">
-            <span className="text-gold-400">Ks</span>
-            <span>{companyBalance.toLocaleString()}</span>
+          <p className="text-[11px] uppercase font-bold tracking-wider text-gold-300">
+            Company Balance ({currentMonthLabel})
+          </p>
+          <h3 className={`text-2xl font-black font-mono mt-1.5 ${companyBalance >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+            {formatSignedKs(companyBalance)}
+          </h3>
+          <div className="flex items-center justify-between text-[11px] text-slate-400 mt-3 pt-2.5 border-t border-navy-800 font-mono">
+            <span>Bets: Ks {monthBets.toLocaleString()}</span>
+            <span className={monthMiniNet >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+              Mini: {formatSignedKs(monthMiniNet)}
+            </span>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          <div className="bg-navy-950/80 px-4 py-2.5 rounded-xl border border-gold-500/15">
-            <span className="text-[10px] text-slate-400 uppercase font-semibold block">Active Draw Pool</span>
-            <span className="text-sm font-bold text-white font-mono">
-              Ks {(activeDraw?.total_staked || stats?.active_bets_pool || 0).toLocaleString()}
+        {/* Card 2: Total Bets (All-Time Gross Volume) */}
+        <div className="p-5 rounded-2xl bg-gradient-to-br from-navy-900 via-navy-900 to-navy-950 border border-gold-500/30 shadow-xl relative overflow-hidden group hover:border-gold-400/60 transition-all">
+          <div className="absolute top-3 right-3 w-10 h-10 rounded-xl bg-gold-500/10 border border-gold-500/20 flex items-center justify-center text-gold-400">
+            <Coins className="w-5 h-5" />
+          </div>
+          <p className="text-[11px] uppercase font-bold tracking-wider text-slate-400">Total Bets (All-Time)</p>
+          <h3 className="text-2xl font-black text-white font-mono mt-1.5">
+            Ks {totalBets.toLocaleString()}
+          </h3>
+          <div className="flex items-center justify-between text-[11px] text-slate-400 mt-3 pt-2.5 border-t border-navy-800">
+            <span className="flex items-center text-emerald-400 font-semibold gap-1">
+              <TrendingUp className="w-3.5 h-3.5" />
+              {(stats?.total_bets_count || 0).toLocaleString()} Slips
+            </span>
+            <span className="text-slate-400 font-mono">
+              Today: Ks {(stats?.today_bets || 0).toLocaleString()}
             </span>
           </div>
-          <div className="bg-navy-950/80 px-4 py-2.5 rounded-xl border border-gold-500/15">
-            <span className="text-[10px] text-slate-400 uppercase font-semibold block">Today's Net Profit</span>
-            <span className={`text-sm font-bold font-mono ${(stats?.today_net_profit || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-              Ks {(stats?.today_net_profit || 0).toLocaleString()}
+        </div>
+
+        {/* Card 3: Total Payouts & Commissions */}
+        <div className="p-5 rounded-2xl bg-gradient-to-br from-navy-900 via-navy-900 to-navy-950 border border-rose-500/30 shadow-xl relative overflow-hidden group hover:border-rose-400/60 transition-all">
+          <div className="absolute top-3 right-3 w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400">
+            <Trophy className="w-5 h-5" />
+          </div>
+          <p className="text-[11px] uppercase font-bold tracking-wider text-slate-400">Total Payouts & Comm</p>
+          <h3 className="text-2xl font-black text-rose-400 font-mono mt-1.5">
+            Ks {totalPayouts.toLocaleString()}
+          </h3>
+          <div className="text-[11px] text-slate-400 mt-3 pt-2.5 border-t border-navy-800 font-mono flex items-center justify-between gap-2">
+            <span className="truncate text-amber-300">
+              Comm: Ks {totalCommissions.toLocaleString()}
+              {masterAgent?.name ? ` (${masterAgent.name})` : ''}
+            </span>
+            <span className="px-1.5 py-0.5 rounded bg-gold-500/20 text-gold-300 text-[10px] font-bold shrink-0">
+              Pend: {pendingCommissions.toLocaleString()}
             </span>
           </div>
-          <div className="bg-navy-950/80 px-4 py-2.5 rounded-xl border border-gold-500/15 col-span-2 sm:col-span-1">
-            <span className="text-[10px] text-slate-400 uppercase font-semibold block">Weekly Bonuses Distributed</span>
-            <span className="text-sm font-bold text-purple-400 font-mono">
-              Ks {(stats?.total_bonuses_all_time || 0).toLocaleString()}
+        </div>
+
+        {/* Card 4: All-Time Net Profit */}
+        <div className="p-5 rounded-2xl bg-gradient-to-br from-navy-900 via-navy-900 to-navy-950 border border-emerald-500/30 shadow-xl relative overflow-hidden group hover:border-emerald-400/60 transition-all">
+          <div className="absolute top-3 right-3 w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+            <TrendingUp className="w-5 h-5" />
+          </div>
+          <p className="text-[11px] uppercase font-bold tracking-wider text-slate-400">All-Time Net Profit</p>
+          <h3 className={`text-2xl font-black font-mono mt-1.5 ${totalNetProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+            {formatSignedKs(totalNetProfit)}
+          </h3>
+          <div className="text-[11px] text-slate-400 mt-3 pt-2.5 border-t border-navy-800 flex items-center justify-between font-mono">
+            <span className="truncate text-purple-300">
+              Bonus: Ks {(stats?.total_bonuses_all_time || 0).toLocaleString()}
+            </span>
+            <span className={`font-bold ${(stats?.today_net_profit || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+              Today: {formatSignedKs(stats?.today_net_profit || 0)}
             </span>
           </div>
         </div>
       </div>
 
-      {/* Middle Grid: Active Open Draw Spotlight + Last Draw Results Spotlight */}
+      {/* 4. Middle Grid: Active Open Draw Spotlight + Last Settled Draw Results Spotlight */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Card 1: Current Active Open Draw */}
         <div className="p-6 rounded-2xl bg-gradient-to-br from-navy-900 via-navy-900 to-navy-950 border border-gold-500/30 shadow-xl space-y-4">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Current Open Game (Live & Closed)</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Current Open 4D Draw</span>
             <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span>{activeDraw?.status || 'OPEN'}</span>
+              <span>{activeDraw?.status || 'NONE'}</span>
             </span>
           </div>
 
           <div>
             <div className="text-3xl font-black text-white font-serif mb-1 tracking-wider">
-              #{activeDraw?.draw_number || '5550'}
+              {activeDraw?.draw_number ? `#${activeDraw.draw_number}` : 'No Active Draw'}
             </div>
             <div className="text-xs text-gold-400 font-semibold flex items-center gap-1.5">
               <Calendar className="w-3.5 h-3.5" />
-              <span>Draw Date: {activeDraw?.draw_date || '2026-10-18'} (Singapore 4D)</span>
+              <span>Draw Date: {activeDraw?.draw_date || '-'} (Singapore 4D)</span>
             </div>
           </div>
 
@@ -336,8 +353,8 @@ export default function DashboardOverviewView({ onNotify, onNavigate }) {
               <span className="font-bold text-gold-300 font-mono">{activeDraw?.combinations_covered || 0} / 10,000 Numbers</span>
             </div>
             <div className="flex justify-between py-1">
-              <span className="text-slate-400">Cut-off Time:</span>
-              <span className="font-bold text-rose-400 font-mono">04:30 PM MMT (Strict)</span>
+              <span className="text-slate-400">Pending Exposure Pool (All Games):</span>
+              <span className="font-bold text-amber-300 font-mono">Ks {(stats?.active_bets_pool || 0).toLocaleString()}</span>
             </div>
           </div>
 
@@ -355,7 +372,7 @@ export default function DashboardOverviewView({ onNotify, onNavigate }) {
         {/* Card 2: Last Settled Draw Official Results Spotlight */}
         <div className="p-6 rounded-2xl bg-gradient-to-br from-navy-900 via-navy-900 to-navy-950 border border-gold-500/30 shadow-xl space-y-4">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Last Draw Official Results</span>
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Last Settled 4D Result</span>
             <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-500/20 text-gold-300 border border-gold-500/30">
               SETTLED
             </span>
@@ -363,11 +380,11 @@ export default function DashboardOverviewView({ onNotify, onNavigate }) {
 
           <div>
             <div className="text-3xl font-black text-white font-serif mb-1 tracking-wider">
-              #{lastDraw?.draw_number || '5549'}
+              {lastDraw?.draw_number ? `#${lastDraw.draw_number}` : '-'}
             </div>
             <div className="text-xs text-slate-400 font-semibold flex items-center gap-1.5">
               <Calendar className="w-3.5 h-3.5 text-gold-400" />
-              <span>Draw Date: {lastDraw?.draw_date || '2026-10-17'} (Official Results)</span>
+              <span>Draw Date: {lastDraw?.draw_date || '-'} (Official Results)</span>
             </div>
           </div>
 
@@ -397,119 +414,16 @@ export default function DashboardOverviewView({ onNotify, onNavigate }) {
               onClick={() => onNavigate('4d-past-games')}
               className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-navy-800 hover:bg-navy-750 border border-slate-700 text-slate-300 hover:text-white text-xs font-bold transition-all cursor-pointer"
             >
-              <span>View Past Games & Winners Heatmap</span>
+              <span>View Past Results & Winners Heatmap</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           )}
         </div>
       </div>
 
-      {/* Fast Operational Jump Hub */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <div 
-          onClick={() => onNavigate && onNavigate('reports-financial')}
-          className="p-4 rounded-2xl bg-navy-900/90 border border-gold-500/20 hover:border-gold-400/50 transition-all cursor-pointer group flex flex-col justify-between"
-        >
-          <div>
-            <div className="w-8 h-8 rounded-xl bg-gold-500/10 border border-gold-500/20 flex items-center justify-center text-gold-400 mb-2.5 group-hover:scale-105 transition-transform">
-              <FileSpreadsheet className="w-4 h-4" />
-            </div>
-            <h4 className="text-xs font-bold text-white group-hover:text-gold-300 transition-colors">
-              Daily Financial Statement
-            </h4>
-            <p className="text-[11px] text-slate-400 mt-1">
-              Daily 4D stakes, top-ups, withdrawals, payouts, and net profit.
-            </p>
-          </div>
-          <span className="text-[11px] text-gold-400 font-semibold flex items-center gap-1 mt-3">
-            Open Statement <ArrowRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
-          </span>
-        </div>
-
-        <div 
-          onClick={() => onNavigate && onNavigate('agent-commissions')}
-          className="p-4 rounded-2xl bg-navy-900/90 border border-gold-500/20 hover:border-gold-400/50 transition-all cursor-pointer group flex flex-col justify-between"
-        >
-          <div>
-            <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 mb-2.5 group-hover:scale-105 transition-transform">
-              <span className="text-sm">🦚</span>
-            </div>
-            <h4 className="text-xs font-bold text-white group-hover:text-gold-300 transition-colors">
-              Agent 30% Commission
-            </h4>
-            <p className="text-[11px] text-slate-400 mt-1">
-              Weekly commission ledger, credit limits, and settlement status.
-            </p>
-          </div>
-          <span className="text-[11px] text-gold-400 font-semibold flex items-center gap-1 mt-3">
-            View Commissions <ArrowRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
-          </span>
-        </div>
-
-        <div 
-          onClick={() => onNavigate && onNavigate('4d-bet-history')}
-          className="p-4 rounded-2xl bg-navy-900/90 border border-gold-500/20 hover:border-gold-400/50 transition-all cursor-pointer group flex flex-col justify-between"
-        >
-          <div>
-            <div className="w-8 h-8 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400 mb-2.5 group-hover:scale-105 transition-transform">
-              <CheckCircle2 className="w-4 h-4" />
-            </div>
-            <h4 className="text-xs font-bold text-white group-hover:text-gold-300 transition-colors">
-              4D Bet Slips & Tickets
-            </h4>
-            <p className="text-[11px] text-slate-400 mt-1">
-              Inspect all player betting slips, combinations, and bet types.
-            </p>
-          </div>
-          <span className="text-[11px] text-blue-400 font-semibold flex items-center gap-1 mt-3">
-            Browse All Tickets <ArrowRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
-          </span>
-        </div>
-
-        <div 
-          onClick={() => onNavigate && onNavigate('weekly-bonuses')}
-          className="p-4 rounded-2xl bg-navy-900/90 border border-gold-500/20 hover:border-gold-400/50 transition-all cursor-pointer group flex flex-col justify-between"
-        >
-          <div>
-            <div className="w-8 h-8 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 mb-2.5 group-hover:scale-105 transition-transform">
-              <Award className="w-4 h-4" />
-            </div>
-            <h4 className="text-xs font-bold text-white group-hover:text-gold-300 transition-colors">
-              10% Weekly Player Bonus
-            </h4>
-            <p className="text-[11px] text-slate-400 mt-1">
-              Active player bonus qualifying preview and Monday distributions.
-            </p>
-          </div>
-          <span className="text-[11px] text-purple-400 font-semibold flex items-center gap-1 mt-3">
-            Bonus Manager <ArrowRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
-          </span>
-        </div>
-
-        <div 
-          onClick={() => onNavigate && onNavigate('minigames')}
-          className="p-4 rounded-2xl bg-navy-900/90 border border-gold-500/20 hover:border-gold-400/50 transition-all cursor-pointer group flex flex-col justify-between"
-        >
-          <div>
-            <div className="w-8 h-8 rounded-xl bg-gold-500/10 border border-gold-500/20 flex items-center justify-center text-gold-400 mb-2.5 group-hover:scale-105 transition-transform">
-              <Gamepad2 className="w-4 h-4" />
-            </div>
-            <h4 className="text-xs font-bold text-white group-hover:text-gold-300 transition-colors">
-              🎮 Mini-Games & RTP
-            </h4>
-            <p className="text-[11px] text-slate-400 mt-1">
-              House Edge (RTP) control, live plays audit, and profit reconciliation.
-            </p>
-          </div>
-          <span className="text-[11px] text-gold-400 font-semibold flex items-center gap-1 mt-3">
-            Open Mini-Games <ArrowRight className="w-3 h-3 group-hover:translate-x-1 transition-transform" />
-          </span>
-        </div>
-      </div>
-
-      {/* Two Live Feeds: Real-time Bet Slips Stream & Real-time Ledger Stream */}
+      {/* 5. Two Live Feeds: Real-time Bet Slips Stream & Real-time Ledger Stream */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Feed 1: Latest Placed 4D Bet Slips */}
+        {/* Feed 1: Latest Placed Bet Slips (4D/2D/3D) */}
         <div className="bg-navy-900/90 border border-gold-500/20 rounded-2xl p-5 shadow-xl flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-3.5">
@@ -528,7 +442,7 @@ export default function DashboardOverviewView({ onNotify, onNavigate }) {
                   onClick={() => onNavigate('4d-bet-history')}
                   className="text-xs text-gold-400 hover:text-gold-300 font-semibold flex items-center gap-1 cursor-pointer"
                 >
-                  <span>All Slips</span>
+                  <span>All 4D Slips</span>
                   <ArrowRight className="w-3 h-3" />
                 </button>
               )}
@@ -558,17 +472,24 @@ export default function DashboardOverviewView({ onNotify, onNavigate }) {
                   <tbody className="divide-y divide-navy-800 text-slate-300 font-mono text-[11px]">
                     {recentBets.slice(0, 7).map((slip) => (
                       <tr key={slip.id} className="hover:bg-navy-800/40 transition-colors">
-                        <td className="py-2 px-2.5 text-gold-300 font-bold">{slip.slip_code}</td>
+                        <td className="py-2 px-2.5 text-gold-300 font-bold">
+                          <span className={`inline-block mr-1.5 px-1.5 py-0.5 rounded text-[9px] font-black border ${gameBadgeClass(slip.game_type || '4D')}`}>
+                            {slip.game_type || '4D'}
+                          </span>
+                          {slip.slip_code}
+                        </td>
                         <td className="py-2 px-2.5 font-sans text-white">{slip.user_phone}</td>
                         <td className="py-2 px-2.5 text-right text-emerald-400 font-bold">
-                          Ks {slip.total_stake.toLocaleString()}
+                          Ks {(slip.total_stake || 0).toLocaleString()}
                         </td>
                         <td className="py-2 px-2.5 text-right">
                           <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
-                            slip.status === 'WON' 
-                              ? 'bg-amber-500/20 text-gold-300 border border-gold-500/40' 
-                              : slip.status === 'LOST' 
-                              ? 'bg-slate-800 text-slate-400' 
+                            slip.status === 'WON'
+                              ? 'bg-amber-500/20 text-gold-300 border border-gold-500/40'
+                              : slip.status === 'LOST'
+                              ? 'bg-slate-800 text-slate-400'
+                              : slip.status === 'CANCELLED' || slip.status === 'VOID'
+                              ? 'bg-rose-500/20 text-rose-300'
                               : 'bg-blue-500/20 text-blue-300'
                           }`}>
                             {slip.status}
@@ -628,36 +549,27 @@ export default function DashboardOverviewView({ onNotify, onNavigate }) {
                       <th className="py-2 px-2.5">Type</th>
                       <th className="py-2 px-2.5">Description</th>
                       <th className="py-2 px-2.5 text-right">Amount</th>
-                      <th className="py-2 px-2.5 text-right">Vault Bal</th>
+                      <th className="py-2 px-2.5 text-right">Ref / Bal</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-navy-800 text-slate-300 font-mono text-[11px]">
                     {recentTransactions.slice(0, 7).map((tx) => {
-                      const isPositive = ['BET_STAKE', 'DEPOSIT', 'OTHER_IN'].includes(tx.entry_type);
+                      const amt = Number(tx.amount || 0);
+                      const isPositive = amt >= 0;
                       return (
                         <tr key={tx.id} className="hover:bg-navy-800/40 transition-colors">
                           <td className="py-2 px-2.5">
-                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
-                              tx.entry_type === 'AGENT_COMMISSION'
-                                ? 'bg-amber-500/20 text-gold-300 border border-gold-500/30'
-                                : tx.entry_type === 'BET_STAKE'
-                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                                : tx.entry_type === 'WEEKLY_BONUS'
-                                ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
-                                : tx.entry_type === 'PRIZE_PAYOUT'
-                                ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                                : 'bg-navy-800 text-slate-300'
-                            }`}>
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${ledgerBadgeClass(tx.entry_type)}`}>
                               {tx.entry_type}
                             </span>
                           </td>
-                          <td className="py-2 px-2.5 font-sans text-slate-200 truncate max-w-[150px]">
+                          <td className="py-2 px-2.5 font-sans text-slate-200 truncate max-w-[160px]" title={tx.description || ''}>
                             {tx.description || '-'}
                           </td>
                           <td className={`py-2 px-2.5 text-right font-bold ${
                             isPositive ? 'text-emerald-400' : 'text-rose-400'
                           }`}>
-                            {isPositive ? '+' : '-'}Ks {(Math.abs(tx.amount || 0)).toLocaleString()}
+                            {isPositive ? '+' : '-'}Ks {Math.abs(amt).toLocaleString()}
                           </td>
                           <td className="py-2 px-2.5 text-right text-gold-400 font-bold">
                             Ks {(tx.running_balance || 0).toLocaleString()}

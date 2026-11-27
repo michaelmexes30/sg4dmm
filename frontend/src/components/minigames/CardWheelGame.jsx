@@ -57,6 +57,8 @@ const CHIP_DENOMINATIONS = [
   { value: 5000, label: '5K', color: '#b91c1c', border: '#fef08a', text: '#ffffff' },
 ];
 
+const LONG_PRESS_CLEAR_MS = 800;
+
 // Web Audio API Synthesizer
 class ArcadeAudioEngine {
   constructor() {
@@ -260,6 +262,12 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
   const pauseTimerRef = useRef(null);
   const spinStartRef = useRef(0);
 
+  // Long-press to clear individual cell bet
+  const [pressingCell, setPressingCell] = useState(null);
+  const longPressTimerRef = useRef(null);
+  const longPressTriggeredRef = useRef(false);
+  const pressStartPosRef = useRef(null);
+
   // Initial DOM synchronization on mount
   useEffect(() => {
     updateWheelAndBallDOM(
@@ -306,8 +314,69 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
     if (next) audio.playChip();
   };
 
+  const cancelLongPress = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    pressStartPosRef.current = null;
+    setPressingCell(null);
+  };
+
+  const handleCellPointerDown = (choice, e) => {
+    if (spinning || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    longPressTriggeredRef.current = false;
+    cancelLongPress();
+
+    if ((bets[choice] || 0) <= 0) return;
+
+    pressStartPosRef.current = { x: e.clientX, y: e.clientY };
+    setPressingCell(choice);
+
+    longPressTimerRef.current = setTimeout(() => {
+      longPressTriggeredRef.current = true;
+      longPressTimerRef.current = null;
+      pressStartPosRef.current = null;
+      setPressingCell(null);
+      audio.playClear();
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        try {
+          navigator.vibrate(30);
+        } catch (_) {}
+      }
+      setBets((prev) => {
+        if (!prev[choice]) return prev;
+        const next = { ...prev };
+        delete next[choice];
+        return next;
+      });
+      setErrorMessage('');
+    }, LONG_PRESS_CLEAR_MS);
+  };
+
+  const handleCellPointerMove = (e) => {
+    if (!longPressTimerRef.current || !pressStartPosRef.current) return;
+    if (Math.hypot(e.clientX - pressStartPosRef.current.x, e.clientY - pressStartPosRef.current.y) > 10) {
+      cancelLongPress();
+    }
+  };
+
+  const getCellPressProps = (choice) => ({
+    onPointerDown: (e) => handleCellPointerDown(choice, e),
+    onPointerMove: handleCellPointerMove,
+    onPointerUp: cancelLongPress,
+    onPointerLeave: cancelLongPress,
+    onPointerCancel: cancelLongPress,
+    onContextMenu: (e) => e.preventDefault(),
+    style: { WebkitTouchCallout: 'none', touchAction: 'manipulation' },
+  });
+
   // Add chip to cell
   const handleCellClick = (choice) => {
+    if (longPressTriggeredRef.current) {
+      longPressTriggeredRef.current = false;
+      return;
+    }
     if (spinning) return;
     audio.playChip();
     setErrorMessage('');
@@ -365,6 +434,7 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
       return;
     }
 
+    cancelLongPress();
     setErrorMessage('');
     setSpinning(true);
     setSpinStage('spin1');
@@ -588,6 +658,7 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
       if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);
+      if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
     };
   }, []);
 
@@ -958,10 +1029,10 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
           </div>
 
           {/* Center Neon-Green Grid Panel */}
-          <div className="flex-1 relative rounded-2xl p-2 bg-[#05130b] border-2 border-[#00ff66] shadow-[0_0_15px_rgba(0,255,102,0.4),inset_0_0_12px_rgba(0,255,102,0.2)]">
+          <div className="flex-1 flex flex-col relative rounded-2xl p-2 bg-[#05130b] border-2 border-[#00ff66] shadow-[0_0_15px_rgba(0,255,102,0.4),inset_0_0_12px_rgba(0,255,102,0.2)]">
             
             {/* Main Grid Structure */}
-            <div className="grid grid-cols-5 gap-1.5 h-full">
+            <div className="grid grid-cols-5 gap-1.5 flex-1">
               
               {/* Left 4 Columns: Rows 1, 2, 3 */}
               <div className="col-span-4 flex flex-col gap-1.5">
@@ -970,6 +1041,7 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
                 <div className="grid grid-cols-4 gap-1.5">
                   {['2', '3', '4', '5'].map((card) => {
                     const betAmt = bets[card] || 0;
+                    const isPressing = pressingCell === card;
                     const isWinningCell = (spinning && spinStage === 'pause')
                       ? currentSpinInfo?.rank === card
                       : (!spinning && (lastWinResult?.spin_1?.hit_rank === card || lastWinResult?.spin_2?.hit_rank === card || lastWinResult?.hit_rank === card));
@@ -977,9 +1049,12 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
                       <button
                         key={card}
                         onClick={() => handleCellClick(card)}
+                        {...getCellPressProps(card)}
                         disabled={spinning}
                         className={`relative h-11 sm:h-12 rounded-lg flex flex-col items-center justify-center font-mono transition-all cursor-pointer border ${
-                          isWinningCell
+                          isPressing
+                            ? 'bg-rose-600/45 border-rose-400 shadow-[0_0_20px_rgba(244,63,94,0.95)] ring-2 ring-rose-400/80 scale-95 animate-pulse'
+                            : isWinningCell
                             ? 'bg-amber-400/40 border-amber-300 shadow-[0_0_15px_#f59e0b] scale-105'
                             : betAmt > 0
                             ? 'bg-[#0f381e] border-[#00ff66] shadow-[0_0_8px_rgba(0,255,102,0.6)]'
@@ -1006,6 +1081,7 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
                 <div className="grid grid-cols-4 gap-1.5">
                   {['6', '7', '8', '9'].map((card) => {
                     const betAmt = bets[card] || 0;
+                    const isPressing = pressingCell === card;
                     const isWinningCell = (spinning && spinStage === 'pause')
                       ? currentSpinInfo?.rank === card
                       : (!spinning && (lastWinResult?.spin_1?.hit_rank === card || lastWinResult?.spin_2?.hit_rank === card || lastWinResult?.hit_rank === card));
@@ -1013,9 +1089,12 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
                       <button
                         key={card}
                         onClick={() => handleCellClick(card)}
+                        {...getCellPressProps(card)}
                         disabled={spinning}
                         className={`relative h-11 sm:h-12 rounded-lg flex flex-col items-center justify-center font-mono transition-all cursor-pointer border ${
-                          isWinningCell
+                          isPressing
+                            ? 'bg-rose-600/45 border-rose-400 shadow-[0_0_20px_rgba(244,63,94,0.95)] ring-2 ring-rose-400/80 scale-95 animate-pulse'
+                            : isWinningCell
                             ? 'bg-amber-400/40 border-amber-300 shadow-[0_0_15px_#f59e0b] scale-105'
                             : betAmt > 0
                             ? 'bg-[#0f381e] border-[#00ff66] shadow-[0_0_8px_rgba(0,255,102,0.6)]'
@@ -1040,6 +1119,7 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
                 <div className="grid grid-cols-3 gap-1.5">
                   {['J', 'Q', 'K'].map((card) => {
                     const betAmt = bets[card] || 0;
+                    const isPressing = pressingCell === card;
                     const isWinningCell = (spinning && spinStage === 'pause')
                       ? currentSpinInfo?.rank === card
                       : (!spinning && (lastWinResult?.spin_1?.hit_rank === card || lastWinResult?.spin_2?.hit_rank === card || lastWinResult?.hit_rank === card));
@@ -1047,9 +1127,12 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
                       <button
                         key={card}
                         onClick={() => handleCellClick(card)}
+                        {...getCellPressProps(card)}
                         disabled={spinning}
                         className={`relative h-11 sm:h-12 rounded-lg flex flex-col items-center justify-center font-mono transition-all cursor-pointer border ${
-                          isWinningCell
+                          isPressing
+                            ? 'bg-rose-600/45 border-rose-400 shadow-[0_0_20px_rgba(244,63,94,0.95)] ring-2 ring-rose-400/80 scale-95 animate-pulse'
+                            : isWinningCell
                             ? 'bg-amber-400/40 border-amber-300 shadow-[0_0_15px_#f59e0b] scale-105'
                             : betAmt > 0
                             ? 'bg-[#1e3a8a] border-[#3b82f6] shadow-[0_0_10px_rgba(59,130,246,0.8)]'
@@ -1074,9 +1157,12 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
               {/* Right Vertical Box: CUSH (0 / House) */}
               <button
                 onClick={() => handleCellClick('CUSH')}
+                {...getCellPressProps('CUSH')}
                 disabled={spinning}
-                className={`col-span-1 rounded-lg flex flex-col items-center justify-center font-mono transition-all cursor-pointer border ${
-                  ((spinning && spinStage === 'pause' && currentSpinInfo?.rank === '0') ||
+                className={`relative col-span-1 rounded-lg flex flex-col items-center justify-center font-mono transition-all cursor-pointer border ${
+                  pressingCell === 'CUSH'
+                    ? 'bg-rose-600/45 border-rose-400 shadow-[0_0_20px_rgba(244,63,94,0.95)] ring-2 ring-rose-400/80 scale-95 animate-pulse'
+                    : ((spinning && spinStage === 'pause' && currentSpinInfo?.rank === '0') ||
                    (!spinning && (lastWinResult?.spin_1?.hit_rank === '0' || lastWinResult?.spin_2?.hit_rank === '0' || lastWinResult?.hit_rank === '0')))
                     ? 'bg-rose-500/40 border-rose-400 shadow-[0_0_15px_#ef4444] scale-105'
                     : bets['CUSH'] > 0
@@ -1097,6 +1183,10 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
                   </div>
                 )}
               </button>
+            </div>
+
+            <div className="mt-1.5 text-center text-[9px] text-emerald-300/70 font-sans tracking-wide">
+              💡 ထိုးထားသော အကွက်ကို 0.8 စက္ကန့် ဖိထားလျှင် ထိုအကွက်၏ ထိုးကြေးကို ဖျက်နိုင်ပါသည်
             </div>
           </div>
 

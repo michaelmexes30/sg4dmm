@@ -84,9 +84,20 @@ export default function MiniGamesAdminView({ initialTab = 'game', onNotify }) {
     loadBets(1);
 
     const timer = setInterval(() => {
-      loadOverview(true);
-    }, 15000);
-    return () => clearInterval(timer);
+      if (document.visibilityState === 'visible') {
+        loadOverview(true);
+      }
+    }, 30000);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        loadOverview(true);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
   const loadOverview = async (silent = false) => {

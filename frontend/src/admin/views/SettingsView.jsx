@@ -158,9 +158,6 @@ export default function SettingsView({ onNotify }) {
         cutoff_time: systemSettings.cutoff_time,
         result_confirm_time: systemSettings.result_time,
         result_time: systemSettings.result_time,
-        reward_percentage: Number(systemSettings.reward_percentage),
-        consecutive_reward_percent: Number(systemSettings.reward_percentage),
-        weekly_bonus_rate: Number(systemSettings.reward_percentage),
         commission_rate: Number(systemSettings.commission_rate || 30),
         telegram_finance_group_id: (systemSettings.telegram_finance_group_id || '').trim(),
         auto_approve_max_amount: Number(systemSettings.auto_approve_max_amount ?? 50000),
@@ -442,7 +439,7 @@ export default function SettingsView({ onNotify }) {
                       type="text"
                       value={systemSettings.kpay_phone}
                       onChange={(e) => setSystemSettings({ ...systemSettings, kpay_phone: e.target.value })}
-                      placeholder="09798888888"
+                      placeholder="09xxxxxxxxx"
                       className="w-full bg-navy-900 border border-gold-500/30 rounded-xl px-3 py-1.5 text-xs text-white font-mono focus:outline-none focus:border-gold-400"
                     />
                   </div>
@@ -452,7 +449,7 @@ export default function SettingsView({ onNotify }) {
                       type="text"
                       value={systemSettings.kpay_name}
                       onChange={(e) => setSystemSettings({ ...systemSettings, kpay_name: e.target.value })}
-                      placeholder="Daw Hla Hla"
+                      placeholder="Official Receiver Name"
                       className="w-full bg-navy-900 border border-gold-500/30 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-gold-400"
                     />
                   </div>
@@ -561,13 +558,10 @@ export default function SettingsView({ onNotify }) {
               </div>
 
               <div>
-                <label className="block text-[11px] text-slate-400 mb-1">Weekly Reward / Bonus (%)</label>
-                <input
-                  type="number"
-                  value={systemSettings.reward_percentage}
-                  onChange={(e) => setSystemSettings({ ...systemSettings, reward_percentage: Number(e.target.value) })}
-                  className="w-full bg-navy-950 border border-gold-500/20 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-gold-400 font-mono"
-                />
+                <label className="block text-[11px] text-slate-400 mb-1">Weekly Bonus Rule</label>
+                <div className="w-full bg-navy-950/70 border border-purple-500/30 rounded-xl px-3 py-2 text-[11px] text-purple-300 font-medium">
+                  Managed in <span className="font-bold text-white">Reports → Weekly Bonuses → Rules</span> (every Tuesday 11:00 AM MMT).
+                </div>
               </div>
 
               {/* Withdrawal Operating Hours Toggle (08:00 AM - 08:00 PM MMT) */}
@@ -1156,38 +1150,32 @@ export default function SettingsView({ onNotify }) {
                   type="text"
                   value={systemSettings.telegram_finance_group_id || ''}
                   onChange={(e) => setSystemSettings({ ...systemSettings, telegram_finance_group_id: e.target.value })}
-                  placeholder="e.g. -1002345678901 (Auto-detected)"
+                  placeholder="e.g. -1002345678901"
                   className="w-full bg-navy-900 border border-sky-500/30 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-sky-400"
                 />
                 <div className="p-2.5 rounded-lg bg-navy-900/80 border border-sky-500/10 text-[11px] text-slate-400 space-y-1">
-                  <p className="text-sky-200 font-semibold">💡 ချိတ်ဆက်ရန် လွယ်ကူသော နည်းလမ်း-</p>
+                  <p className="text-sky-200 font-semibold">🔒 လုံခြုံရေးအရ Admin ကိုယ်တိုင်သာ သတ်မှတ်ရန်-</p>
                   <p>
-                    Telegram Group (<a href="https://t.me/+vWUCA2JnQxw2MTNl" target="_blank" rel="noreferrer" className="text-sky-400 underline font-mono">https://t.me/+vWUCA2JnQxw2MTNl</a>) ထဲသို့ <b>@SG4DMyanmarBot</b> အား Add ထည့်ထားပါက Bot မှ Group ID ကို အလိုအလျောက် ရယူချိတ်ဆက်ပေးပါမည်။
+                    သင်၏ Official Finance Group Chat ID (ဥပမာ <span className="font-mono text-sky-300">-100...</span>) ကို ဤနေရာတွင် ထည့်သွင်းပြီး <span className="font-bold text-white">Save System Settings</span> နှိပ်ပါ။ (အပြင်လူများမှ Group အတု ချိတ်ဆက်ခိုးယူခြင်း မဖြစ်စေရန် Auto-bind ကို ပိတ်ထားပါသည်)
                   </p>
                 </div>
               </div>
 
-              {/* Auto-Approve Safety Threshold */}
-              <div className="bg-navy-950 p-3.5 rounded-xl border border-amber-500/20 space-y-2">
-                <label className="block text-xs font-bold text-amber-300 flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4 text-amber-400" />
-                  <span>Auto-Approve Safety Limit (အလိုအလျောက်အတည်ပြု ကန့်သတ်ချက်)</span>
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    step="5000"
-                    min="1000"
-                    value={systemSettings.auto_approve_max_amount ?? 50000}
-                    onChange={(e) => setSystemSettings({ ...systemSettings, auto_approve_max_amount: Number(e.target.value) })}
-                    className="w-full bg-navy-900 border border-amber-500/30 rounded-xl px-3 py-2 text-xs text-amber-300 font-bold font-mono focus:outline-none focus:border-amber-400"
-                  />
-                  <span className="text-xs text-slate-400 font-bold">Ks</span>
+              {/* Manual Review Enforcement Notice */}
+              <div className="bg-navy-950 p-3.5 rounded-xl border border-emerald-500/30 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                    <span>Deposit Review Policy (ငွေသွင်းစစ်ဆေးမှု စနစ်)</span>
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                    100% MANUAL REVIEW
+                  </span>
                 </div>
-                <div className="p-2.5 rounded-lg bg-navy-900/80 border border-amber-500/10 text-[11px] text-slate-400 space-y-1">
-                  <p className="text-amber-200 font-semibold">🛡️ 100% Manual Review သတ်မှတ်ချက်-</p>
-                  <p>
-                    လက်ရှိတွင် AI ပြေစာအတုများ အန္တရာယ်မှ လုံးဝကင်းဝေးစေရန် Auto-Approve အား ပိတ်ထားပြီးဖြစ်ပါသည်။ ငွေသွင်းမှုအားလုံး Admin စစ်ဆေးအတည်ပြုပြီးမှသာ Player Balance ထဲ ရောက်ရှိပါမည်။
+                <div className="p-3 rounded-lg bg-navy-900/80 border border-emerald-500/15 text-[11px] text-slate-300 space-y-1.5 leading-relaxed">
+                  <p className="text-amber-200 font-semibold">🛡️ AI ပြေစာအတုများမှ ၁၀၀% ကာကွယ်ထားပါသည်-</p>
+                  <p className="text-slate-400">
+                    ငွေသွင်း (Top Up) တင်သမျှအားလုံးကို Admin မှ Finance → Deposit & Top Up စာမျက်နှာတွင် ကိုယ်တိုင်စစ်ဆေးအတည်ပြုပြီးမှသာ Player Balance ထဲသို့ ထည့်သွင်းပေးပါသည်။ (Auto-Approve အား လုံခြုံရေးအရ အပြီးပိတ်ထားပါသည်)
                   </p>
                 </div>
               </div>
@@ -1242,10 +1230,10 @@ export default function SettingsView({ onNotify }) {
                   (Array.isArray(releases) ? releases : (releases?.results || [])).map((rel, i) => (
                     <tr key={i} className="hover:bg-navy-800/40">
                       <td className="py-3 px-4 font-mono font-bold text-gold-300">
-                        {rel.version_name || `Salone4D_V1.0.${15 - i}`}
+                        {rel.version_name || `Release #${i + 1}`}
                       </td>
                       <td className="py-3 px-4 text-slate-400">
-                        {rel.created_at?.slice(0, 10) || '2026-10-14'}
+                        {rel.created_at?.slice(0, 10) || '-'}
                       </td>
                       <td className="py-3 px-4 text-center">
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${

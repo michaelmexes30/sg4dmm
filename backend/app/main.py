@@ -641,7 +641,7 @@ def health_check():
         "timezone": settings.TIMEZONE_MMT,
         "utc_offset": "+06:30",
         "agent_commission_rate": "30%",
-        "weekly_bonus_rate": "10% (Settled every Monday 11:00 AM MMT)",
+        "weekly_bonus_rate": "10% (Settled every Tuesday 11:00 AM MMT)",
         "draw_cutoff": "04:30 PM MMT (Wed, Sat, Sun)",
         "betting_limits": f"{settings.MIN_BET_AMOUNT} - {settings.MAX_BET_AMOUNT:,} MMK",
         "gateway_hours": "08:00 AM - 08:00 PM MMT"

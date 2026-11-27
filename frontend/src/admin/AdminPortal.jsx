@@ -86,39 +86,50 @@ export default function AdminPortal({ onBackToApp }) {
   const { user, logout } = useAuth();
   const { t, lang, toggleLanguage } = useLanguage();
 
-  // Active view: e.g. '4d-game', '4d-bet-history', 'withdraw', 'system-users', 'app-users', 'fake-users', 'financial-report', 'system-settings'
-  const [activeMenu, setActiveMenu] = useState('4d-game');
+  // Active view: default to Executive Dashboard Overview
+  const [activeMenu, setActiveMenu] = useState('dashboard');
   const [companyBalance, setCompanyBalance] = useState(0);
   const [balanceMonth, setBalanceMonth] = useState(() => new Date().toLocaleString('en-US', { month: 'short' }));
+  const [pendingCounts, setPendingCounts] = useState({ deposits: 0, withdrawals: 0 });
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notification, setNotification] = useState(null);
 
-  // Expanded submenus
+  // Clean collapsible sidebar groups (Finance open by default for fast audit workflow)
   const [expandedGroups, setExpandedGroups] = useState({
-    '4d': true,
-    '2d': true,
-    '3d': true,
-    'minigames': true,
     'balance': true,
-    'members': true,
-    'reports': true,
-    'settings': false
+    '4d': false,
+    '2d': false,
+    '3d': false,
+    'members': false,
+    'reports': false
   });
 
   useEffect(() => {
     loadCompanyBalance();
-    const interval = setInterval(loadCompanyBalance, 8000);
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        loadCompanyBalance();
+      }
+    }, 30000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        loadCompanyBalance();
+      }
+    };
 
     const handleBalanceEvent = (e) => {
       if (e.detail && e.detail.company_balance !== undefined) {
         setCompanyBalance(e.detail.company_balance);
       }
     };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('companyBalanceUpdated', handleBalanceEvent);
 
     return () => {
       clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('companyBalanceUpdated', handleBalanceEvent);
     };
   }, []);
@@ -130,6 +141,12 @@ export default function AdminPortal({ onBackToApp }) {
         setCompanyBalance(res.company_balance);
         if (res.month_label) {
           setBalanceMonth(res.month_label);
+        }
+        if (res.pending_deposits_count !== undefined || res.pending_withdrawals_count !== undefined) {
+          setPendingCounts({
+            deposits: Number(res.pending_deposits_count || 0),
+            withdrawals: Number(res.pending_withdrawals_count || 0)
+          });
         }
         return;
       }
@@ -170,7 +187,31 @@ export default function AdminPortal({ onBackToApp }) {
     }));
   };
 
+  const MENU_PARENT_MAP = {
+    '4d-game': '4d',
+    '4d-past-games': '4d',
+    '4d-bet-history': '4d',
+    '2d-game': '2d',
+    '2d-past-games': '2d',
+    '2d-bet-history': '2d',
+    '3d-game': '3d',
+    '3d-past-games': '3d',
+    '3d-bet-history': '3d',
+    'top-up': 'balance',
+    'withdraw': 'balance',
+    'system-users': 'members',
+    'app-users': 'members',
+    'agent-commissions': 'members',
+    'fake-users': 'members',
+    'reports-financial': 'reports',
+    'weekly-bonuses': 'reports'
+  };
+
   const handleSelectMenu = (menuKey) => {
+    const parentGroup = MENU_PARENT_MAP[menuKey];
+    if (parentGroup) {
+      setExpandedGroups((prev) => (prev[parentGroup] ? prev : { ...prev, [parentGroup]: true }));
+    }
     setActiveMenu(menuKey);
     setMobileMenuOpen(false);
   };
@@ -256,16 +297,17 @@ export default function AdminPortal({ onBackToApp }) {
           <button
             onClick={logout}
             title="Sign Out"
-            className="p-2 rounded-xl bg-rose-600/15 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-500/30 transition-all cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-600/15 hover:bg-rose-600 text-rose-400 hover:text-white border border-rose-500/30 text-xs font-bold transition-all cursor-pointer"
           >
             <LogOut className="w-4 h-4" />
+            <span className="hidden sm:inline">Logout</span>
           </button>
         </div>
       </header>
 
       {/* Main Container with Sidebar + Content */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Left Sidebar Navigation (Matching exact 16-screenshot hierarchy) */}
+        {/* Left Sidebar Navigation (De-duplicated & Audit-Friendly) */}
         <aside
           className={`fixed inset-y-0 left-0 z-30 w-64 bg-[#0b1120] border-r border-slate-800 pt-16 lg:pt-0 flex flex-col transition-transform duration-200 lg:static lg:translate-x-0 ${
             mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
@@ -276,7 +318,7 @@ export default function AdminPortal({ onBackToApp }) {
             {/* 1. Dashboard */}
             <button
               onClick={() => handleSelectMenu('dashboard')}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-all ${
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-all cursor-pointer ${
                 activeMenu === 'dashboard'
                   ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-600/30'
                   : 'text-slate-300 hover:bg-slate-800 hover:text-white'
@@ -286,15 +328,67 @@ export default function AdminPortal({ onBackToApp }) {
               <span>Dashboard</span>
             </button>
 
-            {/* 2. 4D (Game, Bet History) */}
+            {/* 2. Finance (Deposit & Top Up, Withdraw Review) */}
+            <div>
+              <button
+                onClick={() => toggleGroup('balance')}
+                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <Wallet className="w-4 h-4 text-emerald-400" />
+                  <span>Finance</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {(pendingCounts.deposits + pendingCounts.withdrawals) > 0 && (
+                    <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black font-mono bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                      {pendingCounts.deposits + pendingCounts.withdrawals}
+                    </span>
+                  )}
+                  {expandedGroups['balance'] ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                </div>
+              </button>
+
+              {expandedGroups['balance'] && (
+                <div className="pl-9 pr-1 py-1 space-y-1">
+                  <button
+                    onClick={() => handleSelectMenu('top-up')}
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors flex items-center justify-between cursor-pointer ${
+                      activeMenu === 'top-up' ? 'bg-blue-600/20 text-blue-300 font-bold border border-blue-500/30' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <span>Deposit & Top Up</span>
+                    {pendingCounts.deposits > 0 && (
+                      <span className="text-[10px] bg-amber-500/20 text-amber-300 font-mono font-bold px-1.5 py-0.5 rounded-full border border-amber-500/40">
+                        {pendingCounts.deposits}
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => handleSelectMenu('withdraw')}
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors flex items-center justify-between cursor-pointer ${
+                      activeMenu === 'withdraw' ? 'bg-blue-600/20 text-blue-300 font-bold border border-blue-500/30' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <span>Withdraw Review</span>
+                    {pendingCounts.withdrawals > 0 && (
+                      <span className="text-[10px] bg-rose-500/20 text-rose-300 font-mono font-bold px-1.5 py-0.5 rounded-full border border-rose-500/40">
+                        {pendingCounts.withdrawals}
+                      </span>
+                    )}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* 3. Singapore 4D */}
             <div>
               <button
                 onClick={() => toggleGroup('4d')}
-                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 transition-colors"
+                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 <div className="flex items-center gap-3">
                   <Dice5 className="w-4 h-4 text-blue-400" />
-                  <span>4D</span>
+                  <span>Singapore 4D</span>
                 </div>
                 {expandedGroups['4d'] ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
               </button>
@@ -303,45 +397,37 @@ export default function AdminPortal({ onBackToApp }) {
                 <div className="pl-9 pr-1 py-1 space-y-1">
                   <button
                     onClick={() => handleSelectMenu('4d-game')}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors cursor-pointer ${
                       activeMenu === '4d-game' ? 'bg-blue-600/20 text-blue-300 font-bold border border-blue-500/30' : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    Game (Live & Closed)
+                    Live & Closed
                   </button>
                   <button
                     onClick={() => handleSelectMenu('4d-past-games')}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors cursor-pointer ${
                       activeMenu === '4d-past-games' ? 'bg-blue-600/20 text-blue-300 font-bold border border-blue-500/30' : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    Past Games
+                    Past Results
                   </button>
                   <button
                     onClick={() => handleSelectMenu('4d-bet-history')}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors cursor-pointer ${
                       activeMenu === '4d-bet-history' ? 'bg-blue-600/20 text-blue-300 font-bold border border-blue-500/30' : 'text-slate-400 hover:text-white'
                     }`}
                   >
                     Bet History
                   </button>
-                  <button
-                    onClick={() => handleSelectMenu('4d-financial-ledger')}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                      activeMenu === '4d-financial-ledger' ? 'bg-blue-600/20 text-blue-300 font-bold border border-blue-500/30' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Mini Ledger
-                  </button>
                 </div>
               )}
             </div>
 
-            {/* 2.1. 2D (Game, Past Games, Bet History) */}
+            {/* 4. Thai 2D */}
             <div>
               <button
                 onClick={() => toggleGroup('2d')}
-                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 transition-colors"
+                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 <div className="flex items-center gap-3">
                   <span className="w-5 h-5 rounded-lg bg-amber-500/20 text-amber-300 text-[10px] font-black flex items-center justify-center border border-amber-500/40">
@@ -356,45 +442,37 @@ export default function AdminPortal({ onBackToApp }) {
                 <div className="pl-9 pr-1 py-1 space-y-1">
                   <button
                     onClick={() => handleSelectMenu('2d-game')}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors cursor-pointer ${
                       activeMenu === '2d-game' ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30' : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    Game (Live & Closed)
+                    Live & Closed
                   </button>
                   <button
                     onClick={() => handleSelectMenu('2d-past-games')}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors cursor-pointer ${
                       activeMenu === '2d-past-games' ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30' : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    Past Games
+                    Past Results
                   </button>
                   <button
                     onClick={() => handleSelectMenu('2d-bet-history')}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors cursor-pointer ${
                       activeMenu === '2d-bet-history' ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30' : 'text-slate-400 hover:text-white'
                     }`}
                   >
                     Bet History
                   </button>
-                  <button
-                    onClick={() => handleSelectMenu('2d-financial-ledger')}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                      activeMenu === '2d-financial-ledger' ? 'bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Mini Ledger
-                  </button>
                 </div>
               )}
             </div>
 
-            {/* 2.2. 3D (Game, Past Games, Bet History) */}
+            {/* 5. Thai 3D */}
             <div>
               <button
                 onClick={() => toggleGroup('3d')}
-                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 transition-colors"
+                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 <div className="flex items-center gap-3">
                   <span className="w-5 h-5 rounded-lg bg-purple-500/20 text-purple-300 text-[10px] font-black flex items-center justify-center border border-purple-500/40">
@@ -409,137 +487,55 @@ export default function AdminPortal({ onBackToApp }) {
                 <div className="pl-9 pr-1 py-1 space-y-1">
                   <button
                     onClick={() => handleSelectMenu('3d-game')}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors cursor-pointer ${
                       activeMenu === '3d-game' ? 'bg-purple-600/20 text-purple-300 font-bold border border-purple-500/30' : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    Game (Live & Closed)
+                    Live & Closed
                   </button>
                   <button
                     onClick={() => handleSelectMenu('3d-past-games')}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors cursor-pointer ${
                       activeMenu === '3d-past-games' ? 'bg-purple-600/20 text-purple-300 font-bold border border-purple-500/30' : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    Past Games
+                    Past Results
                   </button>
                   <button
                     onClick={() => handleSelectMenu('3d-bet-history')}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors cursor-pointer ${
                       activeMenu === '3d-bet-history' ? 'bg-purple-600/20 text-purple-300 font-bold border border-purple-500/30' : 'text-slate-400 hover:text-white'
                     }`}
                   >
                     Bet History
                   </button>
-                  <button
-                    onClick={() => handleSelectMenu('3d-financial-ledger')}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                      activeMenu === '3d-financial-ledger' ? 'bg-purple-600/20 text-purple-300 font-bold border border-purple-500/30' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Mini Ledger
-                  </button>
                 </div>
               )}
             </div>
 
-            {/* Mini-Games (Game & RTP Control, Daily Financial Statement, History) */}
-            <div>
-              <button
-                onClick={() => toggleGroup('minigames')}
-                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 transition-colors cursor-pointer"
-              >
-                <div className="flex items-center gap-3">
-                  <Gamepad2 className="w-4 h-4 text-gold-400" />
-                  <span>Mini-Games & RTP</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[9px] bg-gold-500/20 text-gold-300 font-mono font-bold px-1.5 py-0.5 rounded border border-gold-500/30">
-                    LIVE
-                  </span>
-                  {expandedGroups['minigames'] ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                </div>
-              </button>
+            {/* 6. Mini-Games & RTP (Single direct item — tabs handled inside MiniGamesAdminView) */}
+            <button
+              onClick={() => handleSelectMenu('minigames')}
+              className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl transition-all cursor-pointer ${
+                activeMenu === 'minigames'
+                  ? 'bg-gold-500/20 text-gold-300 font-bold border border-gold-500/40'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Gamepad2 className="w-4 h-4 text-gold-400" />
+                <span>Mini-Games & RTP</span>
+              </div>
+              <span className="text-[9px] bg-gold-500/20 text-gold-300 font-mono font-bold px-1.5 py-0.5 rounded border border-gold-500/30">
+                LIVE
+              </span>
+            </button>
 
-              {expandedGroups['minigames'] && (
-                <div className="pl-9 pr-1 py-1 space-y-1">
-                  <button
-                    onClick={() => handleSelectMenu('minigames-game')}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                      activeMenu === 'minigames-game' || activeMenu === 'minigames'
-                        ? 'bg-gold-500/20 text-gold-300 font-bold border border-gold-500/30'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Game (Live & Closed)
-                  </button>
-                  <button
-                    onClick={() => handleSelectMenu('minigames-statement')}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                      activeMenu === 'minigames-statement'
-                        ? 'bg-gold-500/20 text-gold-300 font-bold border border-gold-500/30'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Daily Games Statement
-                  </button>
-                  <button
-                    onClick={() => handleSelectMenu('minigames-history')}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                      activeMenu === 'minigames-history'
-                        ? 'bg-gold-500/20 text-gold-300 font-bold border border-gold-500/30'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    History
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* 3. Balance (Deposit & Top Up, Withdraw Review) */}
-            <div>
-              <button
-                onClick={() => toggleGroup('balance')}
-                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <Wallet className="w-4 h-4 text-emerald-400" />
-                  <span>Balance</span>
-                </div>
-                {expandedGroups['balance'] ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-              </button>
-
-              {expandedGroups['balance'] && (
-                <div className="pl-9 pr-1 py-1 space-y-1">
-                  <button
-                    onClick={() => handleSelectMenu('top-up')}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors flex items-center justify-between ${
-                      activeMenu === 'top-up' ? 'bg-blue-600/20 text-blue-300 font-bold border border-blue-500/30' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    <span>Deposit & Top Up</span>
-                    <span className="text-[9px] bg-emerald-500/20 text-emerald-400 font-mono font-bold px-1.5 py-0.5 rounded border border-emerald-500/30">
-                      AUTO
-                    </span>
-                  </button>
-                  <button
-                    onClick={() => handleSelectMenu('withdraw')}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                      activeMenu === 'withdraw' ? 'bg-blue-600/20 text-blue-300 font-bold border border-blue-500/30' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    Withdraw Review
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* 6. Members (System Users, App Users, Fake Users) */}
+            {/* 7. Members */}
             <div>
               <button
                 onClick={() => toggleGroup('members')}
-                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 transition-colors"
+                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 <div className="flex items-center gap-3">
                   <Users className="w-4 h-4 text-purple-400" />
@@ -551,16 +547,8 @@ export default function AdminPortal({ onBackToApp }) {
               {expandedGroups['members'] && (
                 <div className="pl-9 pr-1 py-1 space-y-1">
                   <button
-                    onClick={() => handleSelectMenu('system-users')}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                      activeMenu === 'system-users' ? 'bg-blue-600/20 text-blue-300 font-bold border border-blue-500/30' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    System Users
-                  </button>
-                  <button
                     onClick={() => handleSelectMenu('app-users')}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors cursor-pointer ${
                       activeMenu === 'app-users' ? 'bg-blue-600/20 text-blue-300 font-bold border border-blue-500/30' : 'text-slate-400 hover:text-white'
                     }`}
                   >
@@ -568,16 +556,24 @@ export default function AdminPortal({ onBackToApp }) {
                   </button>
                   <button
                     onClick={() => handleSelectMenu('agent-commissions')}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors flex items-center justify-between ${
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors flex items-center justify-between cursor-pointer ${
                       activeMenu === 'agent-commissions' ? 'bg-blue-600/20 text-blue-300 font-bold border border-blue-500/30' : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    <span>30% Agent Commission</span>
+                    <span>Agent Commission</span>
                     <span className="text-[10px] text-blue-400 font-mono font-bold">30%</span>
                   </button>
                   <button
+                    onClick={() => handleSelectMenu('system-users')}
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors cursor-pointer ${
+                      activeMenu === 'system-users' ? 'bg-blue-600/20 text-blue-300 font-bold border border-blue-500/30' : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    System Users
+                  </button>
+                  <button
                     onClick={() => handleSelectMenu('fake-users')}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors cursor-pointer ${
                       activeMenu === 'fake-users' ? 'bg-blue-600/20 text-blue-300 font-bold border border-blue-500/30' : 'text-slate-400 hover:text-white'
                     }`}
                   >
@@ -587,11 +583,11 @@ export default function AdminPortal({ onBackToApp }) {
               )}
             </div>
 
-            {/* 7. Reports (Financial, Statements, 4D Bet, User Bet, Weekly Bonuses) */}
+            {/* 8. Reports */}
             <div>
               <button
                 onClick={() => toggleGroup('reports')}
-                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 transition-colors"
+                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 <div className="flex items-center gap-3">
                   <BarChart3 className="w-4 h-4 text-rose-400" />
@@ -604,62 +600,38 @@ export default function AdminPortal({ onBackToApp }) {
                 <div className="pl-9 pr-1 py-1 space-y-1">
                   <button
                     onClick={() => handleSelectMenu('reports-financial')}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors cursor-pointer ${
                       activeMenu === 'reports-financial' ? 'bg-blue-600/20 text-blue-300 font-bold border border-blue-500/30' : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    Total Financial Ledger
+                    Financial Reports & Ledgers
                   </button>
                   <button
                     onClick={() => handleSelectMenu('weekly-bonuses')}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
+                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors flex items-center justify-between cursor-pointer ${
                       activeMenu === 'weekly-bonuses' ? 'bg-blue-600/20 text-blue-300 font-bold border border-blue-500/30' : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    Weekly Bonuses
+                    <span>Weekly Bonuses</span>
+                    <span className="text-[10px] text-purple-400 font-mono font-bold">10%</span>
                   </button>
                 </div>
               )}
             </div>
 
-            {/* 8. Settings (System, Applications, Notifications) */}
-            <div>
-              <button
-                onClick={() => toggleGroup('settings')}
-                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <Settings className="w-4 h-4 text-slate-400" />
-                  <span>Settings</span>
-                </div>
-                {expandedGroups['settings'] ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-              </button>
-
-              {expandedGroups['settings'] && (
-                <div className="pl-9 pr-1 py-1 space-y-1">
-                  <button
-                    onClick={() => handleSelectMenu('settings')}
-                    className={`w-full text-left px-3 py-2 rounded-lg transition-colors ${
-                      activeMenu === 'settings' ? 'bg-blue-600/20 text-blue-300 font-bold border border-blue-500/30' : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    System & App Settings
-                  </button>
-                </div>
-              )}
-            </div>
-
-          </div>
-
-          {/* Red Logout Button at Bottom of Sidebar (Matching Screenshots) */}
-          <div className="p-3 border-t border-slate-800">
+            {/* 9. Settings (Single direct item) */}
             <button
-              onClick={logout}
-              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-rose-600/20 hover:bg-rose-600 text-rose-400 hover:text-white text-xs font-bold transition-all cursor-pointer"
+              onClick={() => handleSelectMenu('settings')}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-all cursor-pointer ${
+                activeMenu === 'settings'
+                  ? 'bg-blue-600 text-white font-bold shadow-md shadow-blue-600/30'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+              }`}
             >
-              <LogOut className="w-4 h-4" />
-              <span>Logout</span>
+              <Settings className="w-4 h-4 text-slate-400" />
+              <span>System & App Settings</span>
             </button>
+
           </div>
         </aside>
 
@@ -750,30 +722,6 @@ export default function AdminPortal({ onBackToApp }) {
               <FakeUsersView onNotify={showNotification} />
             )}
 
-            {activeMenu === '4d-financial-ledger' && (
-              <ReportsView gameFilter="4D" initialTab="financial" onNotify={showNotification} />
-            )}
-
-            {activeMenu === '4d-draw-performance' && (
-              <ReportsView gameFilter="4D" initialTab="draws" onNotify={showNotification} />
-            )}
-
-            {activeMenu === '2d-financial-ledger' && (
-              <ReportsView gameFilter="2D" initialTab="financial" onNotify={showNotification} />
-            )}
-
-            {activeMenu === '2d-draw-performance' && (
-              <ReportsView gameFilter="2D" initialTab="draws" onNotify={showNotification} />
-            )}
-
-            {activeMenu === '3d-financial-ledger' && (
-              <ReportsView gameFilter="3D" initialTab="financial" onNotify={showNotification} />
-            )}
-
-            {activeMenu === '3d-draw-performance' && (
-              <ReportsView gameFilter="3D" initialTab="draws" onNotify={showNotification} />
-            )}
-
             {activeMenu === 'reports-financial' && (
               <ReportsView gameFilter="ALL" initialTab="financial" onNotify={showNotification} />
             )}
@@ -786,16 +734,8 @@ export default function AdminPortal({ onBackToApp }) {
               <SettingsView onNotify={showNotification} />
             )}
 
-            {(activeMenu === 'minigames' || activeMenu === 'minigames-game') && (
+            {activeMenu === 'minigames' && (
               <MiniGamesAdminView initialTab="game" onNotify={showNotification} />
-            )}
-
-            {activeMenu === 'minigames-statement' && (
-              <MiniGamesAdminView initialTab="statement" onNotify={showNotification} />
-            )}
-
-            {activeMenu === 'minigames-history' && (
-              <MiniGamesAdminView initialTab="history" onNotify={showNotification} />
             )}
           </ViewErrorBoundary>
 

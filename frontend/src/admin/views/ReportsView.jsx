@@ -13,6 +13,7 @@ import { apiClient } from '../../api/client';
 
 export default function ReportsView({ onNotify, gameFilter = 'ALL', initialTab = 'financial' }) {
   const [reportType, setReportType] = useState(initialTab); // 'financial' | 'statements' | 'draws' | 'user-bet' | 'agents'
+  const [selectedGame, setSelectedGame] = useState(gameFilter || 'ALL'); // 'ALL' | '4D' | '2D' | '3D'
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -77,7 +78,15 @@ export default function ReportsView({ onNotify, gameFilter = 'ALL', initialTab =
 
   useEffect(() => {
     setReportType(initialTab);
+    setSelectedGame(gameFilter || 'ALL');
   }, [initialTab, gameFilter]);
+
+  const handleGameScopeChange = (nextGame) => {
+    setSelectedGame(nextGame);
+    if (nextGame !== 'ALL' && (reportType === 'statements' || reportType === 'agents')) {
+      setReportType('financial');
+    }
+  };
 
   const sortedDrawResults = useMemo(() => {
     if (!data?.results || !Array.isArray(data.results)) return [];
@@ -107,12 +116,12 @@ export default function ReportsView({ onNotify, gameFilter = 'ALL', initialTab =
 
   useEffect(() => {
     loadReport();
-  }, [reportType, gameFilter, fromDate, toDate]);
+  }, [reportType, selectedGame, fromDate, toDate]);
 
   const loadReport = async () => {
     try {
       setLoading(true);
-      const params = { from_date: fromDate, to_date: toDate, game_type: gameFilter };
+      const params = { from_date: fromDate, to_date: toDate, game_type: selectedGame };
       if (searchUser.trim()) {
         params.username = searchUser.trim();
         params.search = searchUser.trim();
@@ -121,7 +130,13 @@ export default function ReportsView({ onNotify, gameFilter = 'ALL', initialTab =
       let res;
       if (reportType === 'financial') {
         res = await apiClient.getAdminFinancialReport(params);
-        if (res && res.sub_total && res.sub_total.company_balance !== undefined) {
+        if (
+          selectedGame === 'ALL' &&
+          selectedMonth === currentMonthBounds.monthKey &&
+          res &&
+          res.sub_total &&
+          res.sub_total.company_balance !== undefined
+        ) {
           window.dispatchEvent(new CustomEvent('companyBalanceUpdated', {
             detail: { company_balance: res.sub_total.company_balance }
           }));
@@ -130,7 +145,7 @@ export default function ReportsView({ onNotify, gameFilter = 'ALL', initialTab =
         res = await apiClient.getAdminStatements(params);
       } else if (reportType === 'draws') {
         res = await apiClient.getAdminDrawsPerformance({
-          game_type: gameFilter,
+          game_type: selectedGame,
           from_date: fromDate,
           to_date: toDate,
           limit: 100
@@ -155,79 +170,104 @@ export default function ReportsView({ onNotify, gameFilter = 'ALL', initialTab =
   };
 
   const gameTitle = useMemo(() => {
-    if (gameFilter === '4D') return '4D';
-    if (gameFilter === '2D') return 'Thai 2D';
-    if (gameFilter === '3D') return 'Thai 3D';
+    if (selectedGame === '4D') return '4D';
+    if (selectedGame === '2D') return 'Thai 2D';
+    if (selectedGame === '3D') return 'Thai 3D';
     return 'Total';
-  }, [gameFilter]);
+  }, [selectedGame]);
 
   return (
     <div className="space-y-6">
-      {/* Sub-navigation Tabs */}
-      <div className="flex flex-wrap items-center justify-between gap-4 bg-navy-900/90 border border-gold-500/20 p-4 rounded-2xl shadow-xl">
-        <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
-          <button
-            onClick={() => setReportType('financial')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-              reportType === 'financial'
-                ? 'bg-amber-500 text-slate-950 font-black shadow-md'
-                : 'bg-navy-800 text-slate-400 hover:text-white'
-            }`}
-          >
-            📊 {gameFilter === 'ALL' ? 'Daily Financial Statement' : `Daily ${gameTitle} Statement`}
-          </button>
+      {/* Sub-navigation Tabs & Game Scope Filter */}
+      <div className="flex flex-col gap-3 bg-navy-900/90 border border-gold-500/20 p-4 rounded-2xl shadow-xl">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {/* Game Scope Selector */}
+          <div className="flex items-center gap-1.5 bg-navy-950 p-1 rounded-xl border border-gold-500/20">
+            {[
+              { id: 'ALL', label: 'All Games' },
+              { id: '4D', label: '4D' },
+              { id: '2D', label: 'Thai 2D' },
+              { id: '3D', label: 'Thai 3D' }
+            ].map((g) => (
+              <button
+                key={g.id}
+                type="button"
+                onClick={() => handleGameScopeChange(g.id)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  selectedGame === g.id
+                    ? 'bg-gold-500 text-navy-950 shadow-sm'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                {g.label}
+              </button>
+            ))}
+          </div>
 
-          {gameFilter === 'ALL' && (
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
             <button
-              onClick={() => setReportType('statements')}
+              onClick={() => setReportType('financial')}
               className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-                reportType === 'statements'
+                reportType === 'financial'
                   ? 'bg-amber-500 text-slate-950 font-black shadow-md'
                   : 'bg-navy-800 text-slate-400 hover:text-white'
               }`}
             >
-              💳 Cash In/Out Ledger
+              📊 {selectedGame === 'ALL' ? 'Daily Financial Statement' : `Daily ${gameTitle} Statement`}
             </button>
-          )}
 
-          <button
-            onClick={() => setReportType('draws')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-              reportType === 'draws'
-                ? 'bg-amber-500 text-slate-950 font-black shadow-md'
-                : 'bg-navy-800 text-slate-400 hover:text-white'
-            }`}
-          >
-            🎯 {gameFilter === 'ALL' ? 'Draw-by-Draw Performance' : `${gameTitle} Draw Performance`}
-          </button>
+            {selectedGame === 'ALL' && (
+              <button
+                onClick={() => setReportType('statements')}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                  reportType === 'statements'
+                    ? 'bg-amber-500 text-slate-950 font-black shadow-md'
+                    : 'bg-navy-800 text-slate-400 hover:text-white'
+                }`}
+              >
+                💳 Cash In/Out Ledger
+              </button>
+            )}
 
-          <button
-            onClick={() => setReportType('user-bet')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-              reportType === 'user-bet'
-                ? 'bg-amber-500 text-slate-950 font-black shadow-md'
-                : 'bg-navy-800 text-slate-400 hover:text-white'
-            }`}
-          >
-            🏆 {gameFilter === 'ALL' ? 'Player Turnover Ranking' : `${gameTitle} Turnover Ranking`}
-          </button>
-
-          {gameFilter === 'ALL' && (
             <button
-              onClick={() => setReportType('agents')}
+              onClick={() => setReportType('draws')}
               className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-                reportType === 'agents'
+                reportType === 'draws'
                   ? 'bg-amber-500 text-slate-950 font-black shadow-md'
                   : 'bg-navy-800 text-slate-400 hover:text-white'
               }`}
             >
-              🦚 Agent Turnover Summary
+              🎯 {selectedGame === 'ALL' ? 'Draw-by-Draw Performance' : `${gameTitle} Draw Performance`}
             </button>
-          )}
+
+            <button
+              onClick={() => setReportType('user-bet')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                reportType === 'user-bet'
+                  ? 'bg-amber-500 text-slate-950 font-black shadow-md'
+                  : 'bg-navy-800 text-slate-400 hover:text-white'
+              }`}
+            >
+              🏆 {selectedGame === 'ALL' ? 'Player Turnover Ranking' : `${gameTitle} Turnover Ranking`}
+            </button>
+
+            {selectedGame === 'ALL' && (
+              <button
+                onClick={() => setReportType('agents')}
+                className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                  reportType === 'agents'
+                    ? 'bg-amber-500 text-slate-950 font-black shadow-md'
+                    : 'bg-navy-800 text-slate-400 hover:text-white'
+                }`}
+              >
+                🦚 Agent Turnover Summary
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Date Range, Month Selector & Refresh Filter */}
-        <form onSubmit={handleFilter} className="flex flex-wrap items-center gap-2">
+        <form onSubmit={handleFilter} className="flex flex-wrap items-center justify-end gap-2 pt-2 border-t border-navy-800/70">
           {(reportType === 'statements' || reportType === 'user-bet') && (
             <div className="relative">
               <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 top-2" />
@@ -301,7 +341,7 @@ export default function ReportsView({ onNotify, gameFilter = 'ALL', initialTab =
               </div>
               <div>
                 <p className="text-xs font-bold text-gold-400 uppercase tracking-widest font-serif">
-                  {gameFilter === 'ALL' ? 'Total Financial Ledger (Live Net Balance)' : `${gameTitle} Mini Ledger`}
+                  {selectedGame === 'ALL' ? 'Total Financial Ledger (Live Net Balance)' : `${gameTitle} Mini Ledger`}
                 </p>
                 <h2 className={`text-2xl sm:text-3xl font-black font-mono mt-0.5 ${(data?.sub_total?.company_balance || 0) >= 0 ? 'text-white' : 'text-rose-400'}`}>
                   {(data?.sub_total?.company_balance || 0) < 0 
@@ -311,7 +351,7 @@ export default function ReportsView({ onNotify, gameFilter = 'ALL', initialTab =
               </div>
             </div>
 
-            {gameFilter === 'ALL' ? (
+            {selectedGame === 'ALL' ? (
               <div className="flex items-center gap-6 text-right flex-wrap">
                 <div>
                   <span className="text-[11px] text-slate-400 block">Total Turnover (4D/2D/3D)</span>
@@ -373,10 +413,10 @@ export default function ReportsView({ onNotify, gameFilter = 'ALL', initialTab =
             )}
           </div>
 
-          {/* Table: Conditional rendering according to gameFilter */}
+          {/* Table: Conditional rendering according to selectedGame */}
           <div className="bg-navy-900/90 border border-gold-500/20 rounded-2xl shadow-xl overflow-hidden">
             <div className="overflow-x-auto">
-              {gameFilter === 'ALL' && (
+              {selectedGame === 'ALL' && (
                 /* 12-Column Total Ledger Table */
                 <table className="w-full text-left text-xs whitespace-nowrap">
                   <thead className="bg-navy-950/90 text-slate-400 uppercase font-bold tracking-wider border-b border-gold-500/20 text-[11px]">
@@ -839,7 +879,7 @@ export default function ReportsView({ onNotify, gameFilter = 'ALL', initialTab =
           </div>
 
           <div className="overflow-x-auto">
-            {gameFilter === '2D' ? (
+            {selectedGame === '2D' ? (
               /* Thai 2D Draw by Draw Table */
               <table className="w-full text-left text-xs whitespace-nowrap">
                 <thead className="bg-navy-950/80 text-slate-400 uppercase font-bold tracking-wider border-b border-gold-500/20">
@@ -933,7 +973,7 @@ export default function ReportsView({ onNotify, gameFilter = 'ALL', initialTab =
                   )}
                 </tbody>
               </table>
-            ) : gameFilter === '3D' ? (
+            ) : selectedGame === '3D' ? (
               /* Thai 3D Draw by Draw Table */
               <table className="w-full text-left text-xs whitespace-nowrap">
                 <thead className="bg-navy-950/80 text-slate-400 uppercase font-bold tracking-wider border-b border-gold-500/20">
@@ -1115,7 +1155,7 @@ export default function ReportsView({ onNotify, gameFilter = 'ALL', initialTab =
             <div className="flex items-center gap-2">
               <Users className="w-5 h-5 text-gold-400" />
               <h3 className="text-sm font-bold text-white uppercase tracking-wider font-serif">
-                {gameFilter === 'ALL'
+                {selectedGame === 'ALL'
                   ? 'Player Turnover Ranking (Live Order by Stake Volume)'
                   : `${gameTitle} Player Turnover Ranking (Live Order by Stake Volume)`}
               </h3>
@@ -1132,24 +1172,24 @@ export default function ReportsView({ onNotify, gameFilter = 'ALL', initialTab =
                   <th className="py-3 px-4">Rank / Player</th>
                   <th className="py-3 px-4">Phone Number</th>
                   <th className="py-3 px-4 text-center">Total Bets</th>
-                  <th className="py-3 px-4 text-right">{gameFilter === 'ALL' ? 'Total Staked (Turnover)' : `${gameTitle} Turnover`}</th>
-                  <th className="py-3 px-4 text-right">{gameFilter === 'ALL' ? 'Total Payout (Won)' : `${gameTitle} Payout`}</th>
+                  <th className="py-3 px-4 text-right">{selectedGame === 'ALL' ? 'Total Staked (Turnover)' : `${gameTitle} Turnover`}</th>
+                  <th className="py-3 px-4 text-right">{selectedGame === 'ALL' ? 'Total Payout (Won)' : `${gameTitle} Payout`}</th>
                   <th className="py-3 px-4 text-right">Net Profit from Player</th>
                   <th className="py-3 px-4 text-right">Wallet Balance</th>
-                  <th className="py-3 px-4">{gameFilter === 'ALL' ? 'Last Bet Placed' : `Last ${gameTitle} Bet`}</th>
+                  <th className="py-3 px-4">{selectedGame === 'ALL' ? 'Last Bet Placed' : `Last ${gameTitle} Bet`}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800 text-slate-300">
                 {loading ? (
                   <tr>
                     <td colSpan={8} className="py-12 text-center text-slate-500">
-                      Loading {gameFilter === 'ALL' ? 'player' : gameTitle} turnover rankings...
+                      Loading {selectedGame === 'ALL' ? 'player' : gameTitle} turnover rankings...
                     </td>
                   </tr>
                 ) : !data?.results || data.results.length === 0 ? (
                   <tr>
                     <td colSpan={8} className="py-12 text-center text-slate-500">
-                      No {gameFilter === 'ALL' ? 'player' : gameTitle} betting records found.
+                      No {selectedGame === 'ALL' ? 'player' : gameTitle} betting records found.
                     </td>
                   </tr>
                 ) : (

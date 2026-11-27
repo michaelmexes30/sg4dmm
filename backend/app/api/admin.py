@@ -1,4 +1,5 @@
 from typing import Optional, List, Dict, Any
+import calendar
 import os
 import uuid
 import aiofiles
@@ -89,18 +90,37 @@ def get_financial_dashboard(
     # All-time payouts
     total_payouts = db.query(func.coalesce(func.sum(BetSlip.total_payout), 0.0)).scalar() or 0.0
 
-    # All-time bet volume & ticket counts
-    total_bets = db.query(func.coalesce(func.sum(BetSlip.total_stake), 0.0)).scalar() or 0.0
-    total_bets_count = db.query(func.count(BetSlip.id)).scalar() or 0
+    # All-time bet volume & ticket counts (excluding CANCELLED / VOID)
+    total_bets = db.query(func.coalesce(func.sum(BetSlip.total_stake), 0.0)).filter(
+        BetSlip.status.notin_([BetSlipStatus.CANCELLED, BetSlipStatus.VOID])
+    ).scalar() or 0.0
+    total_bets_count = db.query(func.count(BetSlip.id)).filter(
+        BetSlip.status.notin_([BetSlipStatus.CANCELLED, BetSlipStatus.VOID])
+    ).scalar() or 0
 
     today_bets = db.query(func.coalesce(func.sum(BetSlip.total_stake), 0.0)).filter(
+        BetSlip.status.notin_([BetSlipStatus.CANCELLED, BetSlipStatus.VOID]),
         BetSlip.created_at >= today_start,
         BetSlip.created_at < today_end
     ).scalar() or 0.0
     today_bets_count = db.query(func.count(BetSlip.id)).filter(
+        BetSlip.status.notin_([BetSlipStatus.CANCELLED, BetSlipStatus.VOID]),
         BetSlip.created_at >= today_start,
         BetSlip.created_at < today_end
     ).scalar() or 0
+
+    # Mini-Games all-time & today net P/L
+    mini_stake_all = db.query(func.coalesce(func.sum(MiniGameBet.stake_amount), 0.0)).scalar() or 0.0
+    mini_payout_all = db.query(func.coalesce(func.sum(MiniGameBet.payout_amount), 0.0)).scalar() or 0.0
+    mini_games_net_all_time = float(mini_stake_all) - float(mini_payout_all)
+
+    mini_stake_today = db.query(func.coalesce(func.sum(MiniGameBet.stake_amount), 0.0)).filter(
+        MiniGameBet.date_str == today_str
+    ).scalar() or 0.0
+    mini_payout_today = db.query(func.coalesce(func.sum(MiniGameBet.payout_amount), 0.0)).filter(
+        MiniGameBet.date_str == today_str
+    ).scalar() or 0.0
+    today_mini_games_net = float(mini_stake_today) - float(mini_payout_today)
 
     # 30% Agent Commission (Settled vs Pending)
     total_commissions = db.query(func.coalesce(func.sum(AgentCommissionLog.commission_amount), 0.0)).filter(
@@ -116,15 +136,15 @@ def get_financial_dashboard(
         WeeklyBonus.is_credited == True
     ).scalar() or 0.0
 
-    # Net profit = total_bets - (total_payouts + total_commissions + total_bonuses)
-    total_net_profit = float(total_bets) - (float(total_payouts) + float(total_commissions) + float(total_bonuses))
+    # Net profit = (total_bets - total_payouts - total_commissions - total_bonuses) + mini_games_net_all_time
+    total_net_profit = (float(total_bets) - float(total_payouts) - float(total_commissions) - float(total_bonuses)) + mini_games_net_all_time
 
     # Today's daily summary
     today_summary = db.query(DailyLedgerSummary).filter(DailyLedgerSummary.date_str == today_str).first()
     today_pay = today_summary.total_payouts if today_summary else 0.0
     today_comm = today_summary.total_agent_commissions if today_summary else 0.0
     today_bonus = today_summary.total_weekly_bonuses if today_summary else 0.0
-    today_net = today_bets - today_pay - today_comm - today_bonus
+    today_net = (today_bets - today_pay - today_comm - today_bonus) + today_mini_games_net
 
     # Active pool
     active_pool = db.query(func.coalesce(func.sum(BetSlip.total_stake), 0.0)).filter(
@@ -180,8 +200,8 @@ def get_financial_dashboard(
     # Master agent info
     master_agent = db.query(User).filter(User.role == UserRole.AGENT).first()
     master_agent_data = {
-        "name": master_agent.full_name or "Daw Hla Hla",
-        "code": master_agent.agent_code or "AGT8899",
+        "name": master_agent.nickname or master_agent.full_name or master_agent.username or master_agent.phone or "-",
+        "code": master_agent.agent_code or "-",
         "phone": master_agent.phone or "-",
         "balance": float(master_agent.balance or 0.0),
         "commission_earned": float(master_agent.total_commission_earned or 0.0),
@@ -200,6 +220,7 @@ def get_financial_dashboard(
         {
             "id": s.id,
             "slip_code": s.slip_code,
+            "game_type": s.game_type or "4D",
             "user_name": u.full_name or u.phone,
             "user_phone": u.phone,
             "total_stake": float(s.total_stake or 0.0),
@@ -227,6 +248,8 @@ def get_financial_dashboard(
         "total_commissions_all_time": float(total_commissions),
         "pending_commissions_all_time": float(pending_commissions),
         "total_bonuses_all_time": float(total_bonuses),
+        "mini_games_net_all_time": float(mini_games_net_all_time),
+        "today_mini_games_net": float(today_mini_games_net),
         "total_net_profit": float(total_net_profit),
         "today_payouts": float(today_pay),
         "today_commissions": float(today_comm),
@@ -1531,28 +1554,36 @@ def get_top_up_requests(
     return results
 
 def calculate_company_monthly_net_profit(db: Session, ym: Optional[str] = None) -> Dict[str, Any]:
+    now_dt = now_mmt()
     if not ym:
-        now_dt = now_mmt()
-        ym = now_dt.strftime('%Y-%m')
+        year, month = now_dt.year, now_dt.month
+        ym = f"{year:04d}-{month:02d}"
         month_label = now_dt.strftime('%b')
         month_full_label = now_dt.strftime('%b %Y')
     else:
         try:
             parsed = datetime.strptime(ym, "%Y-%m")
+            year, month = parsed.year, parsed.month
+            ym = f"{year:04d}-{month:02d}"
             month_label = parsed.strftime('%b')
             month_full_label = parsed.strftime('%b %Y')
         except Exception:
-            now_dt = now_mmt()
+            year, month = now_dt.year, now_dt.month
+            ym = f"{year:04d}-{month:02d}"
             month_label = now_dt.strftime('%b')
             month_full_label = now_dt.strftime('%b %Y')
 
-    start_dt = f"{ym}-01 00:00:00"
-    end_dt = f"{ym}-31 23:59:59"
+    last_day = calendar.monthrange(year, month)[1]
+    start_dt = datetime(year, month, 1, 0, 0, 0)
+    end_dt_excl = datetime(year, month, last_day, 0, 0, 0) + timedelta(days=1)
+    start_date_str = f"{ym}-01"
+    end_date_str = f"{ym}-{last_day:02d}"
 
-    # Total bets in month across all lottery games (4D, 2D, 3D)
+    # Total bets in month across all lottery games (4D, 2D, 3D), excluding CANCELLED / VOID
     tot_bets = db.query(func.coalesce(func.sum(BetSlip.total_stake), 0.0)).filter(
+        BetSlip.status.notin_([BetSlipStatus.CANCELLED, BetSlipStatus.VOID]),
         BetSlip.created_at >= start_dt,
-        BetSlip.created_at <= end_dt
+        BetSlip.created_at < end_dt_excl
     ).scalar() or 0.0
 
     # Payouts across all games (4D, 2D, 3D) in month
@@ -1561,8 +1592,8 @@ def calculate_company_monthly_net_profit(db: Session, ym: Optional[str] = None) 
         .join(LotteryDraw, BetSlip.draw_id == LotteryDraw.id)
         .filter(
             BetSlip.game_type == "4D",
-            LotteryDraw.draw_date >= f"{ym}-01",
-            LotteryDraw.draw_date <= f"{ym}-31",
+            LotteryDraw.draw_date >= start_date_str,
+            LotteryDraw.draw_date <= end_date_str,
             BetSlip.total_payout > 0
         )
         .scalar() or 0.0
@@ -1572,8 +1603,8 @@ def calculate_company_monthly_net_profit(db: Session, ym: Optional[str] = None) 
         .join(TwoDDraw, BetSlip.draw_id == TwoDDraw.id)
         .filter(
             BetSlip.game_type == "2D",
-            TwoDDraw.draw_date >= f"{ym}-01",
-            TwoDDraw.draw_date <= f"{ym}-31",
+            TwoDDraw.draw_date >= start_date_str,
+            TwoDDraw.draw_date <= end_date_str,
             BetSlip.total_payout > 0
         )
         .scalar() or 0.0
@@ -1583,8 +1614,8 @@ def calculate_company_monthly_net_profit(db: Session, ym: Optional[str] = None) 
         .join(ThreeDDraw, BetSlip.draw_id == ThreeDDraw.id)
         .filter(
             BetSlip.game_type == "3D",
-            ThreeDDraw.draw_date >= f"{ym}-01",
-            ThreeDDraw.draw_date <= f"{ym}-31",
+            ThreeDDraw.draw_date >= start_date_str,
+            ThreeDDraw.draw_date <= end_date_str,
             BetSlip.total_payout > 0
         )
         .scalar() or 0.0
@@ -1593,12 +1624,12 @@ def calculate_company_monthly_net_profit(db: Session, ym: Optional[str] = None) 
 
     # Mini-Games Stake, Payout & Net in month
     mini_stake = db.query(func.coalesce(func.sum(MiniGameBet.stake_amount), 0.0)).filter(
-        MiniGameBet.date_str >= f"{ym}-01",
-        MiniGameBet.date_str <= f"{ym}-31"
+        MiniGameBet.date_str >= start_date_str,
+        MiniGameBet.date_str <= end_date_str
     ).scalar() or 0.0
     mini_payout = db.query(func.coalesce(func.sum(MiniGameBet.payout_amount), 0.0)).filter(
-        MiniGameBet.date_str >= f"{ym}-01",
-        MiniGameBet.date_str <= f"{ym}-31"
+        MiniGameBet.date_str >= start_date_str,
+        MiniGameBet.date_str <= end_date_str
     ).scalar() or 0.0
     tot_mini_net = mini_stake - mini_payout
 
@@ -1606,15 +1637,25 @@ def calculate_company_monthly_net_profit(db: Session, ym: Optional[str] = None) 
     tot_comm = db.query(func.coalesce(func.sum(AgentCommissionLog.commission_amount), 0.0)).filter(
         AgentCommissionLog.is_settled == True,
         AgentCommissionLog.settled_at >= start_dt,
-        AgentCommissionLog.settled_at <= end_dt
+        AgentCommissionLog.settled_at < end_dt_excl
     ).scalar() or 0.0
 
     # 10% Weekly Bonus credited in month
     tot_bonus = db.query(func.coalesce(func.sum(WeeklyBonus.bonus_amount), 0.0)).filter(
         WeeklyBonus.is_credited == True,
         WeeklyBonus.credited_at >= start_dt,
-        WeeklyBonus.credited_at <= end_dt
+        WeeklyBonus.credited_at < end_dt_excl
     ).scalar() or 0.0
+
+    # Pending manual review counts for Admin Sidebar badges
+    pending_deposits_count = db.query(func.count(Transaction.id)).filter(
+        Transaction.tx_type == TransactionType.DEPOSIT,
+        Transaction.status == TransactionStatus.MANUAL_REVIEW
+    ).scalar() or 0
+    pending_withdrawals_count = db.query(func.count(Transaction.id)).filter(
+        Transaction.tx_type == TransactionType.WITHDRAWAL,
+        Transaction.status == TransactionStatus.MANUAL_REVIEW
+    ).scalar() or 0
 
     # Net Profit formula: (Total Bets - Payout - 30% Commission - 10% Bonus) + Mini-Games Net P/L
     net_profit = (float(tot_bets) - float(tot_payout) - float(tot_comm) - float(tot_bonus)) + float(tot_mini_net)
@@ -1627,7 +1668,9 @@ def calculate_company_monthly_net_profit(db: Session, ym: Optional[str] = None) 
         "total_payout": float(tot_payout),
         "mini_game_net": float(tot_mini_net),
         "total_commission": float(tot_comm),
-        "total_bonus": float(tot_bonus)
+        "total_bonus": float(tot_bonus),
+        "pending_deposits_count": int(pending_deposits_count),
+        "pending_withdrawals_count": int(pending_withdrawals_count),
     }
 
 @router.get("/company-balance")
@@ -4351,9 +4394,9 @@ def update_system_settings(
         setting.result_confirm_time = str(req.result_confirm_time).strip()
 
     # 3. Rewards & Commissions
+    # Weekly bonus rate is managed exclusively via /admin/weekly-bonuses/rules
     if req.reward_percentage is not None:
         setting.consecutive_reward_percent = float(req.reward_percentage)
-        setting.weekly_bonus_rate = float(req.reward_percentage)
     if req.consecutive_reward_percent is not None:
         setting.consecutive_reward_percent = float(req.consecutive_reward_percent)
     if req.weekly_bonus_rate is not None:
