@@ -156,21 +156,20 @@ def evaluate_bet_winnings(
         matches.append({"prize_tier": "Consolation Prize (နှစ်သိမ့်ဆု - ၁၀ ဆု)", "multiplier": 30, "payout": payout})
         total_payout += payout
         
-    # 6. Permutation / Box Roll Prize (10x)
-    # Only applies to an unexpanded single ticket (NOT when Box/R combinations have already been expanded and paid per permutation).
-    if not is_expanded_combo and (bet_type or "").lower() in ["box", "permutation", "roll", "r", "s", "series"] and total_payout == 0:
+    # 6. Permutation Roll Prize ("သွတ် ၁၀ဆ"):
+    # All 23 x 3 = 69 non-exact permutations of 1st, 2nd, and 3rd Prizes win 10x across all 4D bet types (Ordinary, Box/R, Roll/S).
+    if total_payout == 0:
         top_3 = [first, second, third]
         bet_sorted = sorted(list(bet_number))
         for idx, prize_num in enumerate(top_3):
             if prize_num and sorted(list(prize_num)) == bet_sorted and bet_number != prize_num:
                 payout = effective_stake * settings.PAYOUT_MULTIPLIERS["box_roll_prize"]
                 matches.append({
-                    "prize_tier": f"Permutation Roll (ပတ်လည် {idx+1} ဆု)",
+                    "prize_tier": f"Permutation Roll (သွတ် {idx+1} ဆု)",
                     "multiplier": 10,
                     "payout": payout
                 })
                 total_payout += payout
-                break
 
     return {
         "is_won": total_payout > 0,

@@ -244,8 +244,7 @@ def settle_draw_with_official_results(
                     big_stake=int(item.big_amount),
                     small_stake=int(item.small_amount),
                     draw_results=draw_results_payload,
-                    bet_type=item.bet_type,
-                    is_expanded_combo=True
+                    bet_type=item.bet_type
                 )
                 if res["is_won"]:
                     item_payout += res["total_payout"]

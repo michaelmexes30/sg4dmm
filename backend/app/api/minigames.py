@@ -73,68 +73,72 @@ ROYAL_CROWN_RANK_SECTORS = {
 
 def sample_royal_crown_two_spins(rtp_rate: float, bet_choices: Optional[set] = None):
     """
-    Exact closed-form 2-spin Royal Crown outcome sampler calibrated to target RTP.
+    Exact closed-form Royal Crown outcome sampler calibrated to target RTP.
 
-    Payouts:
-    - Single hit on Card (2..K): 5x
-    - Single hit on CUSH (0): 11x
-    - Tie (both spins land on same rank, Card or CUSH): 49x
+    Official Royal Crown Rules:
+    - If 1st Spin lands on CUSH (0): ROUND ENDS IMMEDIATELY — NO 2nd Spin!
+      Only players who bet on CUSH (0) win 11x; all card bets lose.
+    - If 1st Spin lands on a regular Card (2..K): 2nd Spin is launched!
+      * Same card on Spin 1 & Spin 2 (TIE): 49x payout!
+      * Different cards on Spin 1 & Spin 2: 5x payout on each hit card!
+      * Spin 1 = Card, Spin 2 = CUSH (0): 5x on Spin 1 card, 11x on CUSH!
 
     Mathematical proof (for 11 Cards + 1 CUSH):
     Let:
-      q0     = P(0, 0)                      [1 pair]
-      q_card = P(c, c) for each card c      [11 pairs]
-      b      = P(c, 0) = P(0, c)            [22 ordered pairs]
-      a      = P(c1, c2), c1 != c2          [110 ordered pairs]
+      p0     = P(Spin 1 = 0, NO Spin 2)               [1 outcome]
+      b      = P(Spin 1 = c, Spin 2 = 0) per card c   [11 outcomes, total 11*b]
+      q_card = P(Spin 1 = c, Spin 2 = c) per card c   [11 outcomes, total 11*q_card]
+      a      = P(Spin 1 = c1, Spin 2 = c2), c1 != c2  [110 outcomes, total 110*a]
     Constraints:
-      11*q_card + q0 + 110*a + 22*b = 1
-      EV_card = 5*(20*a + 2*b) + 49*q_card = R
-      EV_cush = 11*(22*b) + 49*q0 = R
+      p0 + 11*b + 11*q_card + 110*a = 1
+      EV_cush = 11 * (p0 + 11*b) = R  =>  p0 + 11*b = R / 11
+      EV_card = 5 * (20*a + b) + 49*q_card = R
     Solving yields:
-      429*q_card = (126/11)*R - 10 - (135/11)*q0
-      b = (R - 49*q0) / 242
-    which has a strictly positive, 100% bet-independent solution for all R in [0.88, 0.98],
+      429*q_card + 55*b = (131/11)*R - 10
+    which has a strictly positive, 100% bet-independent solution for all R in [0.85, 0.98],
     guaranteeing exact RTP == R for EVERY single bet (Card, CUSH, or any multi-bet subset).
-    For R < 0.88, scales down from R_base = 0.88 using non-winning pairs when available.
+    For R < 0.85, scales down from R_base = 0.85 using non-winning outcomes when available.
+
+    Returns:
+      (chosen_sector_1, chosen_sector_2_or_None)
     """
     target_r = max(0.70, min(0.98, float(rtp_rate) / 100.0))
-    r_base = max(target_r, 0.88)
+    r_base = max(target_r, 0.85)
 
-    slack = (126.0 / 11.0) * r_base - 10.0
-    q0 = min(0.0015, slack / 40.0)
-    b = (r_base - 49.0 * q0) / 242.0
-    q_card = (slack - (135.0 / 11.0) * q0) / 429.0
-
-    p_cush_tie = q0
+    rhs = (131.0 / 11.0) * r_base - 10.0
+    p_cush_total = r_base / 11.0
+    p_spin2_cush = min(0.48 * p_cush_total, (0.5 * rhs) / 5.0)
+    p_spin1_cush = p_cush_total - p_spin2_cush
+    q_card = (rhs - 5.0 * p_spin2_cush) / 429.0
     p_card_ties = 11.0 * q_card
-    p_card_cush = 22.0 * b
 
-    # If Admin sets RTP below 88%, probabilistically sample a losing pair (when uncovered ranks exist)
+    # If Admin sets RTP below 85%, probabilistically sample a losing outcome (when uncovered ranks exist)
     if target_r < r_base and bet_choices:
         bet_ranks = {"0" if c in ("CUSH", "0") else c for c in bet_choices}
-        losing_ranks = [r for r in (ROYAL_CROWN_CARD_RANKS + ["0"]) if r not in bet_ranks]
-        if losing_ranks:
-            keep_prob = target_r / r_base
-            if (secrets.randbelow(1_000_000) / 1_000_000.0) >= keep_prob:
-                r1 = secrets.choice(losing_ranks)
-                r2 = secrets.choice(losing_ranks)
+        keep_prob = target_r / r_base
+        if (secrets.randbelow(1_000_000) / 1_000_000.0) >= keep_prob:
+            if "0" not in bet_ranks:
+                # Instant Spin-1 CUSH stop (0 payout for card-only bettors)
+                return (secrets.choice(ROYAL_CROWN_RANK_SECTORS["0"]), None)
+            losing_cards = [r for r in ROYAL_CROWN_CARD_RANKS if r not in bet_ranks]
+            if losing_cards:
+                r1 = secrets.choice(losing_cards)
+                r2 = secrets.choice(losing_cards)
                 return (
                     secrets.choice(ROYAL_CROWN_RANK_SECTORS[r1]),
                     secrets.choice(ROYAL_CROWN_RANK_SECTORS[r2]),
                 )
 
     u = secrets.randbelow(1_000_000) / 1_000_000.0
-    if u < p_cush_tie:
-        r1, r2 = "0", "0"
-    elif u < p_cush_tie + p_card_ties:
+    if u < p_spin1_cush:
+        # Spin 1 lands on CUSH (0) -> Game ends immediately, NO 2nd spin!
+        return (secrets.choice(ROYAL_CROWN_RANK_SECTORS["0"]), None)
+    elif u < p_spin1_cush + p_card_ties:
         c = secrets.choice(ROYAL_CROWN_CARD_RANKS)
         r1, r2 = c, c
-    elif u < p_cush_tie + p_card_ties + p_card_cush:
+    elif u < p_spin1_cush + p_card_ties + p_spin2_cush:
         c = secrets.choice(ROYAL_CROWN_CARD_RANKS)
-        if secrets.randbelow(2) == 0:
-            r1, r2 = c, "0"
-        else:
-            r1, r2 = "0", c
+        r1, r2 = c, "0"
     else:
         c1 = secrets.choice(ROYAL_CROWN_CARD_RANKS)
         other_cards = [x for x in ROYAL_CROWN_CARD_RANKS if x != c1]
@@ -832,20 +836,22 @@ def spin_card_wheel(
         if float(current_user.balance or 0.0) < total_stake:
             raise HTTPException(status_code=400, detail="လက်ကျန်ငွေ မလုံလောက်ပါခင်ဗျာ။ ငွေဖြည့်သွင်းပေးပါရန် (Insufficient balance).")
 
-        # 2. Exact RTP-Calibrated 2-Spin Outcome Sampler (Cards 5x / CUSH 11x / Tie 49x)
+        # 2. Exact RTP-Calibrated Royal Crown Outcome Sampler
+        # If Spin 1 lands on CUSH (0), chosen_sector_2 is None (NO 2nd spin!)
         bet_choice_set = {b["choice"] for b in incoming_bets}
         chosen_sector_1, chosen_sector_2 = sample_royal_crown_two_spins(rtp_rate, bet_choice_set)
 
         hit_rank_1 = chosen_sector_1["rank"]
         is_cush_1 = chosen_sector_1.get("is_cush", False)
 
-        hit_rank_2 = chosen_sector_2["rank"]
-        is_cush_2 = chosen_sector_2.get("is_cush", False)
+        has_second_spin = (chosen_sector_2 is not None)
+        hit_rank_2 = chosen_sector_2["rank"] if has_second_spin else None
+        is_cush_2 = chosen_sector_2.get("is_cush", False) if has_second_spin else False
 
-        # Check if both spins landed on identical rank (TIE / PAIR)
-        is_tie = (hit_rank_1 == hit_rank_2)
+        # Tie (49x) only happens when BOTH spins occurred and landed on identical card rank
+        is_tie = bool(has_second_spin and hit_rank_1 == hit_rank_2 and not is_cush_1)
 
-        # 4. Evaluate all placed bets against the 2 spins
+        # 4. Evaluate all placed bets against Spin 1 (and Spin 2 if Spin 1 was not CUSH)
         total_payout = 0.0
         bet_results = []
         winning_choices = []
@@ -857,35 +863,31 @@ def spin_card_wheel(
             b_mult = 0.0
             b_payout = 0.0
 
-            if is_tie:
-                # Both spins landed on identical rank!
-                # If player bet on this exact card / CUSH:
-                if (is_cush_1 and is_cush_2 and b_choice in ["CUSH", "0"]) or (not is_cush_1 and b_choice == hit_rank_1):
+            if not has_second_spin:
+                # Spin 1 landed on CUSH (0) -> Game ends immediately, NO 2nd spin!
+                # ONLY bets on CUSH (0) win 11x; all regular card bets lose.
+                if is_cush_1 and b_choice in ["CUSH", "0"]:
                     b_won = True
-                    b_mult = 49.0 # TIE 49x Payout!
+                    b_mult = 11.0
+                    b_payout = round(b_stake * b_mult, 2)
+                    winning_choices.append(b_choice)
+            elif is_tie:
+                # Both spins landed on identical regular card rank -> TIE 49x Payout!
+                if b_choice == hit_rank_1:
+                    b_won = True
+                    b_mult = 49.0
                     b_payout = round(b_stake * b_mult, 2)
                     winning_choices.append(b_choice)
             else:
-                # Different cards landed on Spin 1 and Spin 2
-                s1_match = False
-                s1_mult = 0.0
-                if is_cush_1 and b_choice in ["CUSH", "0"]:
-                    s1_match = True
-                    s1_mult = 11.0
-                elif not is_cush_1 and b_choice == hit_rank_1:
-                    s1_match = True
-                    s1_mult = 5.0
-
-                s2_match = False
+                # Spin 1 = regular card, Spin 2 = different card or CUSH (0)
+                s1_mult = 5.0 if (not is_cush_1 and b_choice == hit_rank_1) else 0.0
                 s2_mult = 0.0
                 if is_cush_2 and b_choice in ["CUSH", "0"]:
-                    s2_match = True
                     s2_mult = 11.0
                 elif not is_cush_2 and b_choice == hit_rank_2:
-                    s2_match = True
                     s2_mult = 5.0
 
-                if s1_match or s2_match:
+                if s1_mult > 0 or s2_mult > 0:
                     b_won = True
                     b_mult = s1_mult + s2_mult
                     b_payout = round(b_stake * b_mult, 2)
@@ -904,16 +906,42 @@ def spin_card_wheel(
         total_payout = round(total_payout, 2)
         final_multiplier = round(total_payout / total_stake, 2) if (is_win and total_stake > 0) else 0.0
 
-        # 5. Calculate wheel landing angles for both spins (15 deg per sector)
+        # 5. Calculate wheel landing angles (15 deg per sector)
         angle_step = 360.0 / 24.0
 
         sector_angle_1 = chosen_sector_1["index"] * angle_step
         jitter_1 = float(secrets.randbelow(5) - 2)
         final_angle_1 = round((360.0 - sector_angle_1 + jitter_1) % 360.0, 2)
 
-        sector_angle_2 = chosen_sector_2["index"] * angle_step
-        jitter_2 = float(secrets.randbelow(5) - 2)
-        final_angle_2 = round((360.0 - sector_angle_2 + jitter_2) % 360.0, 2)
+        spin_1_payload = {
+            "sector": chosen_sector_1,
+            "hit_rank": hit_rank_1,
+            "is_cush": is_cush_1,
+            "target_angle": final_angle_1
+        }
+
+        if has_second_spin:
+            sector_angle_2 = chosen_sector_2["index"] * angle_step
+            jitter_2 = float(secrets.randbelow(5) - 2)
+            final_angle_2 = round((360.0 - sector_angle_2 + jitter_2) % 360.0, 2)
+            spin_2_payload = {
+                "sector": chosen_sector_2,
+                "hit_rank": hit_rank_2,
+                "is_cush": is_cush_2,
+                "target_angle": final_angle_2
+            }
+            spins_ranks = [hit_rank_1, hit_rank_2]
+            last_sector = chosen_sector_2
+            last_rank = hit_rank_2
+            last_is_cush = is_cush_2
+            last_angle = final_angle_2
+        else:
+            spin_2_payload = None
+            spins_ranks = [hit_rank_1]
+            last_sector = chosen_sector_1
+            last_rank = hit_rank_1
+            last_is_cush = is_cush_1
+            last_angle = final_angle_1
 
         curr_time = now_mmt()
         today_str = curr_time.strftime("%Y-%m-%d")
@@ -969,7 +997,7 @@ def spin_card_wheel(
             except Exception as tx_err:
                 print(f"Notice: skipped transaction record for win payout: {tx_err}")
 
-        # 9. Save MiniGameBet Record with 2-spin data
+        # 9. Save MiniGameBet Record
         bet_rec = MiniGameBet(
             user_id=current_user.id,
             game_type="CARD_WHEEL",
@@ -981,27 +1009,19 @@ def spin_card_wheel(
             result_data={
                 "game_title": "Royal Crown",
                 "game_id": game_id_str,
-                "spin_1": {
-                    "sector": chosen_sector_1,
-                    "hit_rank": hit_rank_1,
-                    "is_cush": is_cush_1,
-                    "target_angle": final_angle_1
-                },
-                "spin_2": {
-                    "sector": chosen_sector_2,
-                    "hit_rank": hit_rank_2,
-                    "is_cush": is_cush_2,
-                    "target_angle": final_angle_2
-                },
-                "spins": [hit_rank_1, hit_rank_2],
+                "spin_1": spin_1_payload,
+                "spin_2": spin_2_payload,
+                "has_second_spin": has_second_spin,
+                "cush_first_spin_stop": (not has_second_spin and is_cush_1),
+                "spins": spins_ranks,
                 "is_tie": is_tie,
                 "tie_rank": hit_rank_1 if is_tie else None,
                 "is_streak": is_tie,
                 # Backward compatibility
-                "sector": chosen_sector_2,
-                "hit_rank": hit_rank_2,
-                "is_cush": is_cush_2,
-                "target_angle": final_angle_2,
+                "sector": last_sector,
+                "hit_rank": last_rank,
+                "is_cush": last_is_cush,
+                "target_angle": last_angle,
                 "final_multiplier": final_multiplier,
                 "total_stake": total_stake,
                 "total_payout": total_payout,
@@ -1016,27 +1036,19 @@ def spin_card_wheel(
         return {
             "status": "success",
             "game_id": game_id_str,
-            "spin_1": {
-                "sector": chosen_sector_1,
-                "hit_rank": hit_rank_1,
-                "is_cush": is_cush_1,
-                "target_angle": final_angle_1
-            },
-            "spin_2": {
-                "sector": chosen_sector_2,
-                "hit_rank": hit_rank_2,
-                "is_cush": is_cush_2,
-                "target_angle": final_angle_2
-            },
-            "spins": [hit_rank_1, hit_rank_2],
+            "spin_1": spin_1_payload,
+            "spin_2": spin_2_payload,
+            "has_second_spin": has_second_spin,
+            "cush_first_spin_stop": (not has_second_spin and is_cush_1),
+            "spins": spins_ranks,
             "is_tie": is_tie,
             "tie_rank": hit_rank_1 if is_tie else None,
             "is_streak": is_tie,
             # Backward compatibility
-            "sector": chosen_sector_2,
-            "hit_rank": hit_rank_2,
-            "is_cush": is_cush_2,
-            "target_angle": final_angle_2,
+            "sector": last_sector,
+            "hit_rank": last_rank,
+            "is_cush": last_is_cush,
+            "target_angle": last_angle,
             "multiplier": 49.0 if (is_tie and is_win) else (final_multiplier if is_win else 0.0),
             "final_multiplier": final_multiplier,
             "is_win": is_win,

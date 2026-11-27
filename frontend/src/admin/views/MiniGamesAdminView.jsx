@@ -998,6 +998,10 @@ export default function MiniGamesAdminView({ initialTab = 'game', onNotify }) {
                                     Spins: [{bet.result_data?.spin_1?.hit_rank}, {bet.result_data?.spin_2?.hit_rank}]
                                     {bet.result_data?.is_tie && ' (🔥 49x TIE)'}
                                   </>
+                                ) : bet.result_data?.spin_1 && !bet.result_data?.spin_2 ? (
+                                  <>
+                                    Spin 1: 🔴 CUSH (0) (No 2nd Spin)
+                                  </>
                                 ) : (
                                   <>
                                     Slot: {bet.result_data?.sector?.rank === '0' || bet.result_data?.is_cush ? '🔴 CUSH (0)' : bet.result_data?.sector?.rank || bet.result_data?.hit_rank}

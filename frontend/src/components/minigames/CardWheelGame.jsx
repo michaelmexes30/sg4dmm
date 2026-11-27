@@ -257,6 +257,7 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
 
   // Wheel animation refs
   const animFrameRef = useRef(null);
+  const pauseTimerRef = useRef(null);
   const spinStartRef = useRef(0);
 
   // Initial DOM synchronization on mount
@@ -382,23 +383,41 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
 
       if (res && res.status === 'success') {
         const spin1 = res.spin_1 || { sector: res.sector || {}, hit_rank: res.hit_rank || '0' };
-        const spin2 = res.spin_2 || { sector: res.sector || {}, hit_rank: res.hit_rank || '0' };
+        const hasSecondSpin = Boolean(res.has_second_spin ?? res.spin_2);
+        const spin2 = hasSecondSpin ? res.spin_2 : null;
 
         const winIndex1 = spin1.sector?.index ?? 0;
         const winRank1 = spin1.hit_rank || '0';
-
-        const winIndex2 = spin2.sector?.index ?? 0;
-        const winRank2 = spin2.hit_rank || '0';
 
         // 1. Run 1st Spin Animation (15 seconds)
         runRouletteAnimation(winIndex1, () => {
           // Spin 1 completed!
           audio.playBallSnap();
           setCurrentSpinInfo({ round: 1, rank: winRank1, index: winIndex1 });
+
+          // RULE: If 1st Spin lands on CUSH (0), game ends immediately — NO 2nd Spin!
+          if (!hasSecondSpin || !spin2) {
+            setSpinStage('finished');
+            setSpinning(false);
+            setLastWinResult(res);
+
+            // Update history strip with Spin 1 (CUSH 0) only
+            setHistory((prev) => [String(winRank1), ...prev.slice(0, 7)]);
+
+            if (res.is_win) {
+              audio.playWin(false);
+            }
+            if (refreshProfile) refreshProfile();
+            return;
+          }
+
+          const winIndex2 = spin2.sector?.index ?? 0;
+          const winRank2 = spin2.hit_rank || '0';
+
           setSpinStage('pause');
 
           // 1.2s suspense pause before 2nd spin launch
-          setTimeout(() => {
+          pauseTimerRef.current = setTimeout(() => {
             setSpinStage('spin2');
             setCurrentSpinInfo({ round: 2, rank: null, index: null });
 
@@ -568,6 +587,7 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
   useEffect(() => {
     return () => {
       if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+      if (pauseTimerRef.current) clearTimeout(pauseTimerRef.current);
     };
   }, []);
 
@@ -613,7 +633,7 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
               BALANCE:
             </span>
             <span className="text-xs sm:text-sm font-mono font-black text-amber-300 drop-shadow-[0_0_6px_rgba(251,191,36,0.6)]">
-              {Number(user?.balance || 50000).toLocaleString()}
+              {Number(user?.balance ?? 0).toLocaleString()}
             </span>
           </div>
         </div>
@@ -1110,15 +1130,23 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
             }`}
           >
             {/* Round Summary Badges */}
-            <div className="flex items-center justify-center gap-2 mb-1">
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-black/50 border border-slate-700 text-slate-300">
-                1st Spin: <strong className="text-amber-300">{lastWinResult.spin_1?.hit_rank || lastWinResult.hit_rank}</strong>
-              </span>
-              <span className="text-xs text-amber-400 font-bold">➔</span>
-              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-black/50 border border-slate-700 text-slate-300">
-                2nd Spin: <strong className="text-amber-300">{lastWinResult.spin_2?.hit_rank || lastWinResult.hit_rank}</strong>
-              </span>
-            </div>
+            {lastWinResult.spin_2 ? (
+              <div className="flex items-center justify-center gap-2 mb-1">
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-black/50 border border-slate-700 text-slate-300">
+                  1st Spin: <strong className="text-amber-300">{lastWinResult.spin_1?.hit_rank || lastWinResult.hit_rank}</strong>
+                </span>
+                <span className="text-xs text-amber-400 font-bold">➔</span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-black/50 border border-slate-700 text-slate-300">
+                  2nd Spin: <strong className="text-amber-300">{lastWinResult.spin_2?.hit_rank || lastWinResult.hit_rank}</strong>
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center gap-2 mb-1">
+                <span className="text-[10px] font-mono px-2.5 py-0.5 rounded bg-rose-950/80 border border-rose-500/70 text-rose-200 font-bold">
+                  🔴 1st Spin: CUSH (0) — 2nd Spin မရှိပါ (Round Ended)
+                </span>
+              </div>
+            )}
 
             {lastWinResult.is_win ? (
               <div>
@@ -1129,6 +1157,8 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
                       🔥 DOUBLE TIE 49x MEGA WINNER! 🔥
                       <Flame className="w-4 h-4 text-rose-300 animate-bounce" />
                     </span>
+                  ) : !lastWinResult.spin_2 ? (
+                    '🔴 CUSH (0) 1st SPIN WINNER! 🎉'
                   ) : (
                     '🎉 CONGRATULATIONS! WINNER! 🎉'
                   )}
@@ -1139,7 +1169,11 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
               </div>
             ) : (
               <div>
-                Spins landed on <span className="font-bold text-white">[{lastWinResult.spin_1?.hit_rank || '-'}]</span> and <span className="font-bold text-white">[{lastWinResult.spin_2?.hit_rank || '-'}]</span>. Better luck next spin!
+                {!lastWinResult.spin_2 ? (
+                  <>1st Spin တွင် <span className="font-bold text-rose-300">[CUSH 0]</span> ကျသွားပါသဖြင့် 2nd Spin မရှိပါ။ CUSH ထိုးထားမှသာ အနိုင်ရပါမည်။</>
+                ) : (
+                  <>Spins landed on <span className="font-bold text-white">[{lastWinResult.spin_1?.hit_rank || '-'}]</span> and <span className="font-bold text-white">[{lastWinResult.spin_2?.hit_rank || '-'}]</span>. Better luck next spin!</>
+                )}
               </div>
             )}
           </div>
@@ -1272,7 +1306,7 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
               <div className="p-2.5 rounded-xl bg-black/40 border border-amber-900/40 space-y-1">
                 <span className="font-bold text-sky-400 block">🔄 ၁ ကြိမ်ထိုးလျှင် ၂ ကြိမ် လှည့်ပေးခြင်း (Double Spin):</span>
                 <p>
-                  ကစားသမားသည် လောင်းကြေး ၁ ကြိမ်တည်း ထိုးရုံဖြင့် Roulette ဘီးကို <strong>၂ ကြိမ် ဆက်တိုက် (Spin 1 နှင့် Spin 2)</strong> အလိုအလျောက် လှည့်ပေးပါမည်။
+                  ပထမအလှည့် (Spin 1) တွင် ရိုးရိုးကတ် (2 မှ K) ကျပါက <strong>ဒုတိယအလှည့် (Spin 2)</strong> ကို အလိုအလျောက် ဆက်လက်လှည့်ပေးပါမည်။
                 </p>
               </div>
 
@@ -1293,7 +1327,7 @@ export default function CardWheelGame({ onOpenDeposit, onBack }) {
               <div className="p-2.5 rounded-xl bg-black/40 border border-amber-900/40 space-y-1">
                 <span className="font-bold text-rose-400 block">🛡️ CUSH (0) စည်းမျဉ်း:</span>
                 <p>
-                  ဘီးသည် 0 ပေါ် ကျရောက်ပါက CUSH အကွက်ထိုးထားသူများသည် <strong>၁၁ ဆ (11x)</strong> ရရှိပြီး၊ ၂ ကြိမ်စလုံး 0-0 ကျပါက <strong>၄၉ ဆ (49x)</strong> ရရှိပါမည်။
+                  <strong>ပထမအလှည့် (Spin 1) တွင် CUSH (0) ကျသွားပါက 2nd Spin မရှိတော့ဘဲ ပွဲပြီးဆုံးပါမည်။</strong> CUSH အကွက် ထိုးထားသူများသာ ထိုးထားသည့်အဆ (<strong>11x</strong>) ရရှိပါမည်။ (2nd Spin တွင် 0 ကျပါက 1st Spin ကတ် 5x နှင့် CUSH 11x ရရှိပါမည်။)
                 </p>
               </div>
             </div>
