@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, Enum, Text
+from sqlalchemy import Column, Integer, String, Float, DateTime, Enum, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 import enum
 import json
@@ -80,6 +80,9 @@ class LotteryDraw(Base):
 
 class TwoDDraw(Base):
     __tablename__ = "twod_draws"
+    __table_args__ = (
+        UniqueConstraint("draw_date", "session", name="uq_twod_draws_date_session"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     draw_date = Column(String(50), nullable=False, index=True) # e.g. "2026-10-23"
@@ -110,6 +113,9 @@ class TwoDDraw(Base):
 
 class ThreeDDraw(Base):
     __tablename__ = "threed_draws"
+    __table_args__ = (
+        UniqueConstraint("draw_date", name="uq_threed_draws_date"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     draw_date = Column(String(50), nullable=False, index=True) # e.g. "2026-11-01"

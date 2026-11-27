@@ -40,6 +40,7 @@ export default function DepositModal({ isOpen, onClose }) {
   const [slipFile, setSlipFile] = useState(null);
   const [slipPreviewUrl, setSlipPreviewUrl] = useState('');
   const [localPreviewUrl, setLocalPreviewUrl] = useState('');
+  const [uploadingSlip, setUploadingSlip] = useState(false);
   const [showSlipModal, setShowSlipModal] = useState(false);
   const fileInputRef = useRef(null);
   const modalScrollRef = useRef(null);
@@ -74,7 +75,13 @@ export default function DepositModal({ isOpen, onClose }) {
     setAmount('');
     setSlipFile(null);
     setSlipPreviewUrl('');
-    setLocalPreviewUrl('');
+    setUploadingSlip(false);
+    setLocalPreviewUrl((prev) => {
+      if (prev && prev.startsWith('blob:')) {
+        try { URL.revokeObjectURL(prev); } catch (_) {}
+      }
+      return '';
+    });
     setShowSlipModal(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -156,11 +163,17 @@ export default function DepositModal({ isOpen, onClose }) {
     if (!file) return;
 
     setSlipFile(file);
+    setSlipPreviewUrl(''); // Never send a blob: URL to backend
     const localUrl = URL.createObjectURL(file);
-    setLocalPreviewUrl(localUrl);
-    setSlipPreviewUrl(localUrl);
+    setLocalPreviewUrl((prev) => {
+      if (prev && prev.startsWith('blob:')) {
+        try { URL.revokeObjectURL(prev); } catch (_) {}
+      }
+      return localUrl;
+    });
 
-    // Upload immediately to cloud
+    // Upload immediately to server while locking submit button
+    setUploadingSlip(true);
     const formData = new FormData();
     formData.append('file', file);
     try {
@@ -170,15 +183,24 @@ export default function DepositModal({ isOpen, onClose }) {
       }
     } catch (err) {
       console.error('Slip upload failed:', err);
+      setVerificationResult({
+        success: false,
+        status: 'REJECTED',
+        message: err.message || (lang === 'mm' ? 'ပြေစာပုံ တင်ရာတွင် မအောင်မြင်ပါ (5MB အောက် JPG/PNG/WEBP သာ တင်ပါ)။' : 'Receipt image upload failed (JPG/PNG/WEBP under 5MB only).')
+      });
+    } finally {
+      setUploadingSlip(false);
     }
   };
 
   const handleSubmitDeposit = async (e) => {
     e.preventDefault();
+    if (uploadingSlip) return;
     setLoading(true);
     setVerificationResult(null);
 
     try {
+      const safeSlipUrl = slipPreviewUrl && !slipPreviewUrl.startsWith('blob:') ? slipPreviewUrl : null;
       const payload = {
         gateway,
         transaction_id: txId.trim(),
@@ -186,7 +208,7 @@ export default function DepositModal({ isOpen, onClose }) {
         amount: Number(amount),
         raw_timestamp: rawTimestamp,
         client_timezone: clientTimezone,
-        slip_image_url: slipPreviewUrl || null
+        slip_image_url: safeSlipUrl
       };
 
       const result = await apiClient.submitDeposit(payload);
@@ -558,10 +580,12 @@ export default function DepositModal({ isOpen, onClose }) {
                 </button>
                 <button
                   type="submit"
-                  disabled={loading}
-                  className="flex-1 py-2.5 sm:py-3.5 rounded-xl gold-gradient-btn text-dark-bg font-extrabold text-xs sm:text-sm tracking-wider shadow-gold hover:shadow-gold-lg transition-all cursor-pointer"
+                  disabled={loading || uploadingSlip}
+                  className="flex-1 py-2.5 sm:py-3.5 rounded-xl gold-gradient-btn text-dark-bg font-extrabold text-xs sm:text-sm tracking-wider shadow-gold hover:shadow-gold-lg transition-all cursor-pointer disabled:opacity-60"
                 >
-                  {loading ? t('submittingBtn') : t('submitCashIn')}
+                  {uploadingSlip
+                    ? (lang === 'mm' ? 'ပြေစာပုံ တင်နေပါသည်...' : 'Uploading Slip...')
+                    : loading ? t('submittingBtn') : t('submitCashIn')}
                 </button>
               </div>
             </form>

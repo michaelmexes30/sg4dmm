@@ -34,7 +34,7 @@ class Transaction(Base):
     
     # Financial Verification Fields
     transaction_id = Column(String(64), index=True, nullable=False) # User input / extracted
-    receiver_id = Column(String(50), nullable=False) # Target agent account / phone
+    receiver_id = Column(String(150), nullable=False) # Target agent account / phone / Myanmar Unicode name
     amount = Column(Float, nullable=False)
     
     # Screenshot proof
@@ -75,7 +75,7 @@ class TransactionArchive(Base):
     tx_type = Column(String(20))
     gateway = Column(String(20))
     transaction_id = Column(String(64), index=True)
-    receiver_id = Column(String(50))
+    receiver_id = Column(String(150))
     amount = Column(Float)
     status = Column(String(20))
     tx_timestamp_mmt = Column(DateTime)

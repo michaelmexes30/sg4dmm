@@ -88,7 +88,7 @@ export default function BettingForm({
   const activeTotalStake = activeCount * (Number(stakeAmount) || 0);
 
   const handleRandomPick = () => {
-    const randomNum = Math.floor(1000 + Math.random() * 9000).toString();
+    const randomNum = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
     setNumber(randomNum);
   };
 

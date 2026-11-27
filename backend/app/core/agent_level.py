@@ -2,20 +2,23 @@ from typing import Dict, Any, Optional, List
 from sqlalchemy.orm import Session
 from sqlalchemy import func, or_
 from app.models.user import User, UserRole, Notification
-from app.models.bet import BetSlip
+from app.models.bet import BetSlip, BetSlipStatus
 from app.models.settings import SystemSetting
 
 def get_agent_turnover_stats(agent: User, db: Session) -> Dict[str, float]:
     """
     Computes Agent's combined turnover for 4D and 3D games:
+    - Excludes CANCELLED and VOID slips.
     - 4D and 3D stakes (both Agent self-bets and Downline player bets) count towards the Agent's Tier turnover.
     - 2D is excluded from Tier turnover (0% commission).
     """
     valid_game_types = ["4D", "3D"]
+    excluded_statuses = [BetSlipStatus.CANCELLED, BetSlipStatus.VOID]
 
     self_turnover = db.query(func.coalesce(func.sum(BetSlip.total_stake), 0.0)).filter(
         BetSlip.user_id == agent.id,
-        BetSlip.game_type.in_(valid_game_types)
+        BetSlip.game_type.in_(valid_game_types),
+        BetSlip.status.notin_(excluded_statuses)
     ).scalar() or 0.0
 
     downline_turnover = db.query(func.coalesce(func.sum(BetSlip.total_stake), 0.0)).outerjoin(
@@ -23,6 +26,7 @@ def get_agent_turnover_stats(agent: User, db: Session) -> Dict[str, float]:
     ).filter(
         BetSlip.user_id != agent.id,
         BetSlip.game_type.in_(valid_game_types),
+        BetSlip.status.notin_(excluded_statuses),
         or_(
             BetSlip.agent_id == agent.id,
             User.agent_id == agent.id,
@@ -89,7 +93,7 @@ def get_agent_commission_rate(agent: User, db: Session) -> float:
     else: # Tier 1
         return tiers[0]["commission_rate"]
 
-def evaluate_and_update_agent_level(agent: User, db: Session, commit: bool = True) -> Dict[str, Any]:
+def evaluate_and_update_agent_level(agent: User, db: Session, commit: bool = True, allow_mutate: bool = True) -> Dict[str, Any]:
     """
     Evaluates Agent Tier (Tier 1 to 4) based on Total Combined Turnover.
     - Tier 1: 3,000,000 MMK ==> 15%
@@ -173,38 +177,39 @@ def evaluate_and_update_agent_level(agent: User, db: Session, commit: bool = Tru
         next_target = tiers[1]["target"] if tot >= tiers[0]["target"] else tiers[0]["target"]
         prev_target = 0.0
 
-    # Auto upgrade notification
-    if qualified_tier > current_tier_num:
-        agent.level = f"Tier {qualified_tier}"
-        agent.commission_rate = active_comm_rate
-        agent.security_deposit = target_dep
-        agent.credit_limit = target_dep * multiplier
+    # Auto upgrade notification (only mutate DB state when allow_mutate=True; never mutate on read-only GET requests!)
+    if allow_mutate:
+        if qualified_tier > current_tier_num:
+            agent.level = f"Tier {qualified_tier}"
+            agent.commission_rate = active_comm_rate
+            if not agent.security_deposit or agent.security_deposit <= 0:
+                agent.security_deposit = target_dep
+            if not agent.credit_limit or agent.credit_limit <= 0:
+                agent.credit_limit = (agent.security_deposit or target_dep) * multiplier
 
-        notif = Notification(
-            user_id=agent.id,
-            title=f"🎉 Agent Tier {qualified_tier} သို့ တိုးမြှင့်အောင်မြင်ပါသည်!",
-            message=(
-                f"ဂုဏ်ယူပါသည်! သင်၏ စုစုပေါင်းထိုးကြေး (Agent ထိုးကြေး + Downline ထိုးကြေး) "
-                f"{tot:,.0f} ကျပ် ပြည့်မီသဖြင့် Tier {qualified_tier} သို့ တိုးမြှင့်လိုက်ပါပြီ။ "
-                f"ကော်မရှင်နှုန်းထား {int(active_comm_pct)}% ခံစားခွင့် ရရှိပါပြီ ခင်ဗျာ။"
-            ),
-            notif_type="AGENT_LEVEL_UP",
-            is_read=False
-        )
-        db.add(notif)
-    else:
-        tier_label = f"Tier {effective_tier}"
-        if agent.level != tier_label:
-            agent.level = tier_label
-        agent.commission_rate = active_comm_rate
-        if not agent.security_deposit or agent.security_deposit < target_dep:
-            agent.security_deposit = target_dep
-        if not agent.credit_limit or agent.credit_limit <= 0:
-            agent.credit_limit = (agent.security_deposit or target_dep) * multiplier
+            notif = Notification(
+                user_id=agent.id,
+                title=f"🎉 Agent Tier {qualified_tier} သို့ တိုးမြှင့်အောင်မြင်ပါသည်!",
+                message=(
+                    f"ဂုဏ်ယူပါသည်! သင်၏ စုစုပေါင်းထိုးကြေး (Agent ထိုးကြေး + Downline ထိုးကြေး) "
+                    f"{tot:,.0f} ကျပ် ပြည့်မီသဖြင့် Tier {qualified_tier} သို့ တိုးမြှင့်လိုက်ပါပြီ။ "
+                    f"ကော်မရှင်နှုန်းထား {int(active_comm_pct)}% ခံစားခွင့် ရရှိပါပြီ ခင်ဗျာ။"
+                ),
+                notif_type="AGENT_LEVEL_UP",
+                is_read=False
+            )
+            db.add(notif)
+        else:
+            tier_label = f"Tier {effective_tier}"
+            if agent.level != tier_label:
+                agent.level = tier_label
+            agent.commission_rate = active_comm_rate
+            if not agent.credit_limit or agent.credit_limit <= 0:
+                agent.credit_limit = (agent.security_deposit or target_dep) * multiplier
 
-    if commit:
-        db.commit()
-        db.refresh(agent)
+        if commit:
+            db.commit()
+            db.refresh(agent)
 
     # Progress calculation to next level
     progress_pct = 100.0

@@ -354,6 +354,16 @@ def place_bet_slip(
         if calc["total_stake"] <= 0:
             raise HTTPException(status_code=400, detail="Stake amount must be greater than 0.")
 
+        # Check ALL expanded combinations against closed_numbers (prevents Box/Roll bypassing closed numbers)
+        for d in draws:
+            closed_set_d = set(d.closed_numbers)
+            blocked = [c for c in calc["combinations"] if c in closed_set_d]
+            if blocked:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"ဂဏန်း '{blocked[0]}' သည် {d.draw_date} ပွဲစဉ်အတွက် ထိုးကြေးပိတ်ထားသော Closed Number ဖြစ်သောကြောင့် ထိုး၍မရပါခင်ဗျာ။"
+                )
+
         total_single_draw_stake += calc["total_stake"]
         processed_items_data.append((item, calc))
 
@@ -623,7 +633,20 @@ def place_2d_bet_slip(
     curr_mmt = now_mmt()
     today_str = curr_mmt.strftime("%Y-%m-%d")
 
-    # Time-based operational boundaries (Opens at 08:00 AM MMT, Cutoffs: 11:30 AM & 04:00 PM)
+    # Reject bets on weekends when Thai Stock Exchange (SET) is closed
+    if curr_mmt.weekday() >= 5:
+        raise HTTPException(
+            status_code=400,
+            detail="စနေ၊ တနင်္ဂနွေ ထိုင်းစတော့ဈေးကွက် ပိတ်ပါသဖြင့် 2D ထိုး၍မရပါခင်ဗျာ (2D market closed on weekends)."
+        )
+
+    from app.core.timezone_utils import parse_time_string
+    m_cut_str = (getattr(setting, "twod_morning_cutoff", None) or "11:30 AM").strip()
+    e_cut_str = (getattr(setting, "twod_evening_cutoff", None) or "04:00 PM").strip()
+    m_cut_h, m_cut_m = parse_time_string(m_cut_str, 11, 30)
+    e_cut_h, e_cut_m = parse_time_string(e_cut_str, 16, 0)
+
+    # Time-based operational boundaries (Opens at 08:00 AM MMT, dynamic cutoffs from SystemSetting)
     if draw.draw_date < today_str:
         if draw.status == "OPEN":
             draw.status = "CLOSED"
@@ -646,13 +669,13 @@ def place_2d_bet_slip(
                 detail="2D ထိုးကြေးကို နံနက် ၀၈:၀၀ နာရီတွင် စတင်ဖွင့်လှစ်ပေးပါမည် (Betting opens at 08:00 AM MMT)."
             )
         if draw.session == "morning":
-            if curr_mmt.hour > 11 or (curr_mmt.hour == 11 and curr_mmt.minute >= 30):
+            if curr_mmt.hour > m_cut_h or (curr_mmt.hour == m_cut_h and curr_mmt.minute >= m_cut_m):
                 if draw.status == "OPEN":
                     draw.status = "CLOSED"
                     db.commit()
                 raise HTTPException(
                     status_code=400,
-                    detail="မနက်ပိုင်း 2D ထိုးကြေးပိတ်ချိန် (11:30 AM) ကျော်လွန်သွားပါပြီ (Morning session betting closed)."
+                    detail=f"မနက်ပိုင်း 2D ထိုးကြေးပိတ်ချိန် ({m_cut_str}) ကျော်လွန်သွားပါပြီ (Morning session betting closed)."
                 )
         elif draw.session == "evening":
             if curr_mmt.hour < 12 or (curr_mmt.hour == 12 and curr_mmt.minute < 1):
@@ -660,13 +683,13 @@ def place_2d_bet_slip(
                     status_code=400,
                     detail="ညနေပိုင်း 2D ပွဲစဉ်ကို မနက်ပိုင်း ထွက်ဂဏန်း ထွက်ပြီးနောက် ၁၂:၀၁ PM တွင် ဖွင့်လှစ်ပေးပါမည်။"
                 )
-            if curr_mmt.hour >= 16:
+            if curr_mmt.hour > e_cut_h or (curr_mmt.hour == e_cut_h and curr_mmt.minute >= e_cut_m):
                 if draw.status == "OPEN":
                     draw.status = "CLOSED"
                     db.commit()
                 raise HTTPException(
                     status_code=400,
-                    detail="ညနေပိုင်း 2D ထိုးကြေးပိတ်ချိန် (04:00 PM) ကျော်လွန်သွားပါပြီ (Evening session betting closed)."
+                    detail=f"ညနေပိုင်း 2D ထိုးကြေးပိတ်ချိန် ({e_cut_str}) ကျော်လွန်သွားပါပြီ (Evening session betting closed)."
                 )
 
     if not req.items or len(req.items) == 0:
@@ -675,6 +698,7 @@ def place_2d_bet_slip(
     closed_set = set(draw.closed_numbers)
     total_stake = 0.0
     valid_items = []
+    incoming_by_num = {}
 
     for item in req.items:
         clean_num = str(item.number).strip().zfill(2)
@@ -689,7 +713,34 @@ def place_2d_bet_slip(
             raise HTTPException(status_code=400, detail=f"ဂဏန်း '{clean_num}' အတွက် အများဆုံးထိုးကြေးမှာ {max_bet_val:,.0f} ကျပ် ဖြစ်ပါသည်")
         
         total_stake += amt
+        incoming_by_num[clean_num] = incoming_by_num.get(clean_num, 0.0) + amt
         valid_items.append((clean_num, amt))
+
+    # Enforce 2D Max Risk Cap per number from SystemSetting
+    max_2d_risk = float(getattr(setting, "twod_max_risk_per_number", 100000.0) or 100000.0)
+    if max_2d_risk > 0:
+        from sqlalchemy import func
+        existing_rows = (
+            db.query(BetItem.number, func.coalesce(func.sum(BetItem.item_stake), 0.0))
+            .join(BetSlip, BetItem.slip_id == BetSlip.id)
+            .filter(
+                BetSlip.game_type == "2D",
+                BetSlip.draw_id == draw.id,
+                BetSlip.status.notin_([BetSlipStatus.CANCELLED, BetSlipStatus.VOID]),
+                BetItem.number.in_(list(incoming_by_num.keys()))
+            )
+            .group_by(BetItem.number)
+            .all()
+        )
+        existing_map = {str(num).strip().zfill(2): float(stk or 0.0) for num, stk in existing_rows}
+        for num_k, add_amt in incoming_by_num.items():
+            cur_exposure = existing_map.get(num_k, 0.0)
+            if cur_exposure + add_amt > max_2d_risk:
+                rem = max(0.0, max_2d_risk - cur_exposure)
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"2D ဂဏန်း '{num_k}' သည် ဘရိတ်ကန့်သတ်ချက် ({max_2d_risk:,.0f} Ks) ကျော်လွန်နေပါသည် (လက်ကျန်ထိုးနိုင်ငွေ: {rem:,.0f} Ks)။"
+                )
 
     # Row-locked Wallet & Credit Balance check (prevents concurrent double-spend)
     locked_user = db.query(User).filter(User.id == current_user.id).with_for_update().first()
@@ -732,6 +783,7 @@ def place_2d_bet_slip(
         status=BetSlipStatus.PENDING,
         created_at=current_time
     )
+    draw.total_staked = float(draw.total_staked or 0.0) + total_stake
     db.add(bet_slip)
     db.flush()
 
@@ -746,11 +798,37 @@ def place_2d_bet_slip(
             combination_count=1,
             combinations_json=json.dumps([clean_num]),
             item_stake=amt,
-            item_payout=amt * payout_multiplier,
+            item_payout=0.0,
             is_won=0,
             win_details_json="[]"
         )
         db.add(bi)
+
+    # Financial Ledger Entry & Daily Summary for 2D BET_REVENUE
+    db.add(FinancialLedger(
+        entry_type=LedgerEntryType.BET_REVENUE,
+        amount=total_stake,
+        running_balance=current_user.balance,
+        reference_id=slip_code,
+        reference_type="BET_SLIP_2D",
+        description=f"2D Bet Placed ({slip_code}) - {draw.draw_date} ({draw.session})",
+        logged_at_mmt=current_time,
+        date_str=today_str
+    ))
+    daily_summary = db.query(DailyLedgerSummary).filter(DailyLedgerSummary.date_str == today_str).first()
+    if daily_summary:
+        daily_summary.total_bet_volume += total_stake
+        daily_summary.net_profit += total_stake
+        daily_summary.total_bets_count += 1
+        daily_summary.updated_at_mmt = current_time
+    else:
+        db.add(DailyLedgerSummary(
+            date_str=today_str,
+            total_bet_volume=total_stake,
+            net_profit=total_stake,
+            total_bets_count=1,
+            updated_at_mmt=current_time
+        ))
 
     # Commission log
     if agent and agent_comm_amt > 0:
@@ -846,6 +924,7 @@ def place_3d_bet_slip(
     closed_set = set(draw.closed_numbers)
     total_stake = 0.0
     valid_items = []
+    incoming_3d_by_num = {}
 
     for item in req.items:
         clean_num = str(item.number).strip().zfill(3)
@@ -870,8 +949,55 @@ def place_3d_bet_slip(
             combos = [clean_num]
             item_tot = amt
 
+        # Check ALL expanded 3D combinations against closed numbers
+        blocked_3d = [c for c in combos if c in closed_set]
+        if blocked_3d:
+            raise HTTPException(
+                status_code=400,
+                detail=f"3D ဂဏန်း '{blocked_3d[0]}' သည် ယခုပွဲစဉ်အတွက် ထိုးကြေးပိတ်ထားသော Closed Number ဖြစ်ပါသည်"
+            )
+
+        for c in combos:
+            incoming_3d_by_num[c] = incoming_3d_by_num.get(c, 0.0) + amt
+
         total_stake += item_tot
         valid_items.append((clean_num, btype, amt, combos, item_tot))
+
+    # Enforce 3D Max Risk Cap per expanded 3D number from SystemSetting
+    max_3d_risk = float(getattr(setting, "threed_max_risk_per_number", 200000.0) or 200000.0)
+    if max_3d_risk > 0:
+        existing_3d_items = (
+            db.query(BetItem)
+            .join(BetSlip, BetItem.slip_id == BetSlip.id)
+            .filter(
+                BetSlip.game_type == "3D",
+                BetSlip.draw_id == draw.id,
+                BetSlip.status.notin_([BetSlipStatus.CANCELLED, BetSlipStatus.VOID])
+            )
+            .all()
+        )
+        exposure_3d = {}
+        for ex_bi in existing_3d_items:
+            ex_bt = (ex_bi.bet_type or "STRAIGHT").upper()
+            try:
+                ex_combos = json.loads(ex_bi.combinations_json) if ex_bi.combinations_json else [ex_bi.number]
+            except Exception:
+                ex_combos = [ex_bi.number]
+            u_stk = float(ex_bi.big_amount or 0.0) if ex_bt in ["R", "BOX"] else float(ex_bi.big_amount or ex_bi.item_stake or 0.0)
+            if u_stk <= 0 and ex_combos:
+                u_stk = float(ex_bi.item_stake or 0.0) / max(1, len(ex_combos))
+            for ex_c in ex_combos:
+                k = str(ex_c).strip().zfill(3)
+                exposure_3d[k] = exposure_3d.get(k, 0.0) + u_stk
+
+        for num_k, add_amt in incoming_3d_by_num.items():
+            cur_exp = exposure_3d.get(num_k, 0.0)
+            if cur_exp + add_amt > max_3d_risk:
+                rem = max(0.0, max_3d_risk - cur_exp)
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"3D ဂဏန်း '{num_k}' သည် ဘရိတ်ကန့်သတ်ချက် ({max_3d_risk:,.0f} Ks) ကျော်လွန်နေပါသည် (လက်ကျန်ထိုးနိုင်ငွေ: {rem:,.0f} Ks)။"
+                )
 
     # Row-locked Wallet & Credit Balance check (prevents concurrent double-spend)
     locked_user = db.query(User).filter(User.id == current_user.id).with_for_update().first()
@@ -913,11 +1039,11 @@ def place_3d_bet_slip(
         status=BetSlipStatus.PENDING,
         created_at=current_time
     )
+    draw.total_staked = float(draw.total_staked or 0.0) + total_stake
     db.add(bet_slip)
     db.flush()
 
     for clean_num, btype, amt, combos, item_tot in valid_items:
-        payout_unit = straight_payout if btype != "tote" else tote_payout
         bi = BetItem(
             slip_id=bet_slip.id,
             game_type="3D",
@@ -928,11 +1054,38 @@ def place_3d_bet_slip(
             combination_count=len(combos),
             combinations_json=json.dumps(combos),
             item_stake=item_tot,
-            item_payout=amt * payout_unit,
+            item_payout=0.0,
             is_won=0,
             win_details_json="[]"
         )
         db.add(bi)
+
+    # Financial Ledger Entry & Daily Summary for 3D BET_REVENUE
+    today_3d_str = current_time.strftime("%Y-%m-%d")
+    db.add(FinancialLedger(
+        entry_type=LedgerEntryType.BET_REVENUE,
+        amount=total_stake,
+        running_balance=current_user.balance,
+        reference_id=slip_code,
+        reference_type="BET_SLIP_3D",
+        description=f"3D Bet Placed ({slip_code}) - Draw {draw.draw_date}",
+        logged_at_mmt=current_time,
+        date_str=today_3d_str
+    ))
+    daily_summary_3d = db.query(DailyLedgerSummary).filter(DailyLedgerSummary.date_str == today_3d_str).first()
+    if daily_summary_3d:
+        daily_summary_3d.total_bet_volume += total_stake
+        daily_summary_3d.net_profit += total_stake
+        daily_summary_3d.total_bets_count += 1
+        daily_summary_3d.updated_at_mmt = current_time
+    else:
+        db.add(DailyLedgerSummary(
+            date_str=today_3d_str,
+            total_bet_volume=total_stake,
+            net_profit=total_stake,
+            total_bets_count=1,
+            updated_at_mmt=current_time
+        ))
 
     if agent and agent_comm_amt > 0:
         comm_log = AgentCommissionLog(

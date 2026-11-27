@@ -72,17 +72,28 @@ export default function Navbar({ activeTab, setActiveTab, onOpenDeposit, onNavig
     return () => clearInterval(interval);
   }, [lang]);
 
-  // Live polling for notifications and user profile updates every 5 seconds
+  // Visibility-aware polling for notifications & profile (pauses in hidden tabs, refreshes on return)
   useEffect(() => {
     if (!user) return;
-    loadNotifications();
-    const interval = setInterval(() => {
+    const pollIfVisible = () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
       loadNotifications();
       if (refreshProfile) {
         refreshProfile();
       }
-    }, 5000);
-    return () => clearInterval(interval);
+    };
+    loadNotifications();
+    const interval = setInterval(pollIfVisible, 20000);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        pollIfVisible();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, [user?.id]);
 
   const loadNotifications = async () => {

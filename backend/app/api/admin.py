@@ -973,11 +973,15 @@ def get_weekly_bonuses_live_preview(
         WeeklyBonus.is_credited == True
     ).first() is None
 
-    prev_slips_count = db.query(func.count(BetSlip.id)).join(LotteryDraw).filter(
-        BetSlip.game_type == "4D",
-        LotteryDraw.draw_date >= prev_monday_str,
-        LotteryDraw.draw_date <= prev_sunday_str
-    ).scalar() or 0
+    prev_slips_count = (
+        db.query(func.count(BetSlip.id))
+        .join(LotteryDraw, BetSlip.draw_id == LotteryDraw.id)
+        .filter(
+            BetSlip.game_type == "4D",
+            LotteryDraw.draw_date >= prev_monday_str,
+            LotteryDraw.draw_date <= prev_sunday_str
+        ).scalar() or 0
+    )
 
     if has_unsettled_prev and prev_slips_count > 0:
         active_start_date = prev_monday_str
@@ -990,14 +994,18 @@ def get_weekly_bonuses_live_preview(
     sun_date_str = (active_monday_dt + timedelta(days=6)).strftime("%Y-%m-%d")
 
     for player in players:
-        slips = db.query(BetSlip).join(LotteryDraw).filter(
-            BetSlip.game_type == "4D",
-            BetSlip.user_id == player.id,
-            BetSlip.status != BetSlipStatus.VOID,
-            BetSlip.status != BetSlipStatus.CANCELLED,
-            LotteryDraw.draw_date >= active_start_date,
-            LotteryDraw.draw_date <= active_end_date
-        ).all()
+        slips = (
+            db.query(BetSlip, LotteryDraw.draw_date)
+            .join(LotteryDraw, BetSlip.draw_id == LotteryDraw.id)
+            .filter(
+                BetSlip.game_type == "4D",
+                BetSlip.user_id == player.id,
+                BetSlip.status != BetSlipStatus.VOID,
+                BetSlip.status != BetSlipStatus.CANCELLED,
+                LotteryDraw.draw_date >= active_start_date,
+                LotteryDraw.draw_date <= active_end_date
+            ).all()
+        )
 
         if not slips:
             continue
@@ -1005,8 +1013,7 @@ def get_weekly_bonuses_live_preview(
         daily_bets = {}
         total_week_bets = 0.0
 
-        for s in slips:
-            d_date = s.draw.draw_date
+        for s, d_date in slips:
             daily_bets[d_date] = daily_bets.get(d_date, 0.0) + s.total_stake
             total_week_bets += s.total_stake
 
@@ -2474,31 +2481,6 @@ def edit_bet_number(
     except Exception:
         pass
 
-    # Ensure bet_edit_logs table exists and persist
-    from app.database import engine
-    from sqlalchemy import text
-    try:
-        with engine.begin() as conn:
-            conn.execute(text("""
-                CREATE TABLE IF NOT EXISTS bet_edit_logs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    slip_id INTEGER NOT NULL,
-                    bet_item_id INTEGER NOT NULL,
-                    old_number VARCHAR(10) NOT NULL,
-                    new_number VARCHAR(10) NOT NULL,
-                    admin_id INTEGER NOT NULL,
-                    admin_name VARCHAR(100) NOT NULL,
-                    note VARCHAR(255),
-                    created_at DATETIME
-                )
-            """))
-            try:
-                conn.execute(text("ALTER TABLE bet_items ADD COLUMN edit_logs_json TEXT DEFAULT '[]'"))
-            except Exception:
-                pass
-    except Exception as ddl_err:
-        print(f"Notice ensuring bet_edit_logs schema: {ddl_err}")
-
     try:
         db_log = BetEditLog(
             slip_id=bs.id,
@@ -3541,79 +3523,212 @@ def get_reports_financial(
     db: Session = Depends(get_db)
 ):
     """
-    100% LIVE Daily Financial Statement aggregated directly from real database:
-    - 4D Bet Stake
-    - Top Up (Deposits)
-    - Withdrawals
-    - 4D Payouts
-    - 30% Agent Commission
-    - Weekly Bonus
-    - Net Profit / Loss
-    - Company Running Balance
+    100% LIVE Daily Financial Statement aggregated with O(1) GROUP BY SQL queries
+    (eliminates per-date N+1 query explosion and 15s statement_timeout risks).
     """
+    gt_filter = (game_type or "ALL").strip().upper()
+
+    # Optional timestamp range bounds for indexed date filtering
+    dt_from = None
+    dt_to_excl = None
+    if from_date:
+        try:
+            dt_from = datetime.strptime(from_date, "%Y-%m-%d").replace(hour=0, minute=0, second=0, microsecond=0)
+        except Exception:
+            dt_from = None
+    if to_date:
+        try:
+            dt_to_excl = datetime.strptime(to_date, "%Y-%m-%d").replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+        except Exception:
+            dt_to_excl = None
+
     dates_query = set()
-    
-    # Dates from BetSlips
-    bet_dates = db.query(func.date(BetSlip.created_at)).distinct().all()
-    for bd in bet_dates:
-        if bd[0]:
-            dates_query.add(str(bd[0]))
-            
-    # Dates from LotteryDraws (4D, 2D, 3D Draw Dates for Payouts)
-    draw_dates = db.query(LotteryDraw.draw_date).distinct().all()
-    for dd in draw_dates:
-        if dd[0]:
-            dates_query.add(str(dd[0]))
 
-    twod_draw_dates = db.query(TwoDDraw.draw_date).distinct().all()
-    for dd in twod_draw_dates:
-        if dd[0]:
-            dates_query.add(str(dd[0]))
+    # 1. Bet stakes & ticket counts grouped by (date, game_type)
+    bet_agg_q = db.query(
+        func.date(BetSlip.created_at).label("d"),
+        BetSlip.game_type,
+        func.coalesce(func.sum(BetSlip.total_stake), 0.0).label("stake"),
+        func.count(BetSlip.id).label("cnt")
+    )
+    if dt_from:
+        bet_agg_q = bet_agg_q.filter(BetSlip.created_at >= dt_from)
+    if dt_to_excl:
+        bet_agg_q = bet_agg_q.filter(BetSlip.created_at < dt_to_excl)
+    bet_4d_map, bet_2d_map, bet_3d_map = {}, {}, {}
+    cnt_4d_map, cnt_2d_map, cnt_3d_map = {}, {}, {}
+    for row in bet_agg_q.group_by(func.date(BetSlip.created_at), BetSlip.game_type).all():
+        if not row.d:
+            continue
+        ds = str(row.d)
+        dates_query.add(ds)
+        gt = (row.game_type or "4D").upper()
+        if gt == "4D":
+            bet_4d_map[ds] = bet_4d_map.get(ds, 0.0) + float(row.stake or 0.0)
+            cnt_4d_map[ds] = cnt_4d_map.get(ds, 0) + int(row.cnt or 0)
+        elif gt == "2D":
+            bet_2d_map[ds] = bet_2d_map.get(ds, 0.0) + float(row.stake or 0.0)
+            cnt_2d_map[ds] = cnt_2d_map.get(ds, 0) + int(row.cnt or 0)
+        elif gt == "3D":
+            bet_3d_map[ds] = bet_3d_map.get(ds, 0.0) + float(row.stake or 0.0)
+            cnt_3d_map[ds] = cnt_3d_map.get(ds, 0) + int(row.cnt or 0)
 
-    threed_draw_dates = db.query(ThreeDDraw.draw_date).distinct().all()
-    for dd in threed_draw_dates:
-        if dd[0]:
-            dates_query.add(str(dd[0]))
+    # 2. 2D Morning stake grouped by created_at date
+    m2d_q = (
+        db.query(
+            func.date(BetSlip.created_at).label("d"),
+            func.coalesce(func.sum(BetSlip.total_stake), 0.0).label("stake")
+        )
+        .join(TwoDDraw, BetSlip.draw_id == TwoDDraw.id)
+        .filter(BetSlip.game_type == "2D", TwoDDraw.session == "morning")
+    )
+    if dt_from:
+        m2d_q = m2d_q.filter(BetSlip.created_at >= dt_from)
+    if dt_to_excl:
+        m2d_q = m2d_q.filter(BetSlip.created_at < dt_to_excl)
+    bet_2d_morning_map = {str(r.d): float(r.stake or 0.0) for r in m2d_q.group_by(func.date(BetSlip.created_at)).all() if r.d}
 
-    # Dates from Transactions
-    tx_dates = db.query(func.date(Transaction.created_at)).distinct().all()
-    for td in tx_dates:
-        if td[0]:
-            dates_query.add(str(td[0]))
+    # 3. Payouts grouped by official DRAW DATE for 4D, 2D, and 3D
+    p4_q = (
+        db.query(LotteryDraw.draw_date.label("d"), func.coalesce(func.sum(BetSlip.total_payout), 0.0).label("pay"))
+        .join(LotteryDraw, BetSlip.draw_id == LotteryDraw.id)
+        .filter(BetSlip.game_type == "4D", BetSlip.total_payout > 0)
+    )
+    if from_date:
+        p4_q = p4_q.filter(LotteryDraw.draw_date >= from_date)
+    if to_date:
+        p4_q = p4_q.filter(LotteryDraw.draw_date <= to_date)
+    payout_4d_map = {}
+    for r in p4_q.group_by(LotteryDraw.draw_date).all():
+        if r.d:
+            ds = str(r.d)
+            dates_query.add(ds)
+            payout_4d_map[ds] = float(r.pay or 0.0)
 
-    # Dates from DailyLedgerSummary
-    dls_dates = db.query(DailyLedgerSummary.date_str).distinct().all()
-    for dd in dls_dates:
-        if dd[0]:
-            dates_query.add(str(dd[0]))
+    p2_q = (
+        db.query(TwoDDraw.draw_date.label("d"), func.coalesce(func.sum(BetSlip.total_payout), 0.0).label("pay"))
+        .join(TwoDDraw, BetSlip.draw_id == TwoDDraw.id)
+        .filter(BetSlip.game_type == "2D", BetSlip.total_payout > 0)
+    )
+    if from_date:
+        p2_q = p2_q.filter(TwoDDraw.draw_date >= from_date)
+    if to_date:
+        p2_q = p2_q.filter(TwoDDraw.draw_date <= to_date)
+    payout_2d_map = {}
+    for r in p2_q.group_by(TwoDDraw.draw_date).all():
+        if r.d:
+            ds = str(r.d)
+            dates_query.add(ds)
+            payout_2d_map[ds] = float(r.pay or 0.0)
 
-    # Dates from Agent Commission Settlement (Credited to agent balance)
-    comm_dates = db.query(func.date(AgentCommissionLog.settled_at)).filter(
+    p3_q = (
+        db.query(ThreeDDraw.draw_date.label("d"), func.coalesce(func.sum(BetSlip.total_payout), 0.0).label("pay"))
+        .join(ThreeDDraw, BetSlip.draw_id == ThreeDDraw.id)
+        .filter(BetSlip.game_type == "3D", BetSlip.total_payout > 0)
+    )
+    if from_date:
+        p3_q = p3_q.filter(ThreeDDraw.draw_date >= from_date)
+    if to_date:
+        p3_q = p3_q.filter(ThreeDDraw.draw_date <= to_date)
+    payout_3d_map = {}
+    for r in p3_q.group_by(ThreeDDraw.draw_date).all():
+        if r.d:
+            ds = str(r.d)
+            dates_query.add(ds)
+            payout_3d_map[ds] = float(r.pay or 0.0)
+
+    # 4. Deposits & Withdrawals grouped by date
+    topup_q = db.query(
+        func.date(Transaction.created_at).label("d"),
+        func.coalesce(func.sum(Transaction.amount), 0.0).label("amt")
+    ).filter(
+        Transaction.tx_type == TransactionType.DEPOSIT,
+        Transaction.status.in_([TransactionStatus.AUTO_APPROVED, TransactionStatus.COMPLETED])
+    )
+    if dt_from:
+        topup_q = topup_q.filter(Transaction.created_at >= dt_from)
+    if dt_to_excl:
+        topup_q = topup_q.filter(Transaction.created_at < dt_to_excl)
+    topup_map = {}
+    for r in topup_q.group_by(func.date(Transaction.created_at)).all():
+        if r.d:
+            ds = str(r.d)
+            dates_query.add(ds)
+            topup_map[ds] = float(r.amt or 0.0)
+
+    wd_q = db.query(
+        func.date(Transaction.created_at).label("d"),
+        func.coalesce(func.sum(Transaction.amount), 0.0).label("amt")
+    ).filter(
+        Transaction.tx_type == TransactionType.WITHDRAWAL,
+        Transaction.status == TransactionStatus.COMPLETED
+    )
+    if dt_from:
+        wd_q = wd_q.filter(Transaction.created_at >= dt_from)
+    if dt_to_excl:
+        wd_q = wd_q.filter(Transaction.created_at < dt_to_excl)
+    withdraw_map = {}
+    for r in wd_q.group_by(func.date(Transaction.created_at)).all():
+        if r.d:
+            ds = str(r.d)
+            dates_query.add(ds)
+            withdraw_map[ds] = float(r.amt or 0.0)
+
+    # 5. Settled Agent Commissions grouped by settled_at date
+    comm_q = db.query(
+        func.date(AgentCommissionLog.settled_at).label("d"),
+        func.coalesce(func.sum(AgentCommissionLog.commission_amount), 0.0).label("amt")
+    ).filter(
         AgentCommissionLog.is_settled == True,
         AgentCommissionLog.settled_at != None
-    ).distinct().all()
-    for cd in comm_dates:
-        if cd[0]:
-            dates_query.add(str(cd[0]))
+    )
+    if dt_from:
+        comm_q = comm_q.filter(AgentCommissionLog.settled_at >= dt_from)
+    if dt_to_excl:
+        comm_q = comm_q.filter(AgentCommissionLog.settled_at < dt_to_excl)
+    comm_map = {}
+    for r in comm_q.group_by(func.date(AgentCommissionLog.settled_at)).all():
+        if r.d:
+            ds = str(r.d)
+            dates_query.add(ds)
+            comm_map[ds] = float(r.amt or 0.0)
 
-    # Dates from Weekly Bonus Credits (Credited to user balance)
-    bonus_dates = db.query(func.date(WeeklyBonus.credited_at)).filter(
+    # 6. Weekly Bonuses grouped by credited_at date
+    bonus_q = db.query(
+        func.date(WeeklyBonus.credited_at).label("d"),
+        func.coalesce(func.sum(WeeklyBonus.bonus_amount), 0.0).label("amt")
+    ).filter(
         WeeklyBonus.is_credited == True,
         WeeklyBonus.credited_at != None
-    ).distinct().all()
-    for bd in bonus_dates:
-        if bd[0]:
-            dates_query.add(str(bd[0]))
+    )
+    if dt_from:
+        bonus_q = bonus_q.filter(WeeklyBonus.credited_at >= dt_from)
+    if dt_to_excl:
+        bonus_q = bonus_q.filter(WeeklyBonus.credited_at < dt_to_excl)
+    bonus_map = {}
+    for r in bonus_q.group_by(func.date(WeeklyBonus.credited_at)).all():
+        if r.d:
+            ds = str(r.d)
+            dates_query.add(ds)
+            bonus_map[ds] = float(r.amt or 0.0)
 
-    # Dates from MiniGameBet
-    mini_dates = db.query(MiniGameBet.date_str).distinct().all()
-    for md in mini_dates:
-        if md[0]:
-            dates_query.add(str(md[0]))
-
-    if not dates_query:
-        today_str = now_mmt().strftime("%Y-%m-%d")
-        dates_query.add(today_str)
+    # 7. Mini-Games Stake & Payout grouped by date_str
+    mini_q = db.query(
+        MiniGameBet.date_str.label("d"),
+        func.coalesce(func.sum(MiniGameBet.stake_amount), 0.0).label("stk"),
+        func.coalesce(func.sum(MiniGameBet.payout_amount), 0.0).label("pay")
+    )
+    if from_date:
+        mini_q = mini_q.filter(MiniGameBet.date_str >= from_date)
+    if to_date:
+        mini_q = mini_q.filter(MiniGameBet.date_str <= to_date)
+    mini_stake_map, mini_payout_map = {}, {}
+    for r in mini_q.group_by(MiniGameBet.date_str).all():
+        if r.d:
+            ds = str(r.d)
+            dates_query.add(ds)
+            mini_stake_map[ds] = float(r.stk or 0.0)
+            mini_payout_map[ds] = float(r.pay or 0.0)
 
     sorted_dates = sorted(list(dates_query), reverse=True)
     if from_date:
@@ -3637,150 +3752,29 @@ def get_reports_financial(
     tot_mini_net = 0.0
 
     for d_str in sorted_dates:
-        try:
-            d_dt = datetime.strptime(d_str, "%Y-%m-%d")
-            d_start = d_dt.replace(hour=0, minute=0, second=0, microsecond=0)
-            d_end = d_start + timedelta(days=1)
-        except Exception:
-            d_start = None
-            d_end = None
+        d_bet_4d = bet_4d_map.get(d_str, 0.0)
+        d_bet_2d = bet_2d_map.get(d_str, 0.0)
+        d_bet_2d_morning = bet_2d_morning_map.get(d_str, 0.0)
+        d_bet_2d_evening = max(0.0, d_bet_2d - d_bet_2d_morning)
+        d_bet_3d = bet_3d_map.get(d_str, 0.0)
 
-        # Determine game-specific breakdown
-        gt_filter = (game_type or "ALL").strip().upper()
+        d_tickets_4d = cnt_4d_map.get(d_str, 0)
+        d_tickets_2d = cnt_2d_map.get(d_str, 0)
+        d_tickets_3d = cnt_3d_map.get(d_str, 0)
 
-        if d_start and d_end:
-            d_bet_4d = db.query(func.coalesce(func.sum(BetSlip.total_stake), 0.0)).filter(
-                BetSlip.game_type == "4D",
-                BetSlip.created_at >= d_start,
-                BetSlip.created_at < d_end
-            ).scalar() or 0.0
-
-            d_bet_2d = db.query(func.coalesce(func.sum(BetSlip.total_stake), 0.0)).filter(
-                BetSlip.game_type == "2D",
-                BetSlip.created_at >= d_start,
-                BetSlip.created_at < d_end
-            ).scalar() or 0.0
-
-            # 2D Morning (12:01) vs Evening (04:30) stake
-            d_bet_2d_morning = (
-                db.query(func.coalesce(func.sum(BetSlip.total_stake), 0.0))
-                .join(TwoDDraw, BetSlip.draw_id == TwoDDraw.id)
-                .filter(
-                    BetSlip.game_type == "2D",
-                    TwoDDraw.session == "morning",
-                    BetSlip.created_at >= d_start,
-                    BetSlip.created_at < d_end
-                ).scalar() or 0.0
-            )
-            d_bet_2d_evening = max(0.0, d_bet_2d - d_bet_2d_morning)
-
-            d_bet_3d = db.query(func.coalesce(func.sum(BetSlip.total_stake), 0.0)).filter(
-                BetSlip.game_type == "3D",
-                BetSlip.created_at >= d_start,
-                BetSlip.created_at < d_end
-            ).scalar() or 0.0
-
-            d_tickets_4d = db.query(func.count(BetSlip.id)).filter(
-                BetSlip.game_type == "4D",
-                BetSlip.created_at >= d_start,
-                BetSlip.created_at < d_end
-            ).scalar() or 0
-
-            d_tickets_2d = db.query(func.count(BetSlip.id)).filter(
-                BetSlip.game_type == "2D",
-                BetSlip.created_at >= d_start,
-                BetSlip.created_at < d_end
-            ).scalar() or 0
-
-            d_tickets_3d = db.query(func.count(BetSlip.id)).filter(
-                BetSlip.game_type == "3D",
-                BetSlip.created_at >= d_start,
-                BetSlip.created_at < d_end
-            ).scalar() or 0
-
-            d_topup = db.query(func.coalesce(func.sum(Transaction.amount), 0.0)).filter(
-                Transaction.tx_type == TransactionType.DEPOSIT,
-                Transaction.status.in_([TransactionStatus.AUTO_APPROVED, TransactionStatus.COMPLETED]),
-                Transaction.created_at >= d_start,
-                Transaction.created_at < d_end
-            ).scalar() or 0.0
-
-            d_withdraw = db.query(func.coalesce(func.sum(Transaction.amount), 0.0)).filter(
-                Transaction.tx_type == TransactionType.WITHDRAWAL,
-                Transaction.status == TransactionStatus.COMPLETED,
-                Transaction.created_at >= d_start,
-                Transaction.created_at < d_end
-            ).scalar() or 0.0
-
-            d_comm = db.query(func.coalesce(func.sum(AgentCommissionLog.commission_amount), 0.0)).filter(
-                AgentCommissionLog.is_settled == True,
-                AgentCommissionLog.settled_at >= d_start,
-                AgentCommissionLog.settled_at < d_end
-            ).scalar() or 0.0
-
-            d_bonus = db.query(func.coalesce(func.sum(WeeklyBonus.bonus_amount), 0.0)).filter(
-                WeeklyBonus.is_credited == True,
-                WeeklyBonus.credited_at >= d_start,
-                WeeklyBonus.credited_at < d_end
-            ).scalar() or 0.0
-        else:
-            d_bet_4d = 0.0
-            d_bet_2d = 0.0
-            d_bet_2d_morning = 0.0
-            d_bet_2d_evening = 0.0
-            d_bet_3d = 0.0
-            d_tickets_4d = 0
-            d_tickets_2d = 0
-            d_tickets_3d = 0
-            d_topup = 0.0
-            d_withdraw = 0.0
-            d_comm = 0.0
-            d_bonus = 0.0
+        d_topup = topup_map.get(d_str, 0.0)
+        d_withdraw = withdraw_map.get(d_str, 0.0)
+        d_comm = comm_map.get(d_str, 0.0)
+        d_bonus = bonus_map.get(d_str, 0.0)
 
         d_bet_total = d_bet_4d + d_bet_2d + d_bet_3d
-
-        # Payout is strictly calculated by official DRAW DATE across all game types
-        d_payout_4d = (
-            db.query(func.coalesce(func.sum(BetSlip.total_payout), 0.0))
-            .join(LotteryDraw, BetSlip.draw_id == LotteryDraw.id)
-            .filter(
-                BetSlip.game_type == "4D",
-                LotteryDraw.draw_date == d_str,
-                BetSlip.total_payout > 0
-            )
-            .scalar() or 0.0
-        )
-        d_payout_2d = (
-            db.query(func.coalesce(func.sum(BetSlip.total_payout), 0.0))
-            .join(TwoDDraw, BetSlip.draw_id == TwoDDraw.id)
-            .filter(
-                BetSlip.game_type == "2D",
-                TwoDDraw.draw_date == d_str,
-                BetSlip.total_payout > 0
-            )
-            .scalar() or 0.0
-        )
-        d_payout_3d = (
-            db.query(func.coalesce(func.sum(BetSlip.total_payout), 0.0))
-            .join(ThreeDDraw, BetSlip.draw_id == ThreeDDraw.id)
-            .filter(
-                BetSlip.game_type == "3D",
-                ThreeDDraw.draw_date == d_str,
-                BetSlip.total_payout > 0
-            )
-            .scalar() or 0.0
-        )
+        d_payout_4d = payout_4d_map.get(d_str, 0.0)
+        d_payout_2d = payout_2d_map.get(d_str, 0.0)
+        d_payout_3d = payout_3d_map.get(d_str, 0.0)
         d_payout_total = d_payout_4d + d_payout_2d + d_payout_3d
 
-        # Mini-Games Stake, Payout & Net P/L
-        d_mini_stake = db.query(func.coalesce(func.sum(MiniGameBet.stake_amount), 0.0)).filter(
-            MiniGameBet.date_str == d_str
-        ).scalar() or 0.0
-
-        d_mini_payout = db.query(func.coalesce(func.sum(MiniGameBet.payout_amount), 0.0)).filter(
-            MiniGameBet.date_str == d_str
-        ).scalar() or 0.0
-
+        d_mini_stake = mini_stake_map.get(d_str, 0.0)
+        d_mini_payout = mini_payout_map.get(d_str, 0.0)
         d_mini_net = d_mini_stake - d_mini_payout
 
         # Select relevant values according to game_type filter
@@ -3808,7 +3802,7 @@ def get_reports_financial(
             d_company_bal = d_profit
             if d_bet == 0 and d_payout == 0:
                 continue
-        else: # ALL
+        else:  # ALL
             d_bet = d_bet_total
             d_payout = d_payout_total
             d_active_tickets = d_tickets_4d + d_tickets_2d + d_tickets_3d
@@ -3832,9 +3826,9 @@ def get_reports_financial(
             "report_date": d_str,
             "game_type": gt_filter,
             "total_bet": float(d_bet),
-            "four_d_bet": float(d_bet), # backward compatibility
+            "four_d_bet": float(d_bet),
             "total_payout": -float(d_payout) if d_payout > 0 else 0.0,
-            "four_d_payout": -float(d_payout) if d_payout > 0 else 0.0, # backward compatibility
+            "four_d_payout": -float(d_payout) if d_payout > 0 else 0.0,
             "bet_4d": float(d_bet_4d),
             "payout_4d": -float(d_payout_4d) if d_payout_4d > 0 else 0.0,
             "bet_2d": float(d_bet_2d),
@@ -4592,87 +4586,104 @@ def create_admin_notification(
 # =========================================================================
 
 def ensure_twod_draws_exist(db: Session):
+    """
+    Lightweight draw-row initializer & cutoff state updater.
+    IMPORTANT: Never runs external HTTP scraping or settlement inside HTTP GET handlers!
+    Settlement runs exclusively inside the locked background scheduler (poll_and_settle_2d_job)
+    and Admin manual settlement endpoint.
+    """
+    from sqlalchemy.exc import IntegrityError
+    from app.core.timezone_utils import parse_time_string
+
     curr = now_mmt()
     today_str = curr.strftime("%Y-%m-%d")
     is_weekend = curr.weekday() >= 5
     is_past_morning = curr.hour > 12 or (curr.hour == 12 and curr.minute >= 1)
     is_past_evening = curr.hour > 16 or (curr.hour == 16 and curr.minute >= 30)
 
-    from app.core.twod_service import settle_twod_draw_internal, get_live_twod_result
-
     # On weekends (Saturday & Sunday), Thai Stock Exchange is closed
     if is_weekend:
         return
 
+    setting = db.query(SystemSetting).first()
+    m_cut_str = (getattr(setting, "twod_morning_cutoff", None) or "11:30 AM").strip()
+    e_cut_str = (getattr(setting, "twod_evening_cutoff", None) or "04:00 PM").strip()
+    m_cut_h, m_cut_m = parse_time_string(m_cut_str, 11, 30)
+    e_cut_h, e_cut_m = parse_time_string(e_cut_str, 16, 0)
+    is_past_m_cut = curr.hour > m_cut_h or (curr.hour == m_cut_h and curr.minute >= m_cut_m)
+    is_past_e_cut = curr.hour > e_cut_h or (curr.hour == e_cut_h and curr.minute >= e_cut_m)
+
     morning = db.query(TwoDDraw).filter(TwoDDraw.draw_date == today_str, TwoDDraw.session == "morning").first()
     if not morning:
-        init_m_status = "OPEN" if (curr.hour >= 8 and not is_past_morning) else ("CLOSED" if is_past_morning else "UPCOMING")
+        init_m_status = "OPEN" if (curr.hour >= 8 and not is_past_m_cut) else ("CLOSED" if is_past_m_cut else "UPCOMING")
         morning = TwoDDraw(
             draw_date=today_str,
             session="morning",
             draw_time_mmt="12:01 PM MMT",
-            cutoff_time_mmt="11:30 AM MMT",
+            cutoff_time_mmt=f"{m_cut_str} MMT" if "MMT" not in m_cut_str.upper() else m_cut_str,
             status=init_m_status
         )
         db.add(morning)
-        db.flush()
+        try:
+            db.flush()
+        except IntegrityError:
+            db.rollback()
+            morning = db.query(TwoDDraw).filter(TwoDDraw.draw_date == today_str, TwoDDraw.session == "morning").first()
     else:
-        if morning.status == "UPCOMING" and curr.hour >= 8 and not is_past_morning:
+        if morning.status == "UPCOMING" and curr.hour >= 8 and not is_past_m_cut:
             morning.status = "OPEN"
-        elif morning.status == "OPEN" and (curr.hour > 11 or (curr.hour == 11 and curr.minute >= 30)) and not is_past_morning:
+        elif morning.status == "OPEN" and is_past_m_cut:
             morning.status = "CLOSED"
-
-    if is_past_morning:
-        if morning.status in ["OPEN", "CLOSED"] and not morning.winning_number:
-            res = get_live_twod_result("morning", is_settlement=True)
-            if res and res.get("twod"):
-                settle_twod_draw_internal(db, morning, res["twod"], res.get("set_index"), res.get("set_value"))
 
     evening = db.query(TwoDDraw).filter(TwoDDraw.draw_date == today_str, TwoDDraw.session == "evening").first()
     if not evening:
-        init_e_status = "OPEN" if (is_past_morning and curr.hour < 16) else ("CLOSED" if curr.hour >= 16 else "UPCOMING")
+        init_e_status = "OPEN" if (is_past_morning and not is_past_e_cut) else ("CLOSED" if is_past_e_cut else "UPCOMING")
         evening = TwoDDraw(
             draw_date=today_str,
             session="evening",
             draw_time_mmt="04:30 PM MMT",
-            cutoff_time_mmt="04:00 PM MMT",
+            cutoff_time_mmt=f"{e_cut_str} MMT" if "MMT" not in e_cut_str.upper() else e_cut_str,
             status=init_e_status
         )
         db.add(evening)
-        db.flush()
+        try:
+            db.flush()
+        except IntegrityError:
+            db.rollback()
+            evening = db.query(TwoDDraw).filter(TwoDDraw.draw_date == today_str, TwoDDraw.session == "evening").first()
     else:
-        if evening.status == "UPCOMING" and is_past_morning and curr.hour < 16:
+        if evening.status == "UPCOMING" and is_past_morning and not is_past_e_cut:
             evening.status = "OPEN"
-        elif evening.status == "OPEN" and curr.hour >= 16 and not is_past_evening:
+        elif evening.status == "OPEN" and is_past_e_cut:
             evening.status = "CLOSED"
-
-    if is_past_evening:
-        if evening.status in ["OPEN", "CLOSED"] and not evening.winning_number:
-            res = get_live_twod_result("evening", is_settlement=True)
-            if res and res.get("twod"):
-                settle_twod_draw_internal(db, evening, res["twod"], res.get("set_index"), res.get("set_value"))
 
     past_cnt = db.query(TwoDDraw).filter(TwoDDraw.status == "SETTLED").count()
     if past_cnt == 0:
-        db.add(TwoDDraw(
-            draw_date="2026-10-22", session="evening", draw_time_mmt="04:30 PM MMT",
-            cutoff_time_mmt="04:00 PM MMT", status="SETTLED", set_index="1,385.42",
-            set_value="45,210.85", winning_number="25", total_staked=4850000.0, total_payout=4122500.0,
-            settled_at=now_mmt() - timedelta(days=1)
-        ))
-        db.add(TwoDDraw(
-            draw_date="2026-10-22", session="morning", draw_time_mmt="12:01 PM MMT",
-            cutoff_time_mmt="11:30 AM MMT", status="SETTLED", set_index="1,382.16",
-            set_value="21,340.59", winning_number="69", total_staked=3920000.0, total_payout=3332000.0,
-            settled_at=now_mmt() - timedelta(days=1)
-        ))
-        db.add(TwoDDraw(
-            draw_date="2026-10-21", session="evening", draw_time_mmt="04:30 PM MMT",
-            cutoff_time_mmt="04:00 PM MMT", status="SETTLED", set_index="1,379.80",
-            set_value="52,190.73", winning_number="03", total_staked=5120000.0, total_payout=4352000.0,
-            settled_at=now_mmt() - timedelta(days=2)
-        ))
-    db.commit()
+        for seed_row in [
+            TwoDDraw(
+                draw_date="2026-10-22", session="evening", draw_time_mmt="04:30 PM MMT",
+                cutoff_time_mmt="04:00 PM MMT", status="SETTLED", set_index="1,385.42",
+                set_value="45,210.85", winning_number="25", total_staked=4850000.0, total_payout=4122500.0,
+                settled_at=now_mmt() - timedelta(days=1)
+            ),
+            TwoDDraw(
+                draw_date="2026-10-22", session="morning", draw_time_mmt="12:01 PM MMT",
+                cutoff_time_mmt="11:30 AM MMT", status="SETTLED", set_index="1,382.16",
+                set_value="21,340.59", winning_number="69", total_staked=3920000.0, total_payout=3332000.0,
+                settled_at=now_mmt() - timedelta(days=1)
+            ),
+            TwoDDraw(
+                draw_date="2026-10-21", session="evening", draw_time_mmt="04:30 PM MMT",
+                cutoff_time_mmt="04:00 PM MMT", status="SETTLED", set_index="1,379.80",
+                set_value="52,190.73", winning_number="03", total_staked=5120000.0, total_payout=4352000.0,
+                settled_at=now_mmt() - timedelta(days=2)
+            ),
+        ]:
+            db.add(seed_row)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
 
 @router.get("/2d/game")
 def get_2d_game_monitor(
@@ -5033,19 +5044,11 @@ def ensure_threed_draws_exist(db: Session):
         if not is_cutoff:
             target_draw.status = "OPEN"
 
-    past_cnt = db.query(ThreeDDraw).filter(ThreeDDraw.status == "SETTLED").count()
-    if past_cnt == 0:
-        db.add(ThreeDDraw(
-            draw_date="2026-10-16", draw_time_mmt="03:30 PM MMT", cutoff_time_mmt="02:30 PM MMT",
-            status="SETTLED", thai_first_prize="471782", winning_number="782",
-            total_staked=12500000.0, total_payout=8750000.0, settled_at=now_mmt() - timedelta(days=7)
-        ))
-        db.add(ThreeDDraw(
-            draw_date="2026-10-01", draw_time_mmt="03:30 PM MMT", cutoff_time_mmt="02:30 PM MMT",
-            status="SETTLED", thai_first_prize="829394", winning_number="394",
-            total_staked=11200000.0, total_payout=7840000.0, settled_at=now_mmt() - timedelta(days=22)
-        ))
-    db.commit()
+    from sqlalchemy.exc import IntegrityError
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
 
 @router.get("/3d/game")
 def get_3d_game_monitor(
@@ -5460,113 +5463,6 @@ def settle_2d_draw(
     from app.core.twod_service import settle_twod_draw_internal
     return settle_twod_draw_internal(db, draw, clean_win, req.set_index, req.set_value)
 
-def _unused_legacy_settle_2d_draw():
-
-    setting = db.query(SystemSetting).first()
-    payout_multiplier = float(setting.twod_payout_multiplier) if getattr(setting, "twod_payout_multiplier", None) is not None else 80.0
-
-    draw.set_index = req.set_index.strip() if req.set_index else draw.set_index
-    draw.set_value = req.set_value.strip() if req.set_value else draw.set_value
-    draw.winning_number = clean_win
-    draw.status = "SETTLED"
-    draw.settled_at = now_mmt()
-
-    slips = db.query(BetSlip).filter(
-        BetSlip.game_type == "2D",
-        BetSlip.draw_id == draw.id,
-        BetSlip.status == BetSlipStatus.PENDING
-    ).all()
-
-    total_payout = 0.0
-    total_staked = 0.0
-    winners_count = 0
-    today_str = now_mmt().strftime("%Y-%m-%d")
-
-    for slip in slips:
-        slip_payout = 0.0
-        has_win = False
-        total_staked += float(slip.total_stake or 0.0)
-
-        for item in slip.items:
-            clean_item_num = str(item.number).strip().zfill(2)
-            if clean_item_num == clean_win:
-                item_win = float(item.item_stake or 0.0) * payout_multiplier
-                item.is_won = 1
-                item.item_payout = item_win
-                item.win_details_json = json.dumps([{"winning_number": clean_win, "payout": item_win}])
-                slip_payout += item_win
-                has_win = True
-            else:
-                item.is_won = 0
-                item.item_payout = 0.0
-
-        if has_win:
-            slip.status = BetSlipStatus.WON
-            slip.total_payout = slip_payout
-            total_payout += slip_payout
-            winners_count += 1
-
-            slip.settled_at = now_mmt()
-            player = db.query(User).filter(User.id == slip.user_id).first()
-            if player:
-                player.balance = float(player.balance or 0.0) + slip_payout
-                win_tx = Transaction(
-                    user_id=player.id,
-                    tx_type=TransactionType.WIN_PAYOUT,
-                    gateway="SG4D 2D",
-                    transaction_id=slip.slip_code,
-                    receiver_id=f"Player #{player.id} ({player.phone})",
-                    amount=slip_payout,
-                    slip_image_url=None,
-                    client_timezone="MMT",
-                    tx_timestamp_mmt=now_mmt(),
-                    submission_timestamp_mmt=now_mmt(),
-                    delta_minutes=0.0,
-                    is_time_valid=True,
-                    is_receiver_valid=True,
-                    is_tx_unique=True,
-                    status=TransactionStatus.COMPLETED,
-                    verification_notes=f"2D Prize payout for ticket {slip.slip_code} ({clean_win}) - {draw.session.capitalize()} {draw.draw_date}",
-                    created_at=now_mmt()
-                )
-                db.add(win_tx)
-
-                win_ledger = FinancialLedger(
-                    entry_type=LedgerEntryType.PAYOUT_EXPENSE,
-                    amount=slip_payout,
-                    running_balance=player.balance,
-                    reference_id=slip.slip_code,
-                    reference_type="BET_SLIP_2D_WIN",
-                    description=f"2D အနိုင်ရငွေ ({clean_win}) - {draw.session.capitalize()} {draw.draw_date}",
-                    logged_at_mmt=now_mmt(),
-                    date_str=today_str
-                )
-                db.add(win_ledger)
-
-                notif = Notification(
-                    user_id=player.id,
-                    title="🎉 ဂုဏ်ယူပါသည်! 2D ထီပေါက်ပါသည်",
-                    message=f"သင်ထိုးထားသော 2D ဂဏန်း '{clean_win}' သည် {draw.session} တွင် ပေါက်ပြီး အနိုင်ရငွေ +{slip_payout:,.0f} ကျပ် အား လက်ကျန်ငွေထဲ ထည့်သွင်းပေးပြီးပါပြီ။",
-                    notif_type="LOTTERY_WIN",
-                    is_read=False
-                )
-                db.add(notif)
-        else:
-            slip.status = BetSlipStatus.LOST
-            slip.total_payout = 0.0
-
-    draw.total_staked = total_staked
-    draw.total_payout = total_payout
-    db.commit()
-
-    return {
-        "status": "success",
-        "draw_id": draw.id,
-        "winning_number": clean_win,
-        "total_slips": len(slips),
-        "winners_count": winners_count,
-        "total_payout": total_payout
-    }
 
 class Settle3DRequest(BaseModel):
     draw_id: int

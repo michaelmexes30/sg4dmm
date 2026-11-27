@@ -12,7 +12,7 @@ from app.models.bet import BetSlip, BetSlipStatus
 from app.models.user import User, Notification
 from app.models.settings import SystemSetting
 from app.models.transaction import Transaction, TransactionType, TransactionStatus
-from app.models.ledger import FinancialLedger, LedgerEntryType
+from app.models.ledger import FinancialLedger, LedgerEntryType, DailyLedgerSummary
 from app.core.timezone_utils import now_mmt
 
 logger = logging.getLogger("threed_service")
@@ -78,8 +78,36 @@ def fetch_live_threed_from_sanook() -> List[Dict[str, Any]]:
         logger.warning(f"Error fetching 3D from Sanook: {e}")
     return results
 
+def _extract_thai_date_and_prize_from_text(clean_text: str) -> Optional[Dict[str, str]]:
+    """
+    Safely pairs Thai draw date and 6-digit 1st Prize (รางวัลที่ 1) only when they appear
+    within a tight 300-character proximity window on visible DOM text (prevents mismatched dates/prizes).
+    """
+    prize_match = re.search(r'รางวัลที่\s*1[^\d]{0,80}(\d{6})', clean_text)
+    if not prize_match:
+        return None
+    first_prize = prize_match.group(1)
+    start_idx = max(0, prize_match.start() - 300)
+    end_idx = min(len(clean_text), prize_match.end() + 200)
+    window = clean_text[start_idx:end_idx]
+
+    date_match = re.search(r'(\d{1,2})\s+([^\s\d|]+)\s+(256\d|257\d|202\d|203\d)', window)
+    if not date_match:
+        return None
+    day, month_str, year_val = date_match.groups()
+    month = THAI_MONTHS.get(month_str.strip())
+    if not month:
+        return None
+    year_ad = int(year_val) - 543 if int(year_val) > 2400 else int(year_val)
+    return {
+        "draw_date": f"{year_ad}-{month}-{int(day):02d}",
+        "thai_first_prize": first_prize,
+        "winning_number": first_prize[-3:],
+    }
+
+
 def fetch_live_threed_from_mthai() -> List[Dict[str, Any]]:
-    """Fallback scraper from MThai lotto."""
+    """Fallback scraper from MThai lotto using stripped visible DOM text & proximity pairing."""
     results = []
     try:
         from bs4 import BeautifulSoup
@@ -87,37 +115,25 @@ def fetch_live_threed_from_mthai() -> List[Dict[str, Any]]:
         resp = requests.get(MTHAI_LOTTO_URL, headers=headers, timeout=10)
         if resp.status_code == 200:
             soup = BeautifulSoup(resp.text, 'html.parser')
+            for tag in soup(["script", "style", "noscript"]):
+                tag.decompose()
             text = soup.get_text(' | ', strip=True)
-            match = re.search(r'รางวัลที่\s*1.*?(\d{6})', text)
-            if match:
-                first_prize = match.group(1)
-                last3 = first_prize[-3:]
-                # Match date
-                date_match = re.search(r'(\d{1,2})\s+([^\s\d]+)\s+(\d{4})', text)
-                if date_match:
-                    day, month_str, year_be = date_match.groups()
-                    month = THAI_MONTHS.get(month_str.strip())
-                    if month:
-                        year_ad = int(year_be) - 543
-                        iso_date = f"{year_ad}-{month}-{int(day):02d}"
-                        results.append({
-                            "draw_date": iso_date,
-                            "thai_first_prize": first_prize,
-                            "winning_number": last3,
-                            "source": "MThai (Fallback Feed)"
-                        })
+            parsed = _extract_thai_date_and_prize_from_text(text)
+            if parsed:
+                parsed["source"] = "MThai (Fallback Feed)"
+                results.append(parsed)
     except Exception as e:
         logger.warning(f"Error fetching 3D from MThai: {e}")
     return results
 
 def fetch_live_threed_from_glo() -> List[Dict[str, Any]]:
     """
-    Attempts to scrape official results directly from The Government Lottery Office (GLO) of Thailand:
-    https://www.glo.or.th/home-page and https://www.glo.or.th/mission/reward-news
-    Safely catches any 503 Server Error or rate limiting so fallback feeds take over instantly.
+    Attempts to scrape official results directly from The Government Lottery Office (GLO) of Thailand
+    using BeautifulSoup visible DOM text & proximity pairing (never raw HTML re.DOTALL).
     """
     results = []
     try:
+        from bs4 import BeautifulSoup
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -127,25 +143,15 @@ def fetch_live_threed_from_glo() -> List[Dict[str, Any]]:
             try:
                 resp = requests.get(target_url, headers=headers, timeout=6)
                 if resp.status_code == 200:
-                    text = resp.text
-                    match = re.search(r'รางวัลที่\s*1.*?(\d{6})', text, re.DOTALL)
-                    if match:
-                        first_prize = match.group(1)
-                        last3 = first_prize[-3:]
-                        date_match = re.search(r'(\d{1,2})\s+([^\s\d]+)\s+(256\d|202\d)', text)
-                        if date_match:
-                            day, month_str, year_val = date_match.groups()
-                            month = THAI_MONTHS.get(month_str.strip())
-                            if month:
-                                year_ad = int(year_val) - 543 if int(year_val) > 2400 else int(year_val)
-                                iso_date = f"{year_ad}-{month}-{int(day):02d}"
-                                results.append({
-                                    "draw_date": iso_date,
-                                    "thai_first_prize": first_prize,
-                                    "winning_number": last3,
-                                    "source": "GLO (Official Government Portal)"
-                                })
-                                break
+                    soup = BeautifulSoup(resp.text, 'html.parser')
+                    for tag in soup(["script", "style", "noscript"]):
+                        tag.decompose()
+                    text = soup.get_text(' | ', strip=True)
+                    parsed = _extract_thai_date_and_prize_from_text(text)
+                    if parsed:
+                        parsed["source"] = "GLO (Official Government Portal)"
+                        results.append(parsed)
+                        break
             except Exception:
                 continue
         if results:
@@ -222,14 +228,31 @@ def settle_threed_draw_internal(
     if not clean_win.isdigit() or len(clean_win) != 3:
         raise ValueError(f"Invalid 3D winning number: {winning_number}")
 
+    # Lock draw row to guarantee strict idempotent settlement
+    locked_draw = db.query(ThreeDDraw).filter(ThreeDDraw.id == draw.id).with_for_update().first()
+    if not locked_draw or locked_draw.status == "SETTLED":
+        logger.info(f"3D Draw #{draw.id} is already settled; skipping duplicate settlement.")
+        return {
+            "status": "already_settled",
+            "draw_id": draw.id,
+            "draw_date": draw.draw_date,
+            "winning_number": locked_draw.winning_number if locked_draw else clean_win,
+            "thai_first_prize": locked_draw.thai_first_prize if locked_draw else thai_first_prize,
+            "total_slips": 0,
+            "winners_count": 0,
+            "total_payout": 0.0
+        }
+    draw = locked_draw
+
     setting = db.query(SystemSetting).first()
     straight_payout = float(getattr(setting, "threed_straight_payout", 700.0) or 700.0)
 
+    settle_time = now_mmt()
     draw.winning_number = clean_win
     if thai_first_prize:
         draw.thai_first_prize = str(thai_first_prize).strip()
     draw.status = "SETTLED"
-    draw.settled_at = now_mmt()
+    draw.settled_at = settle_time
 
     slips = db.query(BetSlip).filter(
         BetSlip.game_type == "3D",
@@ -238,14 +261,14 @@ def settle_threed_draw_internal(
     ).all()
 
     total_payout = 0.0
-    total_staked = 0.0
+    total_staked_pending = 0.0
     winners_count = 0
-    today_str = now_mmt().strftime("%Y-%m-%d")
+    today_str = settle_time.strftime("%Y-%m-%d")
 
     for slip in slips:
         slip_payout = 0.0
         has_win = False
-        total_staked += float(slip.total_stake or 0.0)
+        total_staked_pending += float(slip.total_stake or 0.0)
 
         for item in slip.items:
             clean_item_num = str(item.number).strip().zfill(3)
@@ -280,9 +303,9 @@ def settle_threed_draw_internal(
             slip.total_payout = slip_payout
             total_payout += slip_payout
             winners_count += 1
-            slip.settled_at = now_mmt()
+            slip.settled_at = settle_time
 
-            player = db.query(User).filter(User.id == slip.user_id).first()
+            player = db.query(User).filter(User.id == slip.user_id).with_for_update().first()
             if player:
                 player.balance = float(player.balance or 0.0) + slip_payout
 
@@ -295,26 +318,27 @@ def settle_threed_draw_internal(
                     amount=slip_payout,
                     slip_image_url=None,
                     client_timezone="MMT",
-                    tx_timestamp_mmt=now_mmt(),
-                    submission_timestamp_mmt=now_mmt(),
+                    tx_timestamp_mmt=settle_time,
+                    submission_timestamp_mmt=settle_time,
                     delta_minutes=0.0,
                     is_time_valid=True,
                     is_receiver_valid=True,
                     is_tx_unique=True,
                     status=TransactionStatus.COMPLETED,
                     verification_notes=f"3D Prize payout for ticket {slip.slip_code} ({clean_win}) - Draw {draw.draw_date}",
-                    created_at=now_mmt()
+                    created_at=settle_time
                 )
                 db.add(win_tx)
 
+                # Unified negative sign for PAYOUT_EXPENSE across all games
                 win_ledger = FinancialLedger(
                     entry_type=LedgerEntryType.PAYOUT_EXPENSE,
-                    amount=slip_payout,
+                    amount=-slip_payout,
                     running_balance=player.balance,
                     reference_id=slip.slip_code,
                     reference_type="BET_SLIP_3D_WIN",
                     description=f"3D အနိုင်ရငွေ ({clean_win}) - Draw {draw.draw_date}",
-                    logged_at_mmt=now_mmt(),
+                    logged_at_mmt=settle_time,
                     date_str=today_str
                 )
                 db.add(win_ledger)
@@ -330,23 +354,45 @@ def settle_threed_draw_internal(
         else:
             slip.status = BetSlipStatus.LOST
             slip.total_payout = 0.0
-            slip.settled_at = now_mmt()
+            slip.settled_at = settle_time
 
-    draw.total_staked = float(draw.total_staked or 0.0) + total_staked
-    draw.total_payout = float(draw.total_payout or 0.0) + total_payout
+    from sqlalchemy import func
+    exact_staked = db.query(func.coalesce(func.sum(BetSlip.total_stake), 0.0)).filter(
+        BetSlip.game_type == "3D",
+        BetSlip.draw_id == draw.id,
+        BetSlip.status.notin_([BetSlipStatus.CANCELLED, BetSlipStatus.VOID])
+    ).scalar() or 0.0
+    draw.total_staked = max(float(exact_staked), total_staked_pending)
+    draw.total_payout = float(total_payout)
 
-    # Auto create next upcoming draw if no other OPEN draw exists
+    if total_payout > 0:
+        daily_summary = db.query(DailyLedgerSummary).filter(DailyLedgerSummary.date_str == today_str).first()
+        if daily_summary:
+            daily_summary.total_payouts += total_payout
+            daily_summary.net_profit -= total_payout
+            daily_summary.updated_at_mmt = settle_time
+        else:
+            db.add(DailyLedgerSummary(
+                date_str=today_str,
+                total_payouts=total_payout,
+                net_profit=-total_payout,
+                updated_at_mmt=settle_time
+            ))
+
+    # Auto create next upcoming draw if no other OPEN draw exists (and not already in DB)
     next_open = db.query(ThreeDDraw).filter(ThreeDDraw.status == "OPEN").first()
     if not next_open:
         next_date = get_next_threed_draw_date(draw.draw_date)
-        next_draw = ThreeDDraw(
-            draw_date=next_date,
-            draw_time_mmt="03:30 PM MMT",
-            cutoff_time_mmt="02:30 PM MMT",
-            status="OPEN"
-        )
-        db.add(next_draw)
-        logger.info(f"Auto-generated next upcoming 3D draw: {next_date}")
+        existing_next = db.query(ThreeDDraw).filter(ThreeDDraw.draw_date == next_date).first()
+        if not existing_next:
+            next_draw = ThreeDDraw(
+                draw_date=next_date,
+                draw_time_mmt="03:30 PM MMT",
+                cutoff_time_mmt="02:30 PM MMT",
+                status="OPEN"
+            )
+            db.add(next_draw)
+            logger.info(f"Auto-generated next upcoming 3D draw: {next_date}")
 
     db.commit()
 
@@ -371,6 +417,7 @@ def poll_and_settle_3d_job():
     - Completely settles win/loss, balances, transactions, and notifications.
     """
     logger.info("Executing automated 3D background polling job...")
+    current_time = now_mmt()
     db = SessionLocal()
     try:
         # Fetch live lottery results first

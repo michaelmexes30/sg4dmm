@@ -383,7 +383,7 @@ def spin_lucky_wheel(
         if is_win and payout > 0:
             db.add(FinancialLedger(
                 entry_type=LedgerEntryType.PAYOUT_EXPENSE,
-                amount=payout,
+                amount=-payout,
                 running_balance=current_user.balance,
                 reference_id=game_id_str,
                 reference_type="MINI_GAME_PAYOUT",
@@ -520,7 +520,7 @@ def flip_coin(
         if is_win and payout > 0:
             db.add(FinancialLedger(
                 entry_type=LedgerEntryType.PAYOUT_EXPENSE,
-                amount=payout,
+                amount=-payout,
                 running_balance=current_user.balance,
                 reference_id=game_id_str,
                 reference_type="MINI_GAME_PAYOUT",
@@ -661,7 +661,7 @@ def roll_dice(
         if is_win and payout > 0:
             db.add(FinancialLedger(
                 entry_type=LedgerEntryType.PAYOUT_EXPENSE,
-                amount=payout,
+                amount=-payout,
                 running_balance=current_user.balance,
                 reference_id=game_id_str,
                 reference_type="MINI_GAME_PAYOUT",
@@ -966,7 +966,7 @@ def spin_card_wheel(
         if is_win and total_payout > 0:
             db.add(FinancialLedger(
                 entry_type=LedgerEntryType.PAYOUT_EXPENSE,
-                amount=total_payout,
+                amount=-total_payout,
                 running_balance=current_user.balance,
                 reference_id=game_id_str,
                 reference_type="MINI_GAME_PAYOUT",

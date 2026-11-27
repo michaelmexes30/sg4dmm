@@ -39,12 +39,35 @@ def convert_to_mmt(dt: datetime, source_tz_name: Optional[str] = None) -> dateti
             return dt
     return dt.astimezone(MMT_TZ).replace(tzinfo=None)
 
-def parse_slip_timestamp(timestamp_str: str, client_tz: Optional[str] = "MMT") -> datetime:
+def parse_slip_timestamp(timestamp_str: str, client_tz: Optional[str] = "MMT") -> Optional[datetime]:
     """
     Parses various timestamp formats from payment receipts (KPay, WavePay, AYA Pay)
     e.g., '2026-10-13 11:15:00', '13/10/2026 11:15', '2026-10-13T11:15:00Z'
-    and normalizes into MMT.
+    and normalizes into naive MMT (+06:30).
+    Returns None if timestamp cannot be parsed (never silently defaults to now_mmt).
     """
+    if not timestamp_str or not str(timestamp_str).strip():
+        return None
+    cleaned = str(timestamp_str).strip()
+
+    # Handle explicit UTC 'Z' suffix accurately (convert UTC -> MMT)
+    if cleaned.endswith("Z") or cleaned.endswith("z"):
+        base_str = cleaned[:-1]
+        for fmt in ("%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S"):
+            try:
+                dt_utc = datetime.strptime(base_str, fmt)
+                return convert_to_mmt(dt_utc, source_tz_name="UTC")
+            except ValueError:
+                continue
+
+    # Handle ISO 8601 strings with explicit timezone offsets (e.g. +06:30, +00:00)
+    try:
+        iso_dt = datetime.fromisoformat(cleaned)
+        if iso_dt.tzinfo is not None:
+            return convert_to_mmt(iso_dt)
+    except ValueError:
+        pass
+
     formats = [
         "%Y-%m-%d %H:%M:%S",
         "%Y-%m-%d %H:%M",
@@ -54,11 +77,9 @@ def parse_slip_timestamp(timestamp_str: str, client_tz: Optional[str] = "MMT") -
         "%d-%m-%Y %H:%M:%S",
         "%Y-%m-%dT%H:%M:%S",
         "%Y-%m-%dT%H:%M:%S.%f",
-        "%Y-%m-%dT%H:%M:%SZ",
         "%I:%M %p %d/%m/%Y",
         "%d %b %Y %H:%M:%S"
     ]
-    cleaned = timestamp_str.strip()
     dt = None
     for fmt in formats:
         try:
@@ -66,10 +87,10 @@ def parse_slip_timestamp(timestamp_str: str, client_tz: Optional[str] = "MMT") -
             break
         except ValueError:
             continue
-            
+
     if dt is None:
-        return now_mmt()
-        
+        return None
+
     return convert_to_mmt(dt, source_tz_name=client_tz)
 
 def validate_15min_window(

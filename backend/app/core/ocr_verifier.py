@@ -165,7 +165,7 @@ def extract_text_from_image(image_path: str) -> str:
                 files={'file': f},
                 data={
                     'isOverlayRequired': False,
-                    'apikey': 'helloworld',
+                    'apikey': os.getenv('OCR_SPACE_API_KEY', 'helloworld'),
                     'language': 'eng',
                     'detectOrientation': True,
                     'scale': True
@@ -378,11 +378,12 @@ def parse_and_validate_receipt(
             "input_amount": input_amount
         }
 
-    from app.core.timezone_utils import MMT_TZ
-    slip_datetime = MMT_TZ.localize(datetime.combine(slip_date, slip_time))
+    # Keep slip_datetime naive MMT to match now_mmt() (prevents naive/aware TypeError!)
+    slip_datetime = datetime.combine(slip_date, slip_time)
 
     if submission_time_mmt:
-        delta_mins = (submission_time_mmt - slip_datetime).total_seconds() / 60.0
+        sub_naive = submission_time_mmt.replace(tzinfo=None) if getattr(submission_time_mmt, "tzinfo", None) is not None else submission_time_mmt
+        delta_mins = (sub_naive - slip_datetime).total_seconds() / 60.0
         if delta_mins > 15.0:
             return False, f"ငွေလွှဲပြေစာသည် သတ်မှတ်ချိန် (၁၅ မိနစ်) ကျော်လွန်နေပါသည်ခင်ဗျာ (ပြေစာပါအချိန်: {slip_datetime.strftime('%H:%M:%S')}၊ လွန်ခဲ့သော {delta_mins:.1f} မိနစ်က လွှဲခဲ့သည်)။", {
                 "error_code": "SLIP_TIMESTAMP_EXPIRED",

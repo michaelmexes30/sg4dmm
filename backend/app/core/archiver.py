@@ -8,7 +8,8 @@ from sqlalchemy import func
 
 from app.config import settings
 from app.database import SessionLocal
-from app.models.bet import BetSlip, BetArchive, BetSlipStatus
+from app.models.bet import BetSlip, BetArchive, BetSlipStatus, BetEditLog
+from app.models.user import AgentCommissionLog
 from app.models.transaction import Transaction, TransactionArchive, TransactionStatus
 from app.models.mini_game import MiniGameBet, MiniGameDailyStatement
 from app.core.timezone_utils import now_mmt
@@ -82,6 +83,18 @@ def archive_old_records(retention_days: int = None) -> Dict[str, Any]:
                 "created_at": slip.created_at.isoformat(),
                 "items": items_snapshot
             })
+
+            # Skip slips with unsettled agent commissions so pending payouts are never lost
+            has_unsettled_comm = db.query(AgentCommissionLog).filter(
+                AgentCommissionLog.bet_slip_id == slip.id,
+                AgentCommissionLog.is_settled == False
+            ).first()
+            if has_unsettled_comm:
+                continue
+
+            # Delete dependent child audit/settled-commission rows BEFORE deleting slip (prevents FK violation!)
+            db.query(BetEditLog).filter(BetEditLog.slip_id == slip.id).delete(synchronize_session=False)
+            db.query(AgentCommissionLog).filter(AgentCommissionLog.bet_slip_id == slip.id).delete(synchronize_session=False)
 
             # Delete active slip (cascade deletes items)
             db.delete(slip)

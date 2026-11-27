@@ -64,14 +64,14 @@ def validate_gateway_tx_format(gateway: str, tx_id: str) -> Tuple[bool, str]:
 from app.models.settings import SystemSetting
 
 def is_valid_receiver(gateway: str, receiver_id: str, db: Optional[Session] = None) -> bool:
-    """Checks if receiver_id matches any registered company receiver account from SystemSetting or config."""
+    """Strictly validates if receiver_id matches a registered company receiver account from SystemSetting or config."""
     if not receiver_id:
-        return True
+        return False
     clean_receiver = re.sub(r"[^\d]", "", str(receiver_id).strip())
-    if not clean_receiver:
-        return True
+    if not clean_receiver or len(clean_receiver) < 7:
+        return False
 
-    g = gateway.lower()
+    g = (gateway or "").lower()
     
     # Check dynamic SystemSetting in database first
     if db:
@@ -80,16 +80,16 @@ def is_valid_receiver(gateway: str, receiver_id: str, db: Optional[Session] = No
             for phone in [setting.kpay_phone, setting.wave_phone]:
                 if phone:
                     clean_db_acc = re.sub(r"[^\d]", "", str(phone))
-                    if clean_receiver == clean_db_acc or clean_receiver.endswith(clean_db_acc[-9:]) or clean_db_acc.endswith(clean_receiver[-9:]):
+                    if clean_db_acc and (clean_receiver == clean_db_acc or clean_receiver.endswith(clean_db_acc[-9:]) or clean_db_acc.endswith(clean_receiver[-9:])):
                         return True
 
     for gate_key in [g, "kpay", "wavepay", "ayapay"]:
         accounts = settings.RECEIVER_ACCOUNTS.get(gate_key, [])
         for acc in accounts:
             clean_acc = re.sub(r"[^\d]", "", str(acc["account_number"]))
-            if clean_receiver == clean_acc or clean_receiver.endswith(clean_acc[-9:]) or clean_acc.endswith(clean_receiver[-9:]):
+            if clean_acc and (clean_receiver == clean_acc or clean_receiver.endswith(clean_acc[-9:]) or clean_acc.endswith(clean_receiver[-9:])):
                 return True
-    return True
+    return False
 
 def verify_and_process_deposit(
     db: Session,
@@ -132,7 +132,6 @@ def verify_and_process_deposit(
         possible_paths = [
             os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static", "uploads", clean_name),
             os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "app", "static", "uploads", clean_name),
-            os.path.join("D:\\SG4DMyanmar\\backend\\app\\static\\uploads", clean_name)
         ]
         for p in possible_paths:
             if os.path.exists(p):
@@ -233,15 +232,26 @@ def verify_and_process_deposit(
             ocr_msg = "ငွေလွှဲပြေစာပုံ ထည့်သွင်းထားခြင်း မရှိပါသဖြင့် Admin မှ စစ်ဆေးပေးပါမည် (No Slip Attached)."
             ocr_details = {"error_code": "NO_SLIP"}
 
-        # 5. Timestamp validation
+        # 5. Timestamp validation (handles naive/aware safely and rejects unparseable timestamps)
         if ocr_details.get("slip_datetime"):
             tx_time_mmt = ocr_details["slip_datetime"]
+            if getattr(tx_time_mmt, "tzinfo", None) is not None:
+                tx_time_mmt = convert_to_mmt(tx_time_mmt)
+            delta_minutes = (submission_time - tx_time_mmt).total_seconds() / 60.0
+            time_valid = (-2.0 <= delta_minutes <= 15.0)
+            time_msg = f"Receipt timestamp {format_mmt(tx_time_mmt)} evaluated ({delta_minutes:.1f} mins ago)."
         else:
-            tx_time_mmt = parse_slip_timestamp(raw_timestamp, client_tz=client_timezone)
-
-        delta_minutes = (submission_time - tx_time_mmt).total_seconds() / 60.0
-        time_valid = (-2.0 <= delta_minutes <= 15.0)
-        time_msg = f"Receipt timestamp {format_mmt(tx_time_mmt)} evaluated ({delta_minutes:.1f} mins ago)."
+            parsed_ts = parse_slip_timestamp(raw_timestamp, client_tz=client_timezone)
+            if parsed_ts is not None:
+                tx_time_mmt = parsed_ts
+                delta_minutes = (submission_time - tx_time_mmt).total_seconds() / 60.0
+                time_valid = (-2.0 <= delta_minutes <= 15.0)
+                time_msg = f"Receipt timestamp {format_mmt(tx_time_mmt)} evaluated ({delta_minutes:.1f} mins ago)."
+            else:
+                tx_time_mmt = submission_time
+                delta_minutes = 0.0
+                time_valid = False
+                time_msg = f"Unparseable client timestamp '{raw_timestamp}'; flagged for manual review."
 
         # Determine status & audit notes
         verification_notes = []

@@ -12,7 +12,7 @@ from app.models.bet import BetSlip, BetSlipStatus
 from app.models.user import User, Notification
 from app.models.settings import SystemSetting
 from app.models.transaction import Transaction, TransactionType, TransactionStatus
-from app.models.ledger import FinancialLedger, LedgerEntryType
+from app.models.ledger import FinancialLedger, LedgerEntryType, DailyLedgerSummary
 from app.core.timezone_utils import now_mmt
 
 logger = logging.getLogger("twod_service")
@@ -76,7 +76,11 @@ def fetch_live_twod_from_api(session_type: str = "evening", is_settlement: bool 
             holiday = data.get("holiday")
             if holiday and str(holiday.get("status", "0")) == "1":
                 logger.info(f"Thai Stock Exchange is closed today for holiday: {holiday.get('name')}")
-                return None
+                return {
+                    "holiday": True,
+                    "holiday_name": str(holiday.get("name") or "Thai Market Holiday"),
+                    "source": "ThaiStock2D API (Holiday)"
+                }
 
             results = data.get("result", [])
             target_times = ["12:01:00", "12:00:00"] if session_type == "morning" else ["16:30:00"]
@@ -86,7 +90,7 @@ def fetch_live_twod_from_api(session_type: str = "evening", is_settlement: bool 
                     set_idx = str(r.get("set", "")).strip()
                     val = str(r.get("value", "")).strip()
                     # '00' is completely valid! Only reject missing/blank/placeholder symbols ('--', '')
-                    if twod and twod not in ["--", ""] and set_idx not in ["0.00", "--", ""]:
+                    if twod and twod not in ["--", ""] and twod.isdigit() and len(twod) == 2 and set_idx not in ["0.00", "--", ""]:
                         return {
                             "twod": twod,
                             "set_index": set_idx,
@@ -94,9 +98,10 @@ def fetch_live_twod_from_api(session_type: str = "evening", is_settlement: bool 
                             "source": "ThaiStock2D API (Result)"
                         }
 
-            # If settling, do NOT grab unfinalized, moving live ticks. Wait for the locked closing result!
+            # If settling and API is reachable (non-holiday) but closing tick is not finalized yet,
+            # return an explicit unfinalized marker so caller does NOT prematurely settle using set.or.th!
             if is_settlement:
-                return None
+                return {"unfinalized": True, "source": "ThaiStock2D API (Unfinalized)"}
 
             # For real-time UI monitoring during active trading hours, live field is used
             live = data.get("live", {})
@@ -104,7 +109,7 @@ def fetch_live_twod_from_api(session_type: str = "evening", is_settlement: bool 
                 live_twod = str(live.get("twod", "")).strip().zfill(2)
                 live_set = str(live.get("set", "")).strip()
                 live_val = str(live.get("value", "")).strip()
-                if live_twod and live_twod not in ["--", ""] and live_set not in ["0.00", "--", ""]:
+                if live_twod and live_twod not in ["--", ""] and live_twod.isdigit() and len(live_twod) == 2 and live_set not in ["0.00", "--", ""]:
                     return {
                         "twod": live_twod,
                         "set_index": live_set,
@@ -118,16 +123,32 @@ def fetch_live_twod_from_api(session_type: str = "evening", is_settlement: bool 
 def get_live_twod_result(session_type: str = "morning", is_settlement: bool = False) -> Optional[Dict[str, str]]:
     """
     Multi-source resolver for Myanmar 2D result:
-    1. First checks ThaiStock2D result array for locked settlement tick (12:01 / 16:30).
-    2. Falls back to direct https://set.or.th/en/home scraping.
-    3. If not settling, falls back to ThaiStock2D live tick.
+    1. Checks ThaiStock2D result array for locked settlement tick (12:01 / 16:30).
+    2. Never falls back to set.or.th on Thai market holidays or while closing tick is unfinalized.
+    3. Only falls back to set.or.th if ThaiStock2D API itself is unreachable AND (not settling OR well after market close).
     """
-    # Check official locked settlement tick first
     api_res = fetch_live_twod_from_api(session_type, is_settlement=is_settlement)
-    if api_res and api_res.get("twod") and len(api_res["twod"]) == 2:
-        return api_res
+    if api_res:
+        if api_res.get("holiday"):
+            logger.info(f"Skipping 2D result fetch due to Thai holiday: {api_res.get('holiday_name')}")
+            return None
+        if api_res.get("unfinalized"):
+            logger.info(f"2D {session_type} closing tick not finalized yet on ThaiStock2D API; waiting.")
+            return None
+        if api_res.get("twod") and len(api_res["twod"]) == 2:
+            return api_res
 
-    # Try set.or.th direct scraper
+    # ThaiStock2D API was unreachable (returned None):
+    # For settlement, only fall back to set.or.th after market has definitely closed for that session
+    if is_settlement:
+        curr = now_mmt()
+        if curr.weekday() >= 5:
+            return None
+        if session_type == "morning" and not (curr.hour > 12 or (curr.hour == 12 and curr.minute >= 5)):
+            return None
+        if session_type == "evening" and not (curr.hour > 16 or (curr.hour == 16 and curr.minute >= 35)):
+            return None
+
     set_res = fetch_live_twod_from_set_official()
     if set_res and set_res.get("twod") and len(set_res["twod"]) == 2:
         return set_res
@@ -143,44 +164,58 @@ def settle_twod_draw_internal(
     set_value: Optional[str] = None
 ) -> Dict[str, Any]:
     """
-    Core engine that settles a 2D draw:
-    1. Sets winning number, set index, set value, and marks draw as SETTLED.
-    2. Evaluates all pending 2D slips for this draw.
-    3. Calculates payouts (stake * payout_multiplier).
-    4. Automatically credits winners' balances, generates WIN_PAYOUT transactions,
-       creates FinancialLedger payout records, and delivers in-app victory notifications.
-    5. Marks losing slips as LOST.
-    6. Commits cleanly and returns a summary dict.
+    Idempotent, row-locked 2D draw settlement engine:
+    - Acquires FOR UPDATE lock on TwoDDraw; skips immediately if already SETTLED.
+    - Evaluates strictly PENDING 2D slips only (prevents double payouts).
+    - Row-locks each winning player wallet before crediting.
+    - Records negative PAYOUT_EXPENSE in FinancialLedger & updates DailyLedgerSummary.
     """
     clean_win = str(winning_number).strip().zfill(2)
     if not clean_win.isdigit() or len(clean_win) != 2:
         raise ValueError(f"Invalid 2D winning number: {winning_number}")
 
+    # Lock draw row to guarantee strict idempotency across concurrent jobs/requests
+    locked_draw = db.query(TwoDDraw).filter(TwoDDraw.id == draw.id).with_for_update().first()
+    if not locked_draw or locked_draw.status == "SETTLED":
+        logger.info(f"2D Draw #{draw.id} is already settled; skipping duplicate settlement.")
+        return {
+            "status": "already_settled",
+            "draw_id": draw.id,
+            "winning_number": locked_draw.winning_number if locked_draw else clean_win,
+            "total_slips": 0,
+            "winners_count": 0,
+            "total_payout": 0.0
+        }
+    draw = locked_draw
+
     setting = db.query(SystemSetting).first()
     payout_multiplier = float(setting.twod_payout_multiplier) if getattr(setting, "twod_payout_multiplier", None) is not None else 80.0
 
+    settle_time = now_mmt()
     draw.winning_number = clean_win
     if set_index:
         draw.set_index = set_index
     if set_value:
         draw.set_value = set_value
     draw.status = "SETTLED"
-    draw.settled_at = now_mmt()
+    draw.settled_at = settle_time
 
+    # Strictly filter PENDING 2D slips only!
     slips = db.query(BetSlip).filter(
         BetSlip.game_type == "2D",
-        BetSlip.draw_id == draw.id
+        BetSlip.draw_id == draw.id,
+        BetSlip.status == BetSlipStatus.PENDING
     ).all()
 
     total_payout = 0.0
-    total_staked = 0.0
+    total_staked_pending = 0.0
     winners_count = 0
-    today_str = now_mmt().strftime("%Y-%m-%d")
+    today_str = settle_time.strftime("%Y-%m-%d")
 
     for slip in slips:
         slip_payout = 0.0
         has_win = False
-        total_staked += float(slip.total_stake or 0.0)
+        total_staked_pending += float(slip.total_stake or 0.0)
 
         for item in slip.items:
             clean_item_num = str(item.number).strip().zfill(2)
@@ -200,9 +235,9 @@ def settle_twod_draw_internal(
             slip.total_payout = slip_payout
             total_payout += slip_payout
             winners_count += 1
-            slip.settled_at = now_mmt()
+            slip.settled_at = settle_time
 
-            player = db.query(User).filter(User.id == slip.user_id).first()
+            player = db.query(User).filter(User.id == slip.user_id).with_for_update().first()
             if player:
                 player.balance = float(player.balance or 0.0) + slip_payout
 
@@ -215,26 +250,27 @@ def settle_twod_draw_internal(
                     amount=slip_payout,
                     slip_image_url=None,
                     client_timezone="MMT",
-                    tx_timestamp_mmt=now_mmt(),
-                    submission_timestamp_mmt=now_mmt(),
+                    tx_timestamp_mmt=settle_time,
+                    submission_timestamp_mmt=settle_time,
                     delta_minutes=0.0,
                     is_time_valid=True,
                     is_receiver_valid=True,
                     is_tx_unique=True,
                     status=TransactionStatus.COMPLETED,
                     verification_notes=f"2D Prize payout for ticket {slip.slip_code} ({clean_win}) - {draw.session.capitalize()} {draw.draw_date}",
-                    created_at=now_mmt()
+                    created_at=settle_time
                 )
                 db.add(win_tx)
 
+                # Unified negative sign for PAYOUT_EXPENSE across all games
                 win_ledger = FinancialLedger(
                     entry_type=LedgerEntryType.PAYOUT_EXPENSE,
-                    amount=slip_payout,
+                    amount=-slip_payout,
                     running_balance=player.balance,
                     reference_id=slip.slip_code,
                     reference_type="BET_SLIP_2D_WIN",
                     description=f"2D အနိုင်ရငွေ ({clean_win}) - {draw.session.capitalize()} {draw.draw_date}",
-                    logged_at_mmt=now_mmt(),
+                    logged_at_mmt=settle_time,
                     date_str=today_str
                 )
                 db.add(win_ledger)
@@ -251,10 +287,32 @@ def settle_twod_draw_internal(
         else:
             slip.status = BetSlipStatus.LOST
             slip.total_payout = 0.0
-            slip.settled_at = now_mmt()
+            slip.settled_at = settle_time
 
-    draw.total_staked = float(draw.total_staked or 0.0) + total_staked
-    draw.total_payout = float(draw.total_payout or 0.0) + total_payout
+    # Recompute exact draw totals without double-counting stakes already tracked at placement
+    from sqlalchemy import func
+    exact_staked = db.query(func.coalesce(func.sum(BetSlip.total_stake), 0.0)).filter(
+        BetSlip.game_type == "2D",
+        BetSlip.draw_id == draw.id,
+        BetSlip.status.notin_([BetSlipStatus.CANCELLED, BetSlipStatus.VOID])
+    ).scalar() or 0.0
+    draw.total_staked = max(float(exact_staked), total_staked_pending)
+    draw.total_payout = float(total_payout)
+
+    if total_payout > 0:
+        daily_summary = db.query(DailyLedgerSummary).filter(DailyLedgerSummary.date_str == today_str).first()
+        if daily_summary:
+            daily_summary.total_payouts += total_payout
+            daily_summary.net_profit -= total_payout
+            daily_summary.updated_at_mmt = settle_time
+        else:
+            db.add(DailyLedgerSummary(
+                date_str=today_str,
+                total_payouts=total_payout,
+                net_profit=-total_payout,
+                updated_at_mmt=settle_time
+            ))
+
     db.commit()
 
     logger.info(f"Settled 2D Draw #{draw.id} ({draw.draw_date} {draw.session}) -> Winning #{clean_win}. Slips: {len(slips)}, Winners: {winners_count}, Payout: {total_payout:,.0f} MMK")
@@ -271,13 +329,12 @@ def settle_twod_draw_internal(
 def poll_and_settle_2d_job():
     """
     Automated background polling and settlement job executed by APScheduler.
-    - Runs around 12:01 PM MMT (morning) and 04:30 PM MMT (evening).
-    - Checks for any OPEN 2D draws for today or past days whose draw time has arrived.
-    - Fetches the result from ThaiStock2D live API or applies verified draw number.
-    - Completely settles win/loss, balances, transactions, and notifications.
+    - Runs around 12:01 PM MMT (morning) and 04:30 PM MMT (evening) on weekdays.
+    - Also settles any overdue OPEN or CLOSED past draws using official historical API.
     """
     curr = now_mmt()
     today_str = curr.strftime("%Y-%m-%d")
+    is_weekend = curr.weekday() >= 5
     is_past_morning = curr.hour > 12 or (curr.hour == 12 and curr.minute >= 1)
     is_past_evening = curr.hour > 16 or (curr.hour == 16 and curr.minute >= 30)
 
@@ -286,47 +343,50 @@ def poll_and_settle_2d_job():
         from app.api.admin import ensure_twod_draws_exist
         ensure_twod_draws_exist(db)
 
-        # 1. Check Morning Draw
-        if is_past_morning:
-            morning = db.query(TwoDDraw).filter(
-                TwoDDraw.draw_date == today_str,
-                TwoDDraw.session == "morning"
-            ).first()
-            if morning and morning.status in ["OPEN", "CLOSED"]:
-                api_res = get_live_twod_result("morning", is_settlement=True)
-                if api_res and api_res.get("twod"):
-                    settle_twod_draw_internal(db, morning, api_res["twod"], api_res.get("set_index"), api_res.get("set_value"))
+        if not is_weekend:
+            # 1. Check Morning Draw
+            if is_past_morning:
+                morning = db.query(TwoDDraw).filter(
+                    TwoDDraw.draw_date == today_str,
+                    TwoDDraw.session == "morning"
+                ).first()
+                if morning and morning.status in ["OPEN", "CLOSED"]:
+                    api_res = get_live_twod_result("morning", is_settlement=True)
+                    if api_res and api_res.get("twod"):
+                        settle_twod_draw_internal(db, morning, api_res["twod"], api_res.get("set_index"), api_res.get("set_value"))
 
-        # 2. Check Evening Draw
-        if is_past_evening:
-            evening = db.query(TwoDDraw).filter(
-                TwoDDraw.draw_date == today_str,
-                TwoDDraw.session == "evening"
-            ).first()
-            if evening and evening.status in ["OPEN", "CLOSED"]:
-                api_res = get_live_twod_result("evening", is_settlement=True)
-                if api_res and api_res.get("twod"):
-                    settle_twod_draw_internal(db, evening, api_res["twod"], api_res.get("set_index"), api_res.get("set_value"))
+            # 2. Check Evening Draw
+            if is_past_evening:
+                evening = db.query(TwoDDraw).filter(
+                    TwoDDraw.draw_date == today_str,
+                    TwoDDraw.session == "evening"
+                ).first()
+                if evening and evening.status in ["OPEN", "CLOSED"]:
+                    api_res = get_live_twod_result("evening", is_settlement=True)
+                    if api_res and api_res.get("twod"):
+                        settle_twod_draw_internal(db, evening, api_res["twod"], api_res.get("set_index"), api_res.get("set_value"))
 
-        # 3. Check any overdue past unclosed draws from yesterday or earlier
+        # 3. Check any overdue past unclosed draws (BOTH OPEN and CLOSED!) from yesterday or earlier
         overdue_draws = db.query(TwoDDraw).filter(
             TwoDDraw.draw_date < today_str,
-            TwoDDraw.status == "OPEN"
+            TwoDDraw.status.in_(["OPEN", "CLOSED"])
         ).all()
-        for od in overdue_draws:
+        if overdue_draws:
             try:
-                # Query historical 2D result endpoint for exact date/time
                 resp = requests.get("https://api.thaistock2d.com/2d_result", timeout=8)
                 if resp.status_code == 200:
-                    for d_item in resp.json():
-                        if d_item.get("date") == od.draw_date:
-                            target_t = "12:01:00" if od.session == "morning" else "16:30:00"
-                            for c in d_item.get("child", []):
-                                if c.get("time") == target_t and c.get("twod") not in ["--", ""]:
-                                    settle_twod_draw_internal(db, od, c["twod"], c.get("set"), c.get("value"))
-                                    break
+                    hist_data = resp.json()
+                    for od in overdue_draws:
+                        for d_item in hist_data:
+                            if d_item.get("date") == od.draw_date:
+                                target_t = "12:01:00" if od.session == "morning" else "16:30:00"
+                                for c in d_item.get("child", []):
+                                    tw = str(c.get("twod", "")).strip()
+                                    if c.get("time") == target_t and tw not in ["--", ""] and tw.isdigit():
+                                        settle_twod_draw_internal(db, od, tw, c.get("set"), c.get("value"))
+                                        break
             except Exception as e:
-                logger.warning(f"Failed to auto-settle overdue draw {od.id}: {e}")
+                logger.warning(f"Failed to auto-settle overdue 2D draws: {e}")
 
     except Exception as e:
         logger.error(f"Error in poll_and_settle_2d_job: {e}", exc_info=True)

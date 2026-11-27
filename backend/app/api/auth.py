@@ -517,7 +517,7 @@ def get_current_agent_summary(
         })
 
     from app.core.agent_level import evaluate_and_update_agent_level
-    lvl_info = evaluate_and_update_agent_level(current_user, db)
+    lvl_info = evaluate_and_update_agent_level(current_user, db, commit=False, allow_mutate=False)
     available_credit = max(0.0, (current_user.credit_limit or 0.0) - (current_user.used_credit or 0.0))
 
     setting = db.query(SystemSetting).first()

@@ -8,7 +8,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import pytz
 
 from app.config import settings
-from app.database import Base, engine
+from app.database import Base, engine, SessionLocal
 from app.core.security import get_current_admin
 from app.models.user import User
 from app.models.lottery import LotteryDraw, TwoDDraw, ThreeDDraw
@@ -20,7 +20,7 @@ from app.models.mini_game import MiniGameBet, MiniGameDailyStatement
 from app.seeds.seed_data import seed_database
 from app.seeds.seed_admin_data import seed_admin_and_system_data
 from app.core.archiver import archive_old_records, archive_and_prune_minigames
-from app.core.bonus_engine import calculate_and_distribute_weekly_bonus
+from app.core.bonus_engine import run_tuesday_weekly_settlement
 from app.core.notifications import send_cutoff_reminder_job
 from app.core.singapore_pools_scraper import poll_singapore_pools_job
 from app.core.timezone_utils import now_mmt, format_mmt
@@ -46,245 +46,143 @@ async def lifespan(app: FastAPI):
     except Exception as create_ex:
         print(f"Base.metadata.create_all notice: {create_ex}")
 
-    # 2. Schema compatibility and column auto-migrations
+    # 2. Schema compatibility & isolated autocommit DDL auto-migrations
+    # CRITICAL: Each DDL statement executes under AUTOCOMMIT so a harmless notice or already-existing column
+    # NEVER aborts/poisons a PostgreSQL transaction (prevents InFailedSqlTransaction rollback cascade!).
+    # Legacy timestamp-shift and unguarded settings-overwrite migrations are intentionally omitted so
+    # existing MMT timestamps and Admin settings are strictly preserved across restarts.
     try:
-        with engine.begin() as conn:
-            # One-time automated migration to shift legacy UTC timestamps to Myanmar Standard Time (+06:30)
-            try:
-                conn.execute(text("CREATE TABLE IF NOT EXISTS system_migrations (name VARCHAR(100) PRIMARY KEY, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"))
-                applied = conn.execute(text("SELECT name FROM system_migrations WHERE name = 'fix_mmt_timestamps_v1'")).fetchone()
-                if not applied:
-                    is_pg = (engine.dialect.name == "postgresql")
-                    cols_to_shift = [
-                        ("bet_slips", "created_at"),
-                        ("bet_slips", "settled_at"),
-                        ("bet_items", "created_at"),
-                        ("transactions", "created_at"),
-                        ("transactions", "submission_timestamp_mmt"),
-                        ("financial_ledger", "created_at"),
-                        ("agent_commission_logs", "created_at"),
-                        ("notifications", "created_at"),
-                    ]
-                    for tbl, col in cols_to_shift:
-                        try:
-                            if is_pg:
-                                conn.execute(text(f"UPDATE {tbl} SET {col} = {col} + INTERVAL '6 hours 30 minutes' WHERE {col} IS NOT NULL"))
-                            else:
-                                conn.execute(text(f"UPDATE {tbl} SET {col} = datetime({col}, '+390 minutes') WHERE {col} IS NOT NULL"))
-                        except Exception as shift_ex:
-                            print(f"Notice on shifting {tbl}.{col}: {shift_ex}")
-                    conn.execute(text("INSERT INTO system_migrations (name) VALUES ('fix_mmt_timestamps_v1')"))
-                    print("SUCCESS: Migrated historical timestamps to MMT (+06:30)")
-            except Exception as mig_init_ex:
-                print(f"system_migrations notice: {mig_init_ex}")
+        is_pg = (engine.dialect.name == "postgresql")
+        with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as ac_conn:
+            if is_pg:
+                pg_ddls = [
+                    "CREATE TABLE IF NOT EXISTS system_migrations (name VARCHAR(100) PRIMARY KEY, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)",
+                    "INSERT INTO system_migrations (name) VALUES ('fix_mmt_timestamps_v1') ON CONFLICT (name) DO NOTHING",
+                    "INSERT INTO system_migrations (name) VALUES ('fix_twod_20261112_draw_v1') ON CONFLICT (name) DO NOTHING",
+                    "ALTER TABLE bet_items ADD COLUMN IF NOT EXISTS edit_logs_json TEXT DEFAULT '[]'",
+                    "ALTER TABLE bet_slips ADD COLUMN IF NOT EXISTS game_type VARCHAR(10) DEFAULT '4D'",
+                    "ALTER TABLE bet_items ADD COLUMN IF NOT EXISTS game_type VARCHAR(10) DEFAULT '4D'",
+                    "ALTER TABLE bet_slips DROP CONSTRAINT IF EXISTS bet_slips_draw_id_fkey",
+                    "CREATE INDEX IF NOT EXISTS ix_bet_slips_game_draw_status ON bet_slips (game_type, draw_id, status)",
+                    """CREATE TABLE IF NOT EXISTS mini_game_bets (
+                        id SERIAL PRIMARY KEY,
+                        user_id INTEGER NOT NULL REFERENCES users(id),
+                        game_type VARCHAR(30) NOT NULL,
+                        stake_amount FLOAT NOT NULL,
+                        payout_multiplier FLOAT DEFAULT 0.0,
+                        payout_amount FLOAT DEFAULT 0.0,
+                        is_win BOOLEAN DEFAULT FALSE,
+                        player_choice VARCHAR(50),
+                        result_data JSON,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        date_str VARCHAR(10),
+                        is_archived BOOLEAN DEFAULT FALSE
+                    )""",
+                    "ALTER TABLE mini_game_bets ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT FALSE",
+                    "ALTER TABLE mini_game_bets ADD COLUMN IF NOT EXISTS date_str VARCHAR(10)",
+                    "ALTER TABLE mini_game_bets ADD COLUMN IF NOT EXISTS result_data JSON",
+                    "ALTER TABLE mini_game_bets ADD COLUMN IF NOT EXISTS player_choice VARCHAR(50)",
+                    "ALTER TABLE mini_game_bets ADD COLUMN IF NOT EXISTS payout_multiplier FLOAT DEFAULT 0.0",
+                    "ALTER TABLE mini_game_bets ADD COLUMN IF NOT EXISTS payout_amount FLOAT DEFAULT 0.0",
+                    "ALTER TABLE mini_game_bets ADD COLUMN IF NOT EXISTS is_win BOOLEAN DEFAULT FALSE",
+                    "ALTER TABLE mini_game_bets ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+                    "CREATE INDEX IF NOT EXISTS ix_mini_game_bets_user_id ON mini_game_bets (user_id)",
+                    "CREATE INDEX IF NOT EXISTS ix_mini_game_bets_game_type ON mini_game_bets (game_type)",
+                    "CREATE INDEX IF NOT EXISTS ix_mini_game_bets_date_str ON mini_game_bets (date_str)",
+                    "CREATE INDEX IF NOT EXISTS ix_mini_game_bets_is_archived ON mini_game_bets (is_archived)",
+                    """CREATE TABLE IF NOT EXISTS mini_game_daily_statements (
+                        id SERIAL PRIMARY KEY,
+                        date_str VARCHAR(10) NOT NULL,
+                        game_type VARCHAR(50) NOT NULL,
+                        bets_count INTEGER DEFAULT 0,
+                        stake_amount FLOAT DEFAULT 0.0,
+                        payout_amount FLOAT DEFAULT 0.0,
+                        net_profit FLOAT DEFAULT 0.0,
+                        actual_rtp FLOAT DEFAULT 0.0,
+                        created_at TIMESTAMP,
+                        updated_at TIMESTAMP
+                    )""",
+                    "CREATE INDEX IF NOT EXISTS ix_mini_game_daily_date ON mini_game_daily_statements (date_str)",
+                    "CREATE INDEX IF NOT EXISTS ix_mini_game_daily_game ON mini_game_daily_statements (game_type)",
+                    "ALTER TYPE transactiontype ADD VALUE IF NOT EXISTS 'WIN_PAYOUT'",
+                    "ALTER TABLE transactions ALTER COLUMN gateway TYPE VARCHAR(50)",
+                    "ALTER TABLE transactions ALTER COLUMN receiver_id TYPE VARCHAR(150)",
+                    "ALTER TABLE transaction_archives ALTER COLUMN gateway TYPE VARCHAR(50)",
+                    "ALTER TABLE transaction_archives ALTER COLUMN receiver_id TYPE VARCHAR(150)",
+                    "ALTER TABLE lottery_draws ALTER COLUMN draw_time_mmt TYPE VARCHAR(100)",
+                    "ALTER TABLE lottery_draws ALTER COLUMN draw_number TYPE VARCHAR(100)",
+                    "ALTER TABLE lottery_draws ALTER COLUMN draw_date TYPE VARCHAR(100)",
+                    "ALTER TABLE twod_draws ALTER COLUMN draw_time_mmt TYPE VARCHAR(100)",
+                    "ALTER TABLE twod_draws ALTER COLUMN cutoff_time_mmt TYPE VARCHAR(100)",
+                    "ALTER TABLE threed_draws ALTER COLUMN draw_time_mmt TYPE VARCHAR(100)",
+                    "ALTER TABLE threed_draws ALTER COLUMN cutoff_time_mmt TYPE VARCHAR(100)",
+                    "ALTER TABLE financial_ledger ALTER COLUMN reference_type TYPE VARCHAR(100)",
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_twod_draws_date_session ON twod_draws (draw_date, session)",
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_threed_draws_date ON threed_draws (draw_date)",
+                ]
+                settings_cols_pg = [
+                    ("agent_tier1_turnover", "FLOAT DEFAULT 0.0"),
+                    ("agent_tier1_commission", "FLOAT DEFAULT 20.0"),
+                    ("agent_tier2_turnover", "FLOAT DEFAULT 1000000.0"),
+                    ("agent_tier2_commission", "FLOAT DEFAULT 23.0"),
+                    ("agent_tier3_turnover", "FLOAT DEFAULT 5000000.0"),
+                    ("agent_tier3_commission", "FLOAT DEFAULT 26.0"),
+                    ("agent_tier4_turnover", "FLOAT DEFAULT 10000000.0"),
+                    ("agent_tier4_commission", "FLOAT DEFAULT 30.0"),
+                    ("telegram_finance_group_id", "VARCHAR(100) DEFAULT ''"),
+                    ("auto_approve_max_amount", "FLOAT DEFAULT 50000.0"),
+                    ("is_withdraw_hours_enabled", "BOOLEAN DEFAULT FALSE"),
+                    ("is_2d_enabled", "BOOLEAN DEFAULT TRUE"),
+                    ("twod_payout_multiplier", "FLOAT DEFAULT 80.0"),
+                    ("twod_commission_rate", "FLOAT DEFAULT 0.0"),
+                    ("twod_min_bet", "FLOAT DEFAULT 100.0"),
+                    ("twod_max_bet", "FLOAT DEFAULT 50000.0"),
+                    ("twod_max_risk_per_number", "FLOAT DEFAULT 100000.0"),
+                    ("twod_morning_cutoff", "VARCHAR(20) DEFAULT '11:30 AM'"),
+                    ("twod_evening_cutoff", "VARCHAR(20) DEFAULT '04:00 PM'"),
+                    ("is_3d_enabled", "BOOLEAN DEFAULT TRUE"),
+                    ("threed_straight_payout", "FLOAT DEFAULT 700.0"),
+                    ("threed_tote_payout", "FLOAT DEFAULT 10.0"),
+                    ("threed_commission_rate", "FLOAT DEFAULT 15.0"),
+                    ("threed_min_bet", "FLOAT DEFAULT 100.0"),
+                    ("threed_max_bet", "FLOAT DEFAULT 50000.0"),
+                    ("threed_max_risk_per_number", "FLOAT DEFAULT 200000.0"),
+                    ("threed_draw_cutoff", "VARCHAR(20) DEFAULT '02:30 PM'"),
+                    ("is_mini_games_enabled", "BOOLEAN DEFAULT TRUE"),
+                    ("minigames_rtp_rate", "FLOAT DEFAULT 95.0"),
+                    ("minigames_min_bet", "FLOAT DEFAULT 50.0"),
+                    ("minigames_max_bet", "FLOAT DEFAULT 50000.0"),
+                ]
+                for col_name, col_type in settings_cols_pg:
+                    pg_ddls.append(f"ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS {col_name} {col_type}")
 
-            # Ensure 2026-11-12 morning 2D draw is accurately set to official SET 00
-            try:
-                applied_2d = conn.execute(text("SELECT name FROM system_migrations WHERE name = 'fix_twod_20261112_draw_v1'")).fetchone()
-                if not applied_2d:
-                    conn.execute(text("UPDATE twod_draws SET winning_number = '00', set_index = '1,501.10', set_value = '37,080.12', status = 'SETTLED' WHERE draw_date = '2026-11-12' AND session = 'morning'"))
-                    conn.execute(text("INSERT INTO system_migrations (name) VALUES ('fix_twod_20261112_draw_v1')"))
-                    print("SUCCESS: Verified and migrated 2026-11-12 morning 2D draw to 00")
-            except Exception as d26_ex:
-                print(f"Migration notice for 2026-11-12 2D draw: {d26_ex}")
+                for ddl in pg_ddls:
+                    try:
+                        ac_conn.execute(text(ddl))
+                    except Exception as ddl_ex:
+                        print(f"Autocommit DDL note ({ddl[:45]}...): {ddl_ex}")
 
-            # Update default 2D payout (80x), 2D commission (0%), and 3D commission (15%)
-            try:
-                conn.execute(text("UPDATE system_settings SET twod_commission_rate = 0.0, twod_payout_multiplier = 80.0, threed_commission_rate = 15.0"))
-            except Exception as set_upd_ex:
-                print(f"System settings update notice: {set_upd_ex}")
-            try:
-                conn.execute(text("ALTER TABLE bet_items ADD COLUMN edit_logs_json TEXT DEFAULT '[]'"))
-            except Exception:
-                pass
-            # Autocommit DDL executions (isolated so individual notifications/errors never abort other migrations)
-            is_pg = (engine.dialect.name == "postgresql")
-            try:
-                with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as ac_conn:
-                    if is_pg:
-                        for ddl in [
-                            """CREATE TABLE IF NOT EXISTS mini_game_bets (
-                                id SERIAL PRIMARY KEY,
-                                user_id INTEGER NOT NULL REFERENCES users(id),
-                                game_type VARCHAR(30) NOT NULL,
-                                stake_amount FLOAT NOT NULL,
-                                payout_multiplier FLOAT DEFAULT 0.0,
-                                payout_amount FLOAT DEFAULT 0.0,
-                                is_win BOOLEAN DEFAULT FALSE,
-                                player_choice VARCHAR(50),
-                                result_data JSON,
-                                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                                date_str VARCHAR(10),
-                                is_archived BOOLEAN DEFAULT FALSE
-                            )""",
-                            "ALTER TABLE mini_game_bets ADD COLUMN IF NOT EXISTS is_archived BOOLEAN DEFAULT FALSE",
-                            "ALTER TABLE mini_game_bets ADD COLUMN IF NOT EXISTS date_str VARCHAR(10)",
-                            "ALTER TABLE mini_game_bets ADD COLUMN IF NOT EXISTS result_data JSON",
-                            "ALTER TABLE mini_game_bets ADD COLUMN IF NOT EXISTS player_choice VARCHAR(50)",
-                            "ALTER TABLE mini_game_bets ADD COLUMN IF NOT EXISTS payout_multiplier FLOAT DEFAULT 0.0",
-                            "ALTER TABLE mini_game_bets ADD COLUMN IF NOT EXISTS payout_amount FLOAT DEFAULT 0.0",
-                            "ALTER TABLE mini_game_bets ADD COLUMN IF NOT EXISTS is_win BOOLEAN DEFAULT FALSE",
-                            "ALTER TABLE mini_game_bets ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
-                            "CREATE INDEX IF NOT EXISTS ix_mini_game_bets_user_id ON mini_game_bets (user_id)",
-                            "CREATE INDEX IF NOT EXISTS ix_mini_game_bets_game_type ON mini_game_bets (game_type)",
-                            "CREATE INDEX IF NOT EXISTS ix_mini_game_bets_date_str ON mini_game_bets (date_str)",
-                            "CREATE INDEX IF NOT EXISTS ix_mini_game_bets_is_archived ON mini_game_bets (is_archived)",
-                            """CREATE TABLE IF NOT EXISTS mini_game_daily_statements (
-                                id SERIAL PRIMARY KEY,
-                                date_str VARCHAR(10) NOT NULL,
-                                game_type VARCHAR(50) NOT NULL,
-                                bets_count INTEGER DEFAULT 0,
-                                stake_amount FLOAT DEFAULT 0.0,
-                                payout_amount FLOAT DEFAULT 0.0,
-                                net_profit FLOAT DEFAULT 0.0,
-                                actual_rtp FLOAT DEFAULT 0.0,
-                                created_at TIMESTAMP,
-                                updated_at TIMESTAMP
-                            )""",
-                            "CREATE INDEX IF NOT EXISTS ix_mini_game_daily_date ON mini_game_daily_statements (date_str)",
-                            "CREATE INDEX IF NOT EXISTS ix_mini_game_daily_game ON mini_game_daily_statements (game_type)",
-                            "ALTER TYPE transactiontype ADD VALUE IF NOT EXISTS 'WIN_PAYOUT'",
-                            "ALTER TABLE transactions ALTER COLUMN gateway TYPE VARCHAR(50)",
-                            "ALTER TABLE bet_slips DROP CONSTRAINT IF EXISTS bet_slips_draw_id_fkey",
-                            "CREATE INDEX IF NOT EXISTS ix_bet_slips_game_draw_status ON bet_slips (game_type, draw_id, status)",
-                        ]:
-                            try:
-                                ac_conn.execute(text(ddl))
-                            except Exception as ddl_ex:
-                                print(f"Autocommit DDL note ({ddl[:35]}...): {ddl_ex}")
-                    else:
-                        for ddl in [
-                            """CREATE TABLE IF NOT EXISTS mini_game_bets (
-                                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                user_id INTEGER NOT NULL REFERENCES users(id),
-                                game_type VARCHAR(30) NOT NULL,
-                                stake_amount FLOAT NOT NULL,
-                                payout_multiplier FLOAT DEFAULT 0.0,
-                                payout_amount FLOAT DEFAULT 0.0,
-                                is_win BOOLEAN DEFAULT FALSE,
-                                player_choice VARCHAR(50),
-                                result_data JSON,
-                                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                                date_str VARCHAR(10),
-                                is_archived BOOLEAN DEFAULT FALSE
-                            )""",
-                            "ALTER TABLE mini_game_bets ADD COLUMN is_archived BOOLEAN DEFAULT FALSE",
-                            """CREATE TABLE IF NOT EXISTS mini_game_daily_statements (
-                                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                                date_str VARCHAR(10) NOT NULL,
-                                game_type VARCHAR(50) NOT NULL,
-                                bets_count INTEGER DEFAULT 0,
-                                stake_amount FLOAT DEFAULT 0.0,
-                                payout_amount FLOAT DEFAULT 0.0,
-                                net_profit FLOAT DEFAULT 0.0,
-                                actual_rtp FLOAT DEFAULT 0.0,
-                                created_at TIMESTAMP,
-                                updated_at TIMESTAMP
-                            )""",
-                        ]:
-                            try:
-                                ac_conn.execute(text(ddl))
-                            except Exception:
-                                pass
-            except Exception as ac_err:
-                print(f"Notice during autocommit DDL setup: {ac_err}")
-
-            # Column size expansion for PostgreSQL
-            try:
-                conn.execute(text("ALTER TABLE lottery_draws ALTER COLUMN draw_time_mmt TYPE VARCHAR(100)"))
-                conn.execute(text("ALTER TABLE lottery_draws ALTER COLUMN draw_number TYPE VARCHAR(50)"))
-                conn.execute(text("ALTER TABLE lottery_draws ALTER COLUMN draw_date TYPE VARCHAR(50)"))
-            except Exception:
-                pass
-
-            try:
-                conn.execute(text("ALTER TABLE twod_draws ALTER COLUMN draw_time_mmt TYPE VARCHAR(100)"))
-                conn.execute(text("ALTER TABLE twod_draws ALTER COLUMN cutoff_time_mmt TYPE VARCHAR(100)"))
-            except Exception:
-                pass
-
-            try:
-                conn.execute(text("ALTER TABLE threed_draws ALTER COLUMN draw_time_mmt TYPE VARCHAR(100)"))
-                conn.execute(text("ALTER TABLE threed_draws ALTER COLUMN cutoff_time_mmt TYPE VARCHAR(100)"))
-            except Exception:
-                pass
-
-            try:
-                conn.execute(text("ALTER TABLE financial_ledger ALTER COLUMN reference_type TYPE VARCHAR(100)"))
-            except Exception:
-                pass
-
-            try:
-                conn.execute(text("ALTER TABLE bet_slips ADD COLUMN game_type VARCHAR(10) DEFAULT '4D'"))
-            except Exception:
-                pass
-            try:
-                conn.execute(text("ALTER TABLE bet_items ADD COLUMN game_type VARCHAR(10) DEFAULT '4D'"))
-            except Exception:
-                pass
-
-            # Expand lottery_draws columns to prevent any truncation
-            for col_sql in [
-                "ALTER TABLE lottery_draws ALTER COLUMN draw_time_mmt TYPE VARCHAR(100)",
-                "ALTER TABLE lottery_draws ALTER COLUMN draw_number TYPE VARCHAR(100)",
-                "ALTER TABLE lottery_draws ALTER COLUMN draw_date TYPE VARCHAR(100)",
-                "ALTER TABLE lottery_draws ALTER COLUMN status TYPE VARCHAR(20)"
-            ]:
-                try:
-                    conn.execute(text(col_sql))
-                except Exception:
-                    pass
-
-            # Sync primary key sequences for PostgreSQL
-            for seq_tbl in ["lottery_draws", "twod_draws", "threed_draws", "bet_slips", "bet_items", "users", "mini_game_bets", "mini_game_daily_statements"]:
-                try:
-                    conn.execute(text(f"SELECT setval(pg_get_serial_sequence('{seq_tbl}', 'id'), coalesce(max(id), 1) + 1, false) FROM {seq_tbl}"))
-                except Exception:
-                    pass
-                try:
-                    conn.execute(text(f"SELECT setval('{seq_tbl}_id_seq', coalesce(max(id), 1) + 1, false) FROM {seq_tbl}"))
-                except Exception:
-                    pass
-
-            # System Settings Columns Auto-migration
-            settings_cols = [
-                ("agent_tier1_turnover", "FLOAT DEFAULT 0.0"),
-                ("agent_tier1_commission", "FLOAT DEFAULT 20.0"),
-                ("agent_tier2_turnover", "FLOAT DEFAULT 1000000.0"),
-                ("agent_tier2_commission", "FLOAT DEFAULT 23.0"),
-                ("agent_tier3_turnover", "FLOAT DEFAULT 5000000.0"),
-                ("agent_tier3_commission", "FLOAT DEFAULT 26.0"),
-                ("agent_tier4_turnover", "FLOAT DEFAULT 10000000.0"),
-                ("agent_tier4_commission", "FLOAT DEFAULT 30.0"),
-                ("telegram_finance_group_id", "VARCHAR(100) DEFAULT ''"),
-                ("auto_approve_max_amount", "FLOAT DEFAULT 50000.0"),
-                ("is_withdraw_hours_enabled", "BOOLEAN DEFAULT 0"),
-                ("is_2d_enabled", "BOOLEAN DEFAULT 1"),
-                ("twod_payout_multiplier", "FLOAT DEFAULT 85.0"),
-                ("twod_commission_rate", "FLOAT DEFAULT 15.0"),
-                ("twod_min_bet", "FLOAT DEFAULT 100.0"),
-                ("twod_max_bet", "FLOAT DEFAULT 50000.0"),
-                ("twod_max_risk_per_number", "FLOAT DEFAULT 100000.0"),
-                ("twod_morning_cutoff", "VARCHAR(20) DEFAULT '11:30 AM'"),
-                ("twod_evening_cutoff", "VARCHAR(20) DEFAULT '04:00 PM'"),
-                ("is_3d_enabled", "BOOLEAN DEFAULT 1"),
-                ("threed_straight_payout", "FLOAT DEFAULT 700.0"),
-                ("threed_tote_payout", "FLOAT DEFAULT 10.0"),
-                ("threed_commission_rate", "FLOAT DEFAULT 15.0"),
-                ("threed_min_bet", "FLOAT DEFAULT 100.0"),
-                ("threed_max_bet", "FLOAT DEFAULT 50000.0"),
-                ("threed_max_risk_per_number", "FLOAT DEFAULT 200000.0"),
-                ("threed_draw_cutoff", "VARCHAR(20) DEFAULT '02:30 PM'"),
-                ("is_mini_games_enabled", "BOOLEAN DEFAULT 1"),
-                ("minigames_rtp_rate", "FLOAT DEFAULT 95.0"),
-                ("minigames_min_bet", "FLOAT DEFAULT 50.0"),
-                ("minigames_max_bet", "FLOAT DEFAULT 50000.0"),
-            ]
-            for col_name, col_type in settings_cols:
-                try:
-                    conn.execute(text(f"ALTER TABLE system_settings ADD COLUMN {col_name} {col_type}"))
-                except Exception:
-                    pass
+                # Safely synchronize PostgreSQL primary key sequences
+                for seq_tbl in ["lottery_draws", "twod_draws", "threed_draws", "bet_slips", "bet_items", "users", "transactions", "financial_ledger", "mini_game_bets", "mini_game_daily_statements"]:
+                    try:
+                        ac_conn.execute(text(f"SELECT setval(pg_get_serial_sequence('{seq_tbl}', 'id'), coalesce(max(id), 1), true) FROM {seq_tbl}"))
+                    except Exception:
+                        pass
+            else:
+                sqlite_ddls = [
+                    "CREATE TABLE IF NOT EXISTS system_migrations (name VARCHAR(100) PRIMARY KEY, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)",
+                    "ALTER TABLE bet_items ADD COLUMN edit_logs_json TEXT DEFAULT '[]'",
+                    "ALTER TABLE bet_slips ADD COLUMN game_type VARCHAR(10) DEFAULT '4D'",
+                    "ALTER TABLE bet_items ADD COLUMN game_type VARCHAR(10) DEFAULT '4D'",
+                    "CREATE INDEX IF NOT EXISTS ix_bet_slips_game_draw_status ON bet_slips (game_type, draw_id, status)",
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_twod_draws_date_session ON twod_draws (draw_date, session)",
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_threed_draws_date ON threed_draws (draw_date)",
+                ]
+                for ddl in sqlite_ddls:
+                    try:
+                        ac_conn.execute(text(ddl))
+                    except Exception:
+                        pass
     except Exception as ddl_ex:
         print(f"Lifespan schema update notice: {ddl_ex}")
 
@@ -311,7 +209,9 @@ async def lifespan(app: FastAPI):
         hour=2,
         minute=0,
         id="nightly_archiving_job",
-        replace_existing=True
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
     )
 
     # 1b. Schedule Mini-Games Weekly Archiving (older than 7 days) and 6-Month Purge
@@ -322,18 +222,22 @@ async def lifespan(app: FastAPI):
         hour=3,
         minute=0,
         id="weekly_minigames_archiving_job",
-        replace_existing=True
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
     )
 
-    # 2. Schedule Weekly Bonus Distribution EVERY MONDAY AT 11:00 AM MMT
+    # 2. Unified Tuesday 11:00 AM MMT Weekly Settlement (10% Player Bonus + Weekly Agent Commissions)
     scheduler.add_job(
-        calculate_and_distribute_weekly_bonus,
+        run_tuesday_weekly_settlement,
         "cron",
-        day_of_week="mon",
+        day_of_week="tue",
         hour=11,
         minute=0,
-        id="monday_weekly_bonus_distribution",
-        replace_existing=True
+        id="tuesday_weekly_settlement_pipeline",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
     )
 
     # 3. Schedule Draw Cutoff Reminder at 03:30 PM MMT on Draw Days (Wed, Sat, Sun)
@@ -344,12 +248,13 @@ async def lifespan(app: FastAPI):
         hour=15,
         minute=30,
         id="draw_cutoff_reminder_job",
-        replace_existing=True
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
     )
 
     # 4. Schedule Singapore Pools Official Results Polling:
     # Runs every 60 seconds on Wed, Sat, Sun between 5:55 PM MMT and 8:30 PM MMT
-    # (Covers normal 6:00 PM MMT draws and delayed 1st Wednesday / Big Sweep draws until result out)
     scheduler.add_job(
         poll_singapore_pools_job,
         "cron",
@@ -357,7 +262,9 @@ async def lifespan(app: FastAPI):
         hour="17,18,19,20",
         minute="*",
         id="singapore_pools_draw_polling_job",
-        replace_existing=True
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
     )
 
     # 5. Heartbeat check every 10 minutes for any delayed or unclosed draws
@@ -366,7 +273,9 @@ async def lifespan(app: FastAPI):
         "interval",
         minutes=10,
         id="singapore_pools_background_heartbeat",
-        replace_existing=True
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
     )
 
     # 6. Check and notify pending withdrawal reviews immediately on startup, then every 3 minutes
@@ -376,11 +285,12 @@ async def lifespan(app: FastAPI):
         minutes=3,
         next_run_time=datetime.now(pytz.timezone(settings.TIMEZONE_MMT)),
         id="pending_withdrawals_telegram_reminder_job",
-        replace_existing=True
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
     )
 
-    # 7. Thai 2D Live Results Polling & Settlement:
-    # Runs during draw settlement windows (12:01 PM & 04:30 PM MMT) and heartbeat every 5 mins
+    # 7. Thai 2D Live Results Polling & Settlement (Weekdays only, non-overlapping)
     from app.core.twod_service import poll_and_settle_2d_job
     try:
         poll_and_settle_2d_job()
@@ -390,10 +300,25 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(
         poll_and_settle_2d_job,
         "cron",
-        hour="12,16",
-        minute="1,2,3,4,5,6,7,8,9,10,30,31,32,33,34,35,36,37,38,39,40,45",
-        id="thai_2d_settlement_cron",
-        replace_existing=True
+        day_of_week="mon-fri",
+        hour="12",
+        minute="1,2,3,4,5,6,7,8,9,10",
+        id="thai_2d_morning_settlement_cron",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
+
+    scheduler.add_job(
+        poll_and_settle_2d_job,
+        "cron",
+        day_of_week="mon-fri",
+        hour="16",
+        minute="30,31,32,33,34,35,36,37,38,39,40,45",
+        id="thai_2d_evening_settlement_cron",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
     )
 
     scheduler.add_job(
@@ -401,38 +326,54 @@ async def lifespan(app: FastAPI):
         "interval",
         minutes=5,
         id="thai_2d_background_heartbeat",
-        replace_existing=True
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
     )
 
-        # 8. Thai 3D Live Results Polling & Settlement:
-    # Official Thai Government Lottery (GLO) drawn on 1st & 16th of each month (~03:30 PM MMT)
-    # Starts fast-polling at 03:28 PM MMT to guarantee complete settlement by 03:30 PM ~ 03:33 PM MMT
+    # 8. Thai 3D Live Results Polling & Settlement (1st & 16th of each month, non-overlapping windows)
     from app.core.threed_service import poll_and_settle_3d_job
     try:
         poll_and_settle_3d_job()
     except Exception as e:
         print(f"Startup 3D settlement notice: {e}")
 
-    # Critical rush-window polling every single minute from 03:28 PM to 03:36 PM on 1st & 16th
+    # Fast-polling every minute during rush window 15:28 - 15:40 MMT on 1st & 16th
     scheduler.add_job(
         poll_and_settle_3d_job,
         "cron",
         day="1,16",
         hour=15,
-        minute="28,29,30,31,32,33,34,35,36,37,38,39,40",
+        minute="28-40",
         id="thai_3d_fast_settlement_cron",
-        replace_existing=True
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
     )
 
-    # Secondary polling every 2 minutes between 15:41 and 17:30 MMT on draw days
+    # Secondary polling every 2 minutes AFTER rush window (15:42-15:58 & 16:00-17:30 MMT)
     scheduler.add_job(
         poll_and_settle_3d_job,
         "cron",
         day="1,16",
-        hour="15,16,17",
+        hour=15,
+        minute="42-58/2",
+        id="thai_3d_post_rush_cron",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
+
+    scheduler.add_job(
+        poll_and_settle_3d_job,
+        "cron",
+        day="1,16",
+        hour="16,17",
         minute="*/2",
         id="thai_3d_settlement_cron",
-        replace_existing=True
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
     )
 
     # General heartbeat every 15 minutes to catch any delayed or rescheduled GLO draws
@@ -441,10 +382,12 @@ async def lifespan(app: FastAPI):
         "interval",
         minutes=15,
         id="thai_3d_background_heartbeat",
-        replace_existing=True
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
     )
 
-        # 9. Auto-Close Expired 3D & 2D Draws and Advance Next Upcoming Draws
+    # 9. Auto-Close Expired 3D & 2D Draws and Advance Next Upcoming Draws
     def auto_close_and_advance_draws_job():
         db = SessionLocal()
         try:
@@ -466,15 +409,17 @@ async def lifespan(app: FastAPI):
         "interval",
         minutes=5,
         id="auto_close_and_advance_draws_interval",
-        replace_existing=True
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
     )
 
     scheduler.start()
     print("APScheduler started: Active schedules:")
     print("  - Nightly 02:00 AM MMT 3-month Data Archiving")
-    print("  - Every Monday 11:00 AM MMT 10% Weekly Bonus Settlement")
+    print("  - Every Tuesday 11:00 AM MMT Weekly Bonus & Agent Commission Settlement")
     print("  - Wed/Sat/Sun 03:30 PM MMT 4:30 PM Cutoff Reminders")
-    print("  - Wed/Sat/Sun 06:00 PM MMT Singapore Pools Results Polling (Query until result out)")
+    print("  - Wed/Sat/Sun 06:00 PM MMT Singapore Pools Results Polling")
     print("  - Recurring 3-min Telegram Pending Withdrawal Reminders")
     
     # 7. Start Telegram Bot Background Listener for Sign Up / Forgot Password OTP

@@ -77,15 +77,21 @@ def calculate_and_distribute_weekly_bonus(db: Session = None) -> Dict[str, Any]:
         total_bonus_distributed = 0.0
 
         for player in players:
-            # Query bets placed by player for draws in previous week
+            # Query 4D bets placed by player for draws in previous week (explicit join ON-clause + game_type=="4D")
             # Slips must not be VOID or CANCELLED
-            slips = db.query(BetSlip).join(LotteryDraw).filter(
-                BetSlip.user_id == player.id,
-                BetSlip.status != BetSlipStatus.VOID,
-                BetSlip.status != BetSlipStatus.CANCELLED,
-                LotteryDraw.draw_date >= prev_monday_str,
-                LotteryDraw.draw_date <= prev_sunday_str
-            ).all()
+            slips = (
+                db.query(BetSlip, LotteryDraw.draw_date)
+                .join(LotteryDraw, BetSlip.draw_id == LotteryDraw.id)
+                .filter(
+                    BetSlip.user_id == player.id,
+                    BetSlip.game_type == "4D",
+                    BetSlip.status != BetSlipStatus.VOID,
+                    BetSlip.status != BetSlipStatus.CANCELLED,
+                    LotteryDraw.draw_date >= prev_monday_str,
+                    LotteryDraw.draw_date <= prev_sunday_str
+                )
+                .all()
+            )
 
             if not slips:
                 continue
@@ -94,8 +100,7 @@ def calculate_and_distribute_weekly_bonus(db: Session = None) -> Dict[str, Any]:
             daily_bets = {}
             total_week_bets = 0.0
 
-            for slip in slips:
-                draw_date = slip.draw.draw_date
+            for slip, draw_date in slips:
                 daily_bets[draw_date] = daily_bets.get(draw_date, 0.0) + slip.total_stake
                 total_week_bets += slip.total_stake
 
