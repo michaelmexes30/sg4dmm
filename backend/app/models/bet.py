@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, Enum, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, Float, DateTime, Enum, ForeignKey, Text, Index
 from sqlalchemy.orm import relationship
 import enum
 import json
@@ -14,11 +14,15 @@ class BetSlipStatus(str, enum.Enum):
 
 class BetSlip(Base):
     __tablename__ = "bet_slips"
+    __table_args__ = (
+        Index("ix_bet_slips_game_draw_status", "game_type", "draw_id", "status"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     slip_code = Column(String(32), unique=True, index=True, nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
-    draw_id = Column(Integer, ForeignKey("lottery_draws.id"), nullable=False, index=True)
+    # Polymorphic draw_id referencing lottery_draws (4D), twod_draws (2D), or threed_draws (3D)
+    draw_id = Column(Integer, nullable=False, index=True)
     
     total_stake = Column(Float, nullable=False)
     total_payout = Column(Float, default=0.0)
@@ -36,7 +40,12 @@ class BetSlip(Base):
     # Relationships
     user = relationship("User", foreign_keys=[user_id], back_populates="bets")
     agent = relationship("User", foreign_keys=[agent_id])
-    draw = relationship("LotteryDraw", back_populates="bets")
+    draw = relationship(
+        "LotteryDraw",
+        primaryjoin="and_(foreign(BetSlip.draw_id) == LotteryDraw.id, BetSlip.game_type == '4D')",
+        back_populates="bets",
+        viewonly=True,
+    )
     items = relationship("BetItem", back_populates="slip", cascade="all, delete-orphan")
 
     @property

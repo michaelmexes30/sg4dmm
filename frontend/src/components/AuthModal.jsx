@@ -115,8 +115,8 @@ export default function AuthModal({ isOpen, onClose, allowClose = true }) {
       } else {
         setSuccessMsg(
           lang === 'mm'
-            ? '📲 Telegram Bot ပွင့်သွားပါက "START" ခလုတ်ကို နှိပ်လိုက်သည်နှင့် OTP ကုဒ်ကို Bot မှ ချက်ချင်း ပို့ပေးပါမည်!'
-            : '📲 Tap START in Telegram Bot to instantly receive your OTP code!'
+            ? '📲 Telegram Bot ပွင့်သွားပါက "START" နှိပ်ပြီး [📱 ဖုန်းနံပါတ် အတည်ပြုရန် (Share Contact)] ခလုတ်ကို နှိပ်လိုက်သည်နှင့် OTP ကုဒ်ကို Bot မှ ချက်ချင်း ပို့ပေးပါမည်!'
+            : '📲 Tap START in Telegram Bot, then tap "Share Contact" to verify ownership and instantly receive your OTP code!'
         );
         // Direct launch native Telegram app or browser deep link
         const tgAppUri = `tg://resolve?domain=SG4DMyanmarBot&start=otp_${cleanPhone}`;

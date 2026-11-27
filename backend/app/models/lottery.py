@@ -43,7 +43,12 @@ class LotteryDraw(Base):
     created_at = Column(DateTime, default=now_mmt)
 
     # Relationships
-    bets = relationship("BetSlip", back_populates="draw")
+    bets = relationship(
+        "BetSlip",
+        primaryjoin="and_(foreign(BetSlip.draw_id) == LotteryDraw.id, BetSlip.game_type == '4D')",
+        back_populates="draw",
+        viewonly=True,
+    )
 
     @property
     def starter_prizes(self):

@@ -95,9 +95,11 @@ def settle_draw(
     4. Logs PAYOUT_EXPENSE in the Financial Ledger.
     5. Dispatches payout notifications to winners and broad announcements.
     """
-    draw = db.query(LotteryDraw).filter(LotteryDraw.id == req.draw_id).first()
+    draw = db.query(LotteryDraw).filter(LotteryDraw.id == req.draw_id).with_for_update().first()
     if not draw:
         raise HTTPException(status_code=404, detail="Draw not found.")
+    if draw.status == DrawStatus.SETTLED:
+        raise HTTPException(status_code=400, detail=f"Draw #{draw.draw_number} has already been settled.")
 
     draw_results_payload = {
         "first_prize": req.first_prize.strip(),
@@ -143,7 +145,8 @@ def settle_draw(
                     big_stake=int(item.big_amount),
                     small_stake=int(item.small_amount),
                     draw_results=draw_results_payload,
-                    bet_type=item.bet_type
+                    bet_type=item.bet_type,
+                    is_expanded_combo=True
                 )
                 if res["is_won"]:
                     item_payout += res["total_payout"]
@@ -167,8 +170,8 @@ def settle_draw(
             total_winners += 1
             total_draw_payout += slip_total_payout
 
-            # Credit user balance immediately for instant withdrawal
-            user = db.query(User).filter(User.id == slip.user_id).first()
+            # Credit user balance immediately for instant withdrawal (row-locked)
+            user = db.query(User).filter(User.id == slip.user_id).with_for_update().first()
             if user:
                 user.balance += slip_total_payout
 
@@ -291,6 +294,7 @@ def settle_draw(
 @router.post("/sync-sgpools")
 def sync_with_singapore_pools(
     target_date: Optional[str] = None,
+    admin_user: User = Depends(get_current_admin),
     db: Session = Depends(get_db)
 ):
     """

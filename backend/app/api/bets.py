@@ -272,7 +272,7 @@ def place_bet_slip(
 
     target_draw_ids = []
     if req.draw_ids and len(req.draw_ids) > 0:
-        target_draw_ids = req.draw_ids
+        target_draw_ids = list(dict.fromkeys(req.draw_ids))
     elif req.draw_id:
         target_draw_ids = [req.draw_id]
     else:
@@ -377,7 +377,17 @@ def place_bet_slip(
     draw_count = len(draws)
     grand_total_stake = total_single_draw_stake * draw_count
 
-    # 3. Balance Check & Agent Credit Limit Support
+    # 3. Row-Locked Balance Check & Agent Credit Limit Support (prevents concurrent double-spend)
+    locked_user = db.query(User).filter(User.id == current_user.id).with_for_update().first()
+    if not locked_user:
+        raise HTTPException(status_code=404, detail="User not found.")
+    if getattr(locked_user, 'is_betting_locked', False):
+        raise HTTPException(
+            status_code=403,
+            detail="သင့်အကောင့်သည် အပတ်စဉ် စာရင်းမရှင်းရသေးသောကြောင့် ထိုးခွင့်ယာယီပိတ်ထားပါသည် (Betting is locked due to unsettled weekly balance). ကျေးဇူးပြု၍ Admin ထံ စာရင်းရှင်းလင်းပေးပါခင်ဗျာ။"
+        )
+    current_user = locked_user
+
     setting_row = db.query(SystemSetting).first()
     is_credit_enabled = bool(setting_row.is_agent_credit_enabled) if setting_row and hasattr(setting_row, "is_agent_credit_enabled") else False
 
@@ -392,7 +402,7 @@ def place_bet_slip(
         current_user.used_credit = (current_user.used_credit or 0.0) + grand_total_stake
     else:
         # Regular user OR Agent when credit feature is suspended
-        if current_user.balance < grand_total_stake:
+        if float(current_user.balance or 0.0) < grand_total_stake:
             if current_user.role == UserRole.AGENT:
                 raise HTTPException(
                     status_code=400,
@@ -403,7 +413,7 @@ def place_bet_slip(
                     status_code=400,
                     detail=f"Insufficient balance! Required: {grand_total_stake:,.0f} MMK ({total_single_draw_stake:,.0f} MMK x {draw_count} draws), Current Balance: {current_user.balance:,.0f} MMK. Please deposit via KPay/WavePay/AYAPay."
                 )
-        current_user.balance -= grand_total_stake
+        current_user.balance = float(current_user.balance or 0.0) - grand_total_stake
 
     # 4. Determine Associated Agent (Referral or Direct Agent Betting)
     agent = None
@@ -681,18 +691,23 @@ def place_2d_bet_slip(
         total_stake += amt
         valid_items.append((clean_num, amt))
 
-    # Wallet & Credit Balance check
+    # Row-locked Wallet & Credit Balance check (prevents concurrent double-spend)
+    locked_user = db.query(User).filter(User.id == current_user.id).with_for_update().first()
+    if not locked_user:
+        raise HTTPException(status_code=404, detail="User not found.")
+    current_user = locked_user
+
     is_agent = current_user.role == UserRole.AGENT
-    is_credit_enabled = getattr(current_user, 'is_agent_credit_enabled', False)
+    is_credit_enabled = bool(getattr(setting, "is_agent_credit_enabled", False)) if setting else False
     if is_agent and is_credit_enabled:
         available_credit = max(0.0, float(current_user.credit_limit or 0) - float(current_user.used_credit or 0))
         if available_credit < total_stake:
             raise HTTPException(status_code=400, detail=f"Credit လက်ကျန် မလုံလောက်ပါ (လိုအပ်ငွေ: {total_stake:,.0f} Ks, လက်ကျန် Credit: {available_credit:,.0f} Ks)")
         current_user.used_credit = float(current_user.used_credit or 0) + total_stake
     else:
-        if current_user.balance < total_stake:
+        if float(current_user.balance or 0.0) < total_stake:
             raise HTTPException(status_code=400, detail=f"လက်ကျန်ငွေ မလုံလောက်ပါ (လိုအပ်ငွေ: {total_stake:,.0f} Ks, လက်ကျန်ငွေ: {current_user.balance:,.0f} Ks)")
-        current_user.balance = float(current_user.balance) - total_stake
+        current_user.balance = float(current_user.balance or 0.0) - total_stake
 
     # Find referring agent if customer
     agent = None
@@ -858,18 +873,23 @@ def place_3d_bet_slip(
         total_stake += item_tot
         valid_items.append((clean_num, btype, amt, combos, item_tot))
 
-    # Wallet & Credit Balance check
+    # Row-locked Wallet & Credit Balance check (prevents concurrent double-spend)
+    locked_user = db.query(User).filter(User.id == current_user.id).with_for_update().first()
+    if not locked_user:
+        raise HTTPException(status_code=404, detail="User not found.")
+    current_user = locked_user
+
     is_agent = current_user.role == UserRole.AGENT
-    is_credit_enabled = getattr(current_user, 'is_agent_credit_enabled', False)
+    is_credit_enabled = bool(getattr(setting, "is_agent_credit_enabled", False)) if setting else False
     if is_agent and is_credit_enabled:
         available_credit = max(0.0, float(current_user.credit_limit or 0) - float(current_user.used_credit or 0))
         if available_credit < total_stake:
             raise HTTPException(status_code=400, detail=f"Credit လက်ကျန် မလုံလောက်ပါ (လိုအပ်ငွေ: {total_stake:,.0f} Ks, လက်ကျန် Credit: {available_credit:,.0f} Ks)")
         current_user.used_credit = float(current_user.used_credit or 0) + total_stake
     else:
-        if current_user.balance < total_stake:
+        if float(current_user.balance or 0.0) < total_stake:
             raise HTTPException(status_code=400, detail=f"လက်ကျန်ငွေ မလုံလောက်ပါ (လိုအပ်ငွေ: {total_stake:,.0f} Ks, လက်ကျန်ငွေ: {current_user.balance:,.0f} Ks)")
-        current_user.balance = float(current_user.balance) - total_stake
+        current_user.balance = float(current_user.balance or 0.0) - total_stake
 
     agent = None
     if current_user.agent_id:

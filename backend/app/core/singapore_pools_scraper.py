@@ -188,6 +188,18 @@ def settle_draw_with_official_results(
     settle_time = now_mmt()
     today_str = settle_time.strftime("%Y-%m-%d")
 
+    # Lock draw row to guarantee idempotent settlement (prevents concurrent double-payouts)
+    locked_draw = db.query(LotteryDraw).filter(LotteryDraw.id == draw.id).with_for_update().first()
+    if not locked_draw or locked_draw.status == DrawStatus.SETTLED:
+        logger.info(f"Draw {draw.id} ({draw.draw_date}) is already settled; skipping duplicate settlement.")
+        return {
+            "status": "already_settled",
+            "draw_id": draw.id,
+            "draw_date": draw.draw_date,
+            "draw_number": draw.draw_number
+        }
+    draw = locked_draw
+
     # Update draw record with official results
     draw.first_prize = official_data["first_prize"]
     draw.second_prize = official_data["second_prize"]
@@ -207,9 +219,10 @@ def settle_draw_with_official_results(
         "consolidation_prizes": official_data["consolation_prizes"]
     }
 
-    # Query all pending bet slips for this draw
+    # Query strictly 4D pending bet slips for this draw (never touch 2D/3D slips sharing the same draw_id!)
     slips = db.query(BetSlip).filter(
         BetSlip.draw_id == draw.id,
+        BetSlip.game_type == "4D",
         BetSlip.status == BetSlipStatus.PENDING
     ).all()
 
@@ -231,7 +244,8 @@ def settle_draw_with_official_results(
                     big_stake=int(item.big_amount),
                     small_stake=int(item.small_amount),
                     draw_results=draw_results_payload,
-                    bet_type=item.bet_type
+                    bet_type=item.bet_type,
+                    is_expanded_combo=True
                 )
                 if res["is_won"]:
                     item_payout += res["total_payout"]
@@ -255,8 +269,8 @@ def settle_draw_with_official_results(
             total_winners += 1
             total_draw_payout += slip_total_payout
 
-            # Credit real player wallet immediately for withdrawal
-            player = db.query(User).filter(User.id == slip.user_id).first()
+            # Credit real player wallet immediately for withdrawal (row-locked)
+            player = db.query(User).filter(User.id == slip.user_id).with_for_update().first()
             if player:
                 player.balance += slip_total_payout
 

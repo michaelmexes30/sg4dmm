@@ -306,7 +306,7 @@ def revert_deposit_transaction(
     db: Session = Depends(get_db)
 ):
     try:
-        tx = db.query(Transaction).filter(Transaction.id == tx_id).first()
+        tx = db.query(Transaction).filter(Transaction.id == tx_id).with_for_update().first()
         if not tx:
             raise HTTPException(status_code=404, detail="Deposit transaction not found.")
 
@@ -322,7 +322,7 @@ def revert_deposit_transaction(
                 detail=f"Cannot revert deposit with status '{tx.status}'. Only AUTO_APPROVED or COMPLETED deposits can be reverted."
             )
 
-        user = db.query(User).filter(User.id == tx.user_id).first()
+        user = db.query(User).filter(User.id == tx.user_id).with_for_update().first()
         if not user:
             raise HTTPException(status_code=404, detail="Associated player user not found.")
 
@@ -395,7 +395,7 @@ def restore_deposit_transaction(
     db: Session = Depends(get_db)
 ):
     try:
-        tx = db.query(Transaction).filter(Transaction.id == tx_id).first()
+        tx = db.query(Transaction).filter(Transaction.id == tx_id).with_for_update().first()
         if not tx:
             raise HTTPException(status_code=404, detail="Deposit transaction not found.")
 
@@ -408,7 +408,7 @@ def restore_deposit_transaction(
                 detail=f"Cannot restore transaction with status '{tx.status}'. Only REVERTED deposits can be restored."
             )
 
-        user = db.query(User).filter(User.id == tx.user_id).first()
+        user = db.query(User).filter(User.id == tx.user_id).with_for_update().first()
         if not user:
             raise HTTPException(status_code=404, detail="Associated player user not found.")
 
@@ -495,17 +495,23 @@ def resolve_transaction(
             db=db
         )
 
-    tx = db.query(Transaction).filter(Transaction.id == tx_id).first()
+    tx = db.query(Transaction).filter(Transaction.id == tx_id).with_for_update().first()
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found.")
 
-    if tx.status in [TransactionStatus.AUTO_APPROVED, TransactionStatus.COMPLETED]:
-        raise HTTPException(status_code=400, detail="Transaction has already been approved.")
+    if tx.tx_type != TransactionType.DEPOSIT:
+        raise HTTPException(status_code=400, detail="Only DEPOSIT transactions can be resolved via this endpoint.")
+
+    if tx.status not in [TransactionStatus.MANUAL_REVIEW, TransactionStatus.FLAGGED_EXPIRED]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Transaction cannot be {action}ed from status '{tx.status.value if hasattr(tx.status, 'value') else tx.status}'. Only pending review deposits can be resolved."
+        )
 
     now = now_mmt()
     today_str = now.strftime("%Y-%m-%d")
 
-    user = db.query(User).filter(User.id == tx.user_id).first()
+    user = db.query(User).filter(User.id == tx.user_id).with_for_update().first()
     if action == "approve":
         tx.status = TransactionStatus.COMPLETED
         tx.reviewed_by = admin_user.nickname or admin_user.username or admin_user.phone or "Admin"
@@ -513,7 +519,7 @@ def resolve_transaction(
         tx.verification_notes = f"{tx.verification_notes} | Manually approved: {review_notes or ''}"
 
         if user:
-            user.balance += tx.amount
+            user.balance = float(user.balance or 0.0) + tx.amount
             ledger = FinancialLedger(
                 entry_type=LedgerEntryType.DEPOSIT,
                 amount=tx.amount,
@@ -542,16 +548,17 @@ def resolve_transaction(
                 daily_summary = DailyLedgerSummary(
                     date_str=today_str,
                     total_deposits=tx.amount,
-                    net_profit=tx.amount,
+                    net_profit=0.0,
                     total_transactions_count=1,
                     updated_at_mmt=now
                 )
                 db.add(daily_summary)
             else:
                 daily_summary.total_deposits += tx.amount
-                daily_summary.net_profit += tx.amount
                 daily_summary.total_transactions_count += 1
                 daily_summary.updated_at_mmt = now
+
+        db.commit()
 
         try:
             from app.core.telegram_bot import notify_finance_alert
@@ -586,6 +593,8 @@ def resolve_transaction(
             )
             db.add(notif)
 
+        db.commit()
+
         try:
             from app.core.telegram_bot import notify_finance_alert
             notify_finance_alert(
@@ -602,7 +611,6 @@ def resolve_transaction(
         except Exception:
             pass
 
-    db.commit()
     return {"status": "success", "tx_id": tx.id, "new_status": tx.status}
 
 @router.post("/trigger-weekly-bonus")
@@ -2671,13 +2679,18 @@ def accept_withdrawal(
     admin_user: User = Depends(get_current_admin),
     db: Session = Depends(get_db)
 ):
-    tx = db.query(Transaction).filter(Transaction.id == tx_id).first()
+    tx = db.query(Transaction).filter(Transaction.id == tx_id).with_for_update().first()
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
-    if tx.status in [TransactionStatus.COMPLETED, TransactionStatus.AUTO_APPROVED]:
-        raise HTTPException(status_code=400, detail="Already approved")
+    if tx.tx_type != TransactionType.WITHDRAWAL:
+        raise HTTPException(status_code=400, detail="Transaction is not a withdrawal.")
+    if tx.status != TransactionStatus.MANUAL_REVIEW:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot accept withdrawal with status '{tx.status.value if hasattr(tx.status, 'value') else tx.status}'. Only pending withdrawals can be accepted."
+        )
 
-    user = db.query(User).filter(User.id == tx.user_id).first()
+    user = db.query(User).filter(User.id == tx.user_id).with_for_update().first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -2734,13 +2747,18 @@ def reject_withdrawal(
     admin_user: User = Depends(get_current_admin),
     db: Session = Depends(get_db)
 ):
-    tx = db.query(Transaction).filter(Transaction.id == tx_id).first()
+    tx = db.query(Transaction).filter(Transaction.id == tx_id).with_for_update().first()
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
-    if tx.status == TransactionStatus.REJECTED:
-        raise HTTPException(status_code=400, detail="Already rejected")
+    if tx.tx_type != TransactionType.WITHDRAWAL:
+        raise HTTPException(status_code=400, detail="Transaction is not a withdrawal.")
+    if tx.status != TransactionStatus.MANUAL_REVIEW:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot reject withdrawal with status '{tx.status.value if hasattr(tx.status, 'value') else tx.status}'. Only pending withdrawals can be rejected and refunded."
+        )
 
-    user = db.query(User).filter(User.id == tx.user_id).first()
+    user = db.query(User).filter(User.id == tx.user_id).with_for_update().first()
     now = now_mmt()
     
     rejection_reason = (reason.strip() if (reason and reason.strip()) else "") or \
@@ -2811,18 +2829,40 @@ def revert_withdrawal(
     admin_user: User = Depends(get_current_admin),
     db: Session = Depends(get_db)
 ):
-    tx = db.query(Transaction).filter(Transaction.id == tx_id).first()
+    tx = db.query(Transaction).filter(Transaction.id == tx_id).with_for_update().first()
     if not tx:
         raise HTTPException(status_code=404, detail="Transaction not found")
+    if tx.tx_type != TransactionType.WITHDRAWAL:
+        raise HTTPException(status_code=400, detail="Transaction is not a withdrawal.")
+    if tx.status not in [TransactionStatus.COMPLETED, TransactionStatus.REJECTED]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot revert withdrawal with status '{tx.status.value if hasattr(tx.status, 'value') else tx.status}'."
+        )
 
-    user = db.query(User).filter(User.id == tx.user_id).first()
+    user = db.query(User).filter(User.id == tx.user_id).with_for_update().first()
     now = now_mmt()
+    operator = admin_user.username or admin_user.full_name or "Admin"
 
     if tx.status == TransactionStatus.REJECTED and user:
-        user.balance = max(0.0, user.balance - tx.amount)
+        if float(user.balance or 0.0) < float(tx.amount):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot revert rejected withdrawal: player balance ({user.balance:,.0f} MMK) is less than refund amount ({tx.amount:,.0f} MMK)."
+            )
+        user.balance = float(user.balance or 0.0) - float(tx.amount)
+        db.add(FinancialLedger(
+            entry_type=LedgerEntryType.ADJUSTMENT,
+            amount=-float(tx.amount),
+            running_balance=user.balance,
+            reference_id=tx.transaction_id,
+            reference_type="WITHDRAWAL_REVERT",
+            description=f"Rejected Withdrawal Reverted to Pending by {operator} (-{tx.amount:,.0f} MMK from {user.phone})",
+            logged_at_mmt=now,
+            date_str=now.strftime("%Y-%m-%d")
+        ))
 
     tx.status = TransactionStatus.MANUAL_REVIEW
-    operator = admin_user.username or admin_user.full_name or "Mgnitoot"
     tx.verification_notes = f"Revert By {operator}"
     tx.reviewed_at = None
 
@@ -3248,7 +3288,7 @@ def adjust_app_user_balance(
     admin_user: User = Depends(get_current_admin),
     db: Session = Depends(get_db)
 ):
-    u = db.query(User).filter(User.id == user_id, User.is_simulated == False).first()
+    u = db.query(User).filter(User.id == user_id, User.is_simulated == False).with_for_update().first()
     if not u:
         raise HTTPException(status_code=404, detail="Player not found")
     

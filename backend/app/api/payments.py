@@ -1,5 +1,6 @@
 import os
 import uuid
+import secrets
 import aiofiles
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
@@ -59,21 +60,55 @@ def get_official_receivers(db: Session = Depends(get_db)):
         "current_time_mmt": now_mmt().strftime("%Y-%m-%d %I:%M:%S %p MMT")
     }
 
+MAX_SLIP_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 MB max
+
+
+def _is_valid_image_magic(data: bytes, ext: str) -> bool:
+    """Validates actual image file header magic bytes without external library dependency."""
+    if len(data) < 12:
+        return False
+    if ext in (".jpg", ".jpeg"):
+        return data[:3] == b"\xff\xd8\xff"
+    if ext == ".png":
+        return data[:8] == b"\x89PNG\r\n\x1a\n"
+    if ext == ".webp":
+        return data[:4] == b"RIFF" and data[8:12] == b"WEBP"
+    return False
+
+
 @router.post("/upload-slip")
-async def upload_payment_slip(file: UploadFile = File(...)):
+async def upload_payment_slip(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user)
+):
     """
-    Uploads user payment receipt screenshot.
+    Uploads user payment receipt screenshot (authenticated, max 5MB, verified image magic bytes).
     """
-    allowed_exts = [".jpg", ".jpeg", ".png", ".webp"]
-    _, ext = os.path.splitext(file.filename)
-    if ext.lower() not in allowed_exts:
+    allowed_exts = {".jpg", ".jpeg", ".png", ".webp"}
+    _, ext = os.path.splitext(file.filename or "")
+    ext = ext.lower()
+    if ext not in allowed_exts:
         raise HTTPException(status_code=400, detail="Allowed image formats: JPG, PNG, WEBP.")
 
-    unique_filename = f"slip_{uuid.uuid4().hex}{ext.lower()}"
+    chunks = []
+    total_size = 0
+    while True:
+        chunk = await file.read(65536)
+        if not chunk:
+            break
+        total_size += len(chunk)
+        if total_size > MAX_SLIP_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="Receipt image exceeds 5MB maximum size limit.")
+        chunks.append(chunk)
+
+    content = b"".join(chunks)
+    if not _is_valid_image_magic(content, ext):
+        raise HTTPException(status_code=400, detail="Invalid or corrupted image file. Please upload a valid JPG, PNG, or WEBP screenshot.")
+
+    unique_filename = f"slip_{uuid.uuid4().hex}{ext}"
     file_path = os.path.join(UPLOAD_DIR, unique_filename)
 
     async with aiofiles.open(file_path, "wb") as out_file:
-        content = await file.read()
         await out_file.write(content)
 
     return {
@@ -154,20 +189,25 @@ def submit_withdrawal(
 
     if req.amount < 1000.0:
         raise HTTPException(status_code=400, detail="Minimum withdrawal amount is 1,000 MMK.")
-    
-    if current_user.balance < req.amount:
+
+    # Lock user row to prevent concurrent withdrawal double-spend race conditions
+    locked_user = db.query(User).filter(User.id == current_user.id).with_for_update().first()
+    if not locked_user:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    if float(locked_user.balance or 0.0) < req.amount:
         raise HTTPException(
             status_code=400, 
-            detail=f"Insufficient balance. Your current balance is {current_user.balance:,.0f} MMK."
+            detail=f"Insufficient balance. Your current balance is {locked_user.balance:,.0f} MMK."
         )
 
-    tx_code = f"WD{current_time.strftime('%Y%m%d%H%M%S')}{current_user.id}"
+    tx_code = f"WD{current_time.strftime('%Y%m%d%H%M%S')}{locked_user.id}-{secrets.token_hex(3).upper()}"
 
-    # Deduct balance immediately
-    current_user.balance -= req.amount
+    # Deduct balance atomically under FOR UPDATE lock
+    locked_user.balance = float(locked_user.balance or 0.0) - req.amount
 
     tx = Transaction(
-        user_id=current_user.id,
+        user_id=locked_user.id,
         tx_type=TransactionType.WITHDRAWAL,
         gateway=req.gateway.lower(),
         transaction_id=tx_code,
@@ -184,10 +224,10 @@ def submit_withdrawal(
     ledger = FinancialLedger(
         entry_type=LedgerEntryType.WITHDRAWAL,
         amount=-req.amount,
-        running_balance=current_user.balance,
+        running_balance=locked_user.balance,
         reference_id=tx_code,
         reference_type="WITHDRAWAL",
-        description=f"Withdrawal request by {current_user.phone} ({req.amount:,.0f} MMK via {req.gateway.upper()})",
+        description=f"Withdrawal request by {locked_user.phone} ({req.amount:,.0f} MMK via {req.gateway.upper()})",
         logged_at_mmt=current_time,
         date_str=current_time.strftime("%Y-%m-%d")
     )
@@ -195,7 +235,7 @@ def submit_withdrawal(
 
     # Notification to user
     notif = Notification(
-        user_id=current_user.id,
+        user_id=locked_user.id,
         title="⏳ ငွေထုတ်ယူခွင့် တောင်းဆိုလွှာ (Pending)",
         message=f"သင့်ငွေထုတ်ယူမှု {req.amount:,.0f} MMK ({req.gateway.upper()} - {req.receiver_account}) ကို တင်သွင်းပြီးဖြစ်၍ ဆိုင်းငံ့ (Pending) စာရင်းသွင်းထားပါသည်။ လက်ကျန်ငွေမှ နုတ်ယူထားပြီးဖြစ်ပြီး Admin မှ စိစစ်လွှဲပြောင်းပေးပါက ထပ်မံအကြောင်းကြားပေးပါမည်။ / Withdrawal of {req.amount:,.0f} MMK submitted and pending review. Funds have been deducted from your wallet balance.",
         category="Withdraw",
@@ -208,15 +248,15 @@ def submit_withdrawal(
     db.commit()
     db.refresh(tx)
 
-    # Real-time Telegram Finance Alert for withdrawal >= 50,000 MMK
+    # Real-time Telegram Finance Alert
     try:
         from app.core.telegram_bot import notify_finance_alert
         notify_finance_alert(
             db=db,
             tx_type="WITHDRAWAL",
             amount=req.amount,
-            user_phone=current_user.phone,
-            user_name=current_user.nickname or current_user.full_name or current_user.username,
+            user_phone=locked_user.phone,
+            user_name=locked_user.nickname or locked_user.full_name or locked_user.username,
             gateway=req.gateway,
             transaction_id=tx_code,
             status="MANUAL_REVIEW",
@@ -229,7 +269,7 @@ def submit_withdrawal(
         "success": True,
         "transaction_id": tx.id,
         "amount": req.amount,
-        "new_balance": current_user.balance,
+        "new_balance": locked_user.balance,
         "status": "MANUAL_REVIEW",
         "message": f"ငွေထုတ်ယူခွင့် တောင်းဆိုမှု တင်သွင်းခြင်း အောင်မြင်ပါသည်။ လက်ရှိ အခြေအနေမှာ ဆိုင်းငံ့ (Pending) ဖြစ်ပြီး အကောင့်ထဲမှ ငွေ {req.amount:,.0f} MMK နုတ်ယူထားပြီးဖြစ်ပါသည်။ Admin ဘက်မှ လွှဲပြောင်းစိစစ်ပြီးပါက ငွေလွှဲပြီးစီးကြောင်း ထပ်မံအကြောင်းကြားပေးပါမည်။"
     }

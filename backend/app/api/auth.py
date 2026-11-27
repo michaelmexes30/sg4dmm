@@ -9,7 +9,10 @@ from app.core.timezone_utils import now_mmt, MMT_TZ
 
 router = APIRouter(prefix="/auth", tags=["Authentication & Agent Referral"])
 
-import random
+import secrets
+import time
+import threading
+from collections import defaultdict
 from datetime import timedelta
 from app.config import settings
 from app.models.user import User, UserRole, Notification, TelegramVerification, TelegramChatMapping
@@ -25,19 +28,89 @@ from app.schemas.user import (
 )
 from app.core.telegram_bot import normalize_phone, generate_and_save_otp, send_otp_to_telegram
 
+# Thread-safe in-memory rate limiting & brute-force guards for OTP endpoints
+_otp_guard_lock = threading.Lock()
+_otp_request_timestamps = defaultdict(list)  # phone -> [epoch_ts, ...]
+_otp_failed_attempts = defaultdict(list)     # phone -> [epoch_ts, ...]
+OTP_REQ_COOLDOWN_SECONDS = 30
+OTP_REQ_MAX_PER_15M = 5
+OTP_MAX_FAILED_ATTEMPTS_15M = 5
+OTP_WINDOW_SECONDS = 15 * 60
+
+
+def _check_otp_request_rate_limit(phone: str):
+    now_ts = time.time()
+    cutoff = now_ts - OTP_WINDOW_SECONDS
+    with _otp_guard_lock:
+        recent = [t for t in _otp_request_timestamps[phone] if t > cutoff]
+        if recent and (now_ts - recent[-1]) < OTP_REQ_COOLDOWN_SECONDS:
+            wait_sec = int(OTP_REQ_COOLDOWN_SECONDS - (now_ts - recent[-1])) + 1
+            raise HTTPException(
+                status_code=429,
+                detail=f"OTP ကုဒ် ထပ်မံတောင်းယူရန် {wait_sec} စက္ကန့် စောင့်ဆိုင်းပေးပါ (Please wait {wait_sec}s before requesting another OTP)."
+            )
+        if len(recent) >= OTP_REQ_MAX_PER_15M:
+            raise HTTPException(
+                status_code=429,
+                detail="OTP တောင်းယူမှု အကြိမ်ရေ ပြည့်သွားပါပြီ။ ၁၅ မိနစ်ခန့်ကြာမှ ထပ်မံကြိုးစားပါ (Too many OTP requests)."
+            )
+        recent.append(now_ts)
+        _otp_request_timestamps[phone] = recent
+
+
+def _check_otp_not_locked(phone: str):
+    now_ts = time.time()
+    cutoff = now_ts - OTP_WINDOW_SECONDS
+    with _otp_guard_lock:
+        recent_fails = [t for t in _otp_failed_attempts[phone] if t > cutoff]
+        _otp_failed_attempts[phone] = recent_fails
+        if len(recent_fails) >= OTP_MAX_FAILED_ATTEMPTS_15M:
+            raise HTTPException(
+                status_code=429,
+                detail="OTP ကုဒ် မှားယွင်းရိုက်ထည့်မှု များပြားနေပါသည်။ ၁၅ မိနစ်ခန့်ကြာမှ OTP အသစ်ပြန်တောင်းပါ (Too many failed OTP attempts)."
+            )
+
+
+def _record_otp_failure(phone: str, db: Session):
+    now_ts = time.time()
+    cutoff = now_ts - OTP_WINDOW_SECONDS
+    invalidate = False
+    with _otp_guard_lock:
+        recent_fails = [t for t in _otp_failed_attempts[phone] if t > cutoff]
+        recent_fails.append(now_ts)
+        _otp_failed_attempts[phone] = recent_fails
+        if len(recent_fails) >= OTP_MAX_FAILED_ATTEMPTS_15M:
+            invalidate = True
+    if invalidate:
+        db.query(TelegramVerification).filter(
+            TelegramVerification.phone == phone,
+            TelegramVerification.is_used == False
+        ).update({"is_used": True, "purpose": "locked_out"})
+        db.commit()
+
+
+def _clear_otp_failures(phone: str):
+    with _otp_guard_lock:
+        _otp_failed_attempts.pop(phone, None)
+
+
 @router.post("/telegram/request-otp")
 def request_telegram_otp(req: TelegramOtpRequest, db: Session = Depends(get_db)):
     """
     Generates a 6-digit OTP verification code for the phone number.
-    Pushes via Telegram Bot (@SG4DMyanmarBot) to the user's Telegram.
-    Returns the verification instructions, deep link, and simulated code for instant preview.
+    Pushes via Telegram Bot (@SG4DMyanmarBot) to the user's verified Telegram chat.
+    Blocks public OTP reset for ADMIN accounts and enforces rate limits.
     """
     clean_identifier = req.phone.strip()
     if not clean_identifier:
         raise HTTPException(status_code=400, detail="Phone number or User ID is required.")
 
+    purpose = (req.purpose or "register").strip().lower()
+    if purpose not in ("register", "reset_password"):
+        purpose = "register"
+
     # If requested for forgot_password, check if user exists in the system FIRST
-    if req.purpose == "reset_password":
+    if purpose == "reset_password":
         existing_user = db.query(User).filter(
             (User.phone == clean_identifier) | 
             (User.username == clean_identifier) |
@@ -48,15 +121,22 @@ def request_telegram_otp(req: TelegramOtpRequest, db: Session = Depends(get_db))
                 status_code=404,
                 detail="အကောင့်ရှာမတွေ့ပါ (User ID / ဖုန်းနံပါတ် မှားယွင်းနေပါသည်)။ အကောင့်မရှိသေးပါက ကျေးဇူးပြု၍ စာရင်းသွင်းရန် (Sign Up) တွင် အကောင့်အသစ်ဖွင့်ပေးပါ ခင်ဗျာ။"
             )
+        if existing_user.role == UserRole.ADMIN:
+            raise HTTPException(
+                status_code=403,
+                detail="Admin အကောင့်များ၏ စကားဝှက်ကို Telegram OTP ဖြင့် ပြန်လည်သတ်မှတ်ခွင့် မပြုပါ (Admin password reset via Telegram OTP is disabled for security)."
+            )
         clean_phone = normalize_phone(existing_user.phone)
     else:
         clean_phone = normalize_phone(clean_identifier)
 
-    # 1. Generate & save OTP code in database
-    otp_code = generate_and_save_otp(db, clean_phone, purpose=req.purpose or "register")
+    _check_otp_request_rate_limit(clean_phone)
 
-    # 2. Push directly to user's Telegram if chat_id is linked
-    telegram_res = send_otp_to_telegram(db, clean_phone, otp_code, purpose=req.purpose or "register")
+    # 1. Generate & save OTP code in database
+    otp_code = generate_and_save_otp(db, clean_phone, purpose=purpose)
+
+    # 2. Push directly to user's Telegram if chat_id is already verified & linked
+    telegram_res = send_otp_to_telegram(db, clean_phone, otp_code, purpose=purpose)
 
     return {
         "success": True,
@@ -70,17 +150,20 @@ def request_telegram_otp(req: TelegramOtpRequest, db: Session = Depends(get_db))
 
 @router.post("/telegram/verify-otp")
 def verify_telegram_otp(req: TelegramOtpVerifyRequest, db: Session = Depends(get_db)):
-    """Verifies the Telegram OTP code for the phone number."""
+    """Verifies the Telegram OTP code for registration / phone verification."""
     clean_phone = normalize_phone(req.phone)
     clean_code = req.code.strip()
 
+    _check_otp_not_locked(clean_phone)
+
     record = db.query(TelegramVerification).filter(
         TelegramVerification.phone == clean_phone,
-        TelegramVerification.code == clean_code,
+        TelegramVerification.purpose == "register",
         TelegramVerification.is_used == False
-    ).order_by(TelegramVerification.id.desc()).first()
+    ).order_by(TelegramVerification.id.desc()).with_for_update().first()
 
-    if not record:
+    if not record or not secrets.compare_digest(str(record.code), clean_code):
+        _record_otp_failure(clean_phone, db)
         raise HTTPException(status_code=400, detail="Invalid OTP verification code.")
 
     # Safely compare expires_at against now_mmt
@@ -93,7 +176,10 @@ def verify_telegram_otp(req: TelegramOtpVerifyRequest, db: Session = Depends(get
     if exp < now:
         raise HTTPException(status_code=400, detail="Verification code has expired. Please request a new one.")
 
+    _clear_otp_failures(clean_phone)
     record.is_used = True
+    record.purpose = "register_verified"
+    record.expires_at = now + timedelta(minutes=30)  # Valid 30 min to complete /register submission
     
     # Mark user as verified if already exists
     user = db.query(User).filter(User.phone == clean_phone).first()
@@ -112,8 +198,7 @@ def verify_telegram_otp(req: TelegramOtpVerifyRequest, db: Session = Depends(get
 @router.post("/reset-password")
 def reset_password(req: ResetPasswordRequest, db: Session = Depends(get_db)):
     """
-    Resets user password using Telegram OTP code.
-    Allows user to recover account when password is forgotten.
+    Resets non-admin user password using a Telegram reset_password OTP code.
     """
     clean_identifier = req.phone.strip()
     clean_code = req.otp_code.strip()
@@ -122,21 +207,29 @@ def reset_password(req: ResetPasswordRequest, db: Session = Depends(get_db)):
         (User.phone == clean_identifier) | 
         (User.username == clean_identifier) |
         (User.phone == normalize_phone(clean_identifier))
-    ).first()
+    ).with_for_update().first()
     if not user:
         raise HTTPException(
             status_code=404, 
             detail="အကောင့်ရှာမတွေ့ပါ (User ID / ဖုန်းနံပါတ် မှားယွင်းနေပါသည်)။ ကျေးဇူးပြု၍ စာရင်းသွင်းရန် (Sign Up) တွင် အကောင့်အသစ်ဖွင့်ပေးပါ ခင်ဗျာ။"
         )
+    if user.role == UserRole.ADMIN:
+        raise HTTPException(
+            status_code=403,
+            detail="Admin အကောင့်များ၏ စကားဝှက်ကို Telegram OTP ဖြင့် ပြန်လည်သတ်မှတ်ခွင့် မပြုပါ (Admin password reset via Telegram OTP is disabled for security)."
+        )
+
     clean_phone = normalize_phone(user.phone)
+    _check_otp_not_locked(clean_phone)
 
     record = db.query(TelegramVerification).filter(
         TelegramVerification.phone == clean_phone,
-        TelegramVerification.code == clean_code,
+        TelegramVerification.purpose == "reset_password",
         TelegramVerification.is_used == False
-    ).order_by(TelegramVerification.id.desc()).first()
+    ).order_by(TelegramVerification.id.desc()).with_for_update().first()
 
-    if not record:
+    if not record or not secrets.compare_digest(str(record.code), clean_code):
+        _record_otp_failure(clean_phone, db)
         raise HTTPException(status_code=400, detail="Invalid OTP verification code.")
 
     exp = record.expires_at
@@ -148,7 +241,9 @@ def reset_password(req: ResetPasswordRequest, db: Session = Depends(get_db)):
     if exp < now:
         raise HTTPException(status_code=400, detail="Verification code has expired. Please request a new one.")
 
+    _clear_otp_failures(clean_phone)
     record.is_used = True
+    record.purpose = "reset_password_used"
     user.hashed_password = hash_password(req.new_password)
     db.commit()
 
@@ -188,7 +283,30 @@ def register(req: UserRegister, db: Session = Depends(get_db)):
             detail=f"Invalid Agent/Referral code '{clean_ref}'! Registration requires an authorized active Agent code."
         )
 
-    # 2. Check Telegram OTP verification if supplied
+    # 2. Server-side Telegram OTP verification enforcement
+    now = now_mmt()
+    verified_rec = db.query(TelegramVerification).filter(
+        TelegramVerification.phone == clean_phone,
+        TelegramVerification.purpose == "register_verified",
+        TelegramVerification.is_used == True
+    ).order_by(TelegramVerification.id.desc()).with_for_update().first()
+
+    if not verified_rec:
+        raise HTTPException(
+            status_code=400,
+            detail="တယ်လီဂရမ် OTP အတည်ပြုချက် လိုအပ်ပါသည် (Telegram OTP verification is required before registering)."
+        )
+
+    v_exp = verified_rec.expires_at
+    if hasattr(v_exp, 'tzinfo') and v_exp.tzinfo is not None:
+        v_exp = v_exp.replace(tzinfo=None)
+    if v_exp < now:
+        raise HTTPException(
+            status_code=400,
+            detail="Telegram OTP အတည်ပြုချက် သက်တမ်းကုန်ဆုံးသွားပါပြီ။ ကျေးဇူးပြု၍ OTP အသစ်တောင်းယူ အတည်ပြုပေးပါ။"
+        )
+
+    verified_rec.purpose = "register_consumed"
     is_verified = True
 
     # Check if Telegram chat mapping exists
@@ -268,7 +386,12 @@ def login(req: UserLogin, db: Session = Depends(get_db)):
             detail="Incorrect username/phone number or password."
         )
     if not user.is_active:
-        raise HTTPException(status_code=400, detail="Account is deactivated.")
+        raise HTTPException(status_code=403, detail="Account is deactivated.")
+    if getattr(user, "is_suspended", False):
+        raise HTTPException(
+            status_code=403,
+            detail="သင့်အကောင့်အား ယာယီဆိုင်းငံ့ထားပါသည် (Account is suspended). ကျေးဇူးပြု၍ Customer Service သို့ ဆက်သွယ်ပါ။"
+        )
 
     # Login requires only valid credentials (User is already bound to Agent from registration)
     token = create_access_token(user.id)

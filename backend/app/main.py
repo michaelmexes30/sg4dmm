@@ -1,7 +1,7 @@
 import os
 from datetime import datetime
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -9,6 +9,7 @@ import pytz
 
 from app.config import settings
 from app.database import Base, engine
+from app.core.security import get_current_admin
 from app.models.user import User
 from app.models.lottery import LotteryDraw, TwoDDraw, ThreeDDraw
 from app.models.bet import BetSlip, BetItem, BetEditLog
@@ -144,6 +145,8 @@ async def lifespan(app: FastAPI):
                             "CREATE INDEX IF NOT EXISTS ix_mini_game_daily_game ON mini_game_daily_statements (game_type)",
                             "ALTER TYPE transactiontype ADD VALUE IF NOT EXISTS 'WIN_PAYOUT'",
                             "ALTER TABLE transactions ALTER COLUMN gateway TYPE VARCHAR(50)",
+                            "ALTER TABLE bet_slips DROP CONSTRAINT IF EXISTS bet_slips_draw_id_fkey",
+                            "CREATE INDEX IF NOT EXISTS ix_bet_slips_game_draw_status ON bet_slips (game_type, draw_id, status)",
                         ]:
                             try:
                                 ac_conn.execute(text(ddl))
@@ -528,7 +531,7 @@ def download_app_apk():
 
 
 @app.get("/api/system/db-status")
-def get_db_status():
+def get_db_status(admin_user: User = Depends(get_current_admin)):
     from app.database import engine
     from sqlalchemy import text
     info = {"status": "ok"}
@@ -574,8 +577,8 @@ def get_db_status():
     return info
 
 
-@app.get("/api/system/clear-locks")
-def clear_db_locks():
+@app.post("/api/system/clear-locks")
+def clear_db_locks(admin_user: User = Depends(get_current_admin)):
     from app.database import engine
     from sqlalchemy import text
     res = []

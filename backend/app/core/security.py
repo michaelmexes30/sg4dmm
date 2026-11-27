@@ -8,8 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
-from app.models.user import User
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from app.models.user import User, UserRole
 
 security_bearer = HTTPBearer(auto_error=False)
 
@@ -66,10 +65,15 @@ def get_current_user(
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
     if not user.is_active:
-        raise HTTPException(status_code=400, detail="Inactive user account")
+        raise HTTPException(status_code=403, detail="Inactive user account")
+    if getattr(user, "is_suspended", False):
+        raise HTTPException(
+            status_code=403,
+            detail="သင့်အကောင့်အား ယာယီဆိုင်းငံ့ထားပါသည် (Account is suspended). ကျေးဇူးပြု၍ Customer Service သို့ ဆက်သွယ်ပါ။"
+        )
     return user
 
 def get_current_admin(current_user: User = Depends(get_current_user)) -> User:
-    if current_user.role not in ["ADMIN", "AGENT"]:
+    if current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="Admin privileges required")
     return current_user

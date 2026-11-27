@@ -63,6 +63,88 @@ CARD_WHEEL_SECTORS = [
     {"index": 23, "rank": "K", "label": "K", "color": "blue", "bg": "#1d4ed8", "textColor": "#ffffff", "is_cush": False},
 ]
 ROYAL_CROWN_SECTORS = CARD_WHEEL_SECTORS
+ROYAL_CROWN_CARD_RANKS = ["2", "3", "4", "5", "6", "7", "8", "9", "J", "Q", "K"]
+VALID_ROYAL_CROWN_CHOICES = set(ROYAL_CROWN_CARD_RANKS) | {"CUSH"}
+ROYAL_CROWN_RANK_SECTORS = {
+    rank: [s for s in ROYAL_CROWN_SECTORS if s["rank"] == rank]
+    for rank in (ROYAL_CROWN_CARD_RANKS + ["0"])
+}
+
+
+def sample_royal_crown_two_spins(rtp_rate: float, bet_choices: Optional[set] = None):
+    """
+    Exact closed-form 2-spin Royal Crown outcome sampler calibrated to target RTP.
+
+    Payouts:
+    - Single hit on Card (2..K): 5x
+    - Single hit on CUSH (0): 11x
+    - Tie (both spins land on same rank, Card or CUSH): 49x
+
+    Mathematical proof (for 11 Cards + 1 CUSH):
+    Let:
+      q0     = P(0, 0)                      [1 pair]
+      q_card = P(c, c) for each card c      [11 pairs]
+      b      = P(c, 0) = P(0, c)            [22 ordered pairs]
+      a      = P(c1, c2), c1 != c2          [110 ordered pairs]
+    Constraints:
+      11*q_card + q0 + 110*a + 22*b = 1
+      EV_card = 5*(20*a + 2*b) + 49*q_card = R
+      EV_cush = 11*(22*b) + 49*q0 = R
+    Solving yields:
+      429*q_card = (126/11)*R - 10 - (135/11)*q0
+      b = (R - 49*q0) / 242
+    which has a strictly positive, 100% bet-independent solution for all R in [0.88, 0.98],
+    guaranteeing exact RTP == R for EVERY single bet (Card, CUSH, or any multi-bet subset).
+    For R < 0.88, scales down from R_base = 0.88 using non-winning pairs when available.
+    """
+    target_r = max(0.70, min(0.98, float(rtp_rate) / 100.0))
+    r_base = max(target_r, 0.88)
+
+    slack = (126.0 / 11.0) * r_base - 10.0
+    q0 = min(0.0015, slack / 40.0)
+    b = (r_base - 49.0 * q0) / 242.0
+    q_card = (slack - (135.0 / 11.0) * q0) / 429.0
+
+    p_cush_tie = q0
+    p_card_ties = 11.0 * q_card
+    p_card_cush = 22.0 * b
+
+    # If Admin sets RTP below 88%, probabilistically sample a losing pair (when uncovered ranks exist)
+    if target_r < r_base and bet_choices:
+        bet_ranks = {"0" if c in ("CUSH", "0") else c for c in bet_choices}
+        losing_ranks = [r for r in (ROYAL_CROWN_CARD_RANKS + ["0"]) if r not in bet_ranks]
+        if losing_ranks:
+            keep_prob = target_r / r_base
+            if (secrets.randbelow(1_000_000) / 1_000_000.0) >= keep_prob:
+                r1 = secrets.choice(losing_ranks)
+                r2 = secrets.choice(losing_ranks)
+                return (
+                    secrets.choice(ROYAL_CROWN_RANK_SECTORS[r1]),
+                    secrets.choice(ROYAL_CROWN_RANK_SECTORS[r2]),
+                )
+
+    u = secrets.randbelow(1_000_000) / 1_000_000.0
+    if u < p_cush_tie:
+        r1, r2 = "0", "0"
+    elif u < p_cush_tie + p_card_ties:
+        c = secrets.choice(ROYAL_CROWN_CARD_RANKS)
+        r1, r2 = c, c
+    elif u < p_cush_tie + p_card_ties + p_card_cush:
+        c = secrets.choice(ROYAL_CROWN_CARD_RANKS)
+        if secrets.randbelow(2) == 0:
+            r1, r2 = c, "0"
+        else:
+            r1, r2 = "0", c
+    else:
+        c1 = secrets.choice(ROYAL_CROWN_CARD_RANKS)
+        other_cards = [x for x in ROYAL_CROWN_CARD_RANKS if x != c1]
+        c2 = secrets.choice(other_cards)
+        r1, r2 = c1, c2
+
+    return (
+        secrets.choice(ROYAL_CROWN_RANK_SECTORS[r1]),
+        secrets.choice(ROYAL_CROWN_RANK_SECTORS[r2]),
+    )
 
 
 def get_minigame_controls(db: Session):
@@ -243,6 +325,12 @@ def spin_lucky_wheel(
                 detail=f"ထိုးကြေးမှာ အနည်းဆုံး {min_stake:,.0f} MMK မှ အများဆုံး {max_stake:,.0f} MMK အတွင်း ဖြစ်ရပါမည်။"
             )
 
+        # Row-lock user wallet to prevent concurrent double-spend
+        locked_user = db.query(User).filter(User.id == current_user.id).with_for_update().first()
+        if not locked_user:
+            raise HTTPException(status_code=404, detail="User not found.")
+        current_user = locked_user
+
         if float(current_user.balance or 0.0) < stake:
             raise HTTPException(status_code=400, detail="လက်ကျန်ငွေ မလုံလောက်ပါခင်ဗျာ။ ငွေဖြည့်သွင်းပေးပါရန် (Insufficient balance).")
 
@@ -390,6 +478,12 @@ def flip_coin(
                 detail=f"ထိုးကြေးမှာ အနည်းဆုံး {min_stake:,.0f} MMK မှ အများဆုံး {max_stake:,.0f} MMK အတွင်း ဖြစ်ရပါမည်။"
             )
 
+        # Row-lock user wallet to prevent concurrent double-spend
+        locked_user = db.query(User).filter(User.id == current_user.id).with_for_update().first()
+        if not locked_user:
+            raise HTTPException(status_code=404, detail="User not found.")
+        current_user = locked_user
+
         if float(current_user.balance or 0.0) < stake:
             raise HTTPException(status_code=400, detail="လက်ကျန်ငွေ မလုံလောက်ပါခင်ဗျာ။ ငွေဖြည့်သွင်းပေးပါရန် (Insufficient balance).")
 
@@ -517,6 +611,12 @@ def roll_dice(
                 status_code=400,
                 detail=f"ထိုးကြေးမှာ အနည်းဆုံး {min_stake:,.0f} MMK မှ အများဆုံး {max_stake:,.0f} MMK အတွင်း ဖြစ်ရပါမည်။"
             )
+
+        # Row-lock user wallet to prevent concurrent double-spend
+        locked_user = db.query(User).filter(User.id == current_user.id).with_for_update().first()
+        if not locked_user:
+            raise HTTPException(status_code=404, detail="User not found.")
+        current_user = locked_user
 
         if float(current_user.balance or 0.0) < stake:
             raise HTTPException(status_code=400, detail="လက်ကျန်ငွေ မလုံလောက်ပါခင်ဗျာ။ ငွေဖြည့်သွင်းပေးပါရန် (Insufficient balance).")
@@ -702,11 +802,15 @@ def spin_card_wheel(
                     c = b.choice.strip().upper()
                     if c == "0":
                         c = "CUSH"
+                    if c not in VALID_ROYAL_CROWN_CHOICES:
+                        raise HTTPException(status_code=400, detail=f"Invalid Royal Crown choice '{b.choice}'.")
                     incoming_bets.append({"choice": c, "stake": float(b.stake)})
         elif req.choice and req.stake and req.stake > 0:
             c = req.choice.strip().upper()
             if c == "0":
                 c = "CUSH"
+            if c not in VALID_ROYAL_CROWN_CHOICES:
+                raise HTTPException(status_code=400, detail=f"Invalid Royal Crown choice '{req.choice}'.")
             incoming_bets.append({"choice": c, "stake": float(req.stake)})
 
         if not incoming_bets:
@@ -719,18 +823,18 @@ def spin_card_wheel(
                 detail=f"စုစုပေါင်း ထိုးကြေးမှာ အနည်းဆုံး {min_stake:,.0f} MMK မှ အများဆုံး {max_stake:,.0f} MMK အတွင်း ဖြစ်ရပါမည်။"
             )
 
+        # Row-lock user wallet to prevent concurrent double-spend
+        locked_user = db.query(User).filter(User.id == current_user.id).with_for_update().first()
+        if not locked_user:
+            raise HTTPException(status_code=404, detail="User not found.")
+        current_user = locked_user
+
         if float(current_user.balance or 0.0) < total_stake:
             raise HTTPException(status_code=400, detail="လက်ကျန်ငွေ မလုံလောက်ပါခင်ဗျာ။ ငွေဖြည့်သွင်းပေးပါရန် (Insufficient balance).")
 
-        # 2. Calibrate CUSH (0) weight against live RTP rate (default 95%)
-        # 24 sectors = 2 CUSH + 22 Card slots
-        cush_weight = max(0.4, (100.0 - rtp_rate) / 4.0)
-        sector_weights = [cush_weight if s.get("is_cush") else 1.0 for s in ROYAL_CROWN_SECTORS]
-        weighted_pool = [s for s, w in zip(ROYAL_CROWN_SECTORS, sector_weights) for _ in range(max(1, int(w * 10)))]
-
-        # 3. Secure RNG Pick for TWO consecutive spins
-        chosen_sector_1 = secrets.choice(weighted_pool)
-        chosen_sector_2 = secrets.choice(weighted_pool)
+        # 2. Exact RTP-Calibrated 2-Spin Outcome Sampler (Cards 5x / CUSH 11x / Tie 49x)
+        bet_choice_set = {b["choice"] for b in incoming_bets}
+        chosen_sector_1, chosen_sector_2 = sample_royal_crown_two_spins(rtp_rate, bet_choice_set)
 
         hit_rank_1 = chosen_sector_1["rank"]
         is_cush_1 = chosen_sector_1.get("is_cush", False)
@@ -942,17 +1046,6 @@ def spin_card_wheel(
             "bets": bet_results,
             "new_balance": current_user.balance
         }
-    except HTTPException:
-        db.rollback()
-        raise
-    except Exception as e:
-        db.rollback()
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(
-            status_code=500,
-            detail=f"Royal Crown error: {str(e)}"
-        )
     except HTTPException:
         db.rollback()
         raise

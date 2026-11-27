@@ -1,7 +1,7 @@
 import os
 import re
 import html
-import random
+import secrets
 import logging
 import threading
 import time
@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import SessionLocal
-from app.models.user import User, TelegramVerification, TelegramChatMapping
+from app.models.user import User, UserRole, TelegramVerification, TelegramChatMapping
 from app.core.timezone_utils import now_mmt, MMT_TZ
 
 logger = logging.getLogger("telegram_bot")
@@ -52,7 +52,7 @@ def normalize_phone(phone: str) -> str:
     if not phone:
         return ""
     cleaned = re.sub(r'[\s\-\(\)\+]', '', str(phone).strip())
-    if cleaned.startswith('959') and len(cleaned) >= 11:
+    if cleaned.startswith('959') and len(cleaned) >= 10:
         return '09' + cleaned[3:]
     if cleaned.startswith('9509'):
         return '09' + cleaned[4:]
@@ -212,16 +212,16 @@ def upsert_telegram_mapping(db: Session, phone: str, chat_id: str, username: str
     return mapping
 
 def generate_and_save_otp(db: Session, phone: str, purpose: str = "register", chat_id: str = None) -> str:
-    """Generates a 6-digit OTP code, invalidates old ones, and saves to database"""
+    """Generates a cryptographically secure 6-digit OTP code, supersedes old unused ones, and saves to database."""
     clean_phone = normalize_phone(phone)
-    otp_code = f"{random.randint(100000, 999999)}"
+    otp_code = f"{secrets.randbelow(900000) + 100000}"
     expires_at = now_mmt() + timedelta(minutes=10)
 
-    # Invalidate previous unused codes for this phone
+    # Mark previous unused codes for this phone as superseded (distinct from verified codes)
     db.query(TelegramVerification).filter(
         TelegramVerification.phone == clean_phone,
         TelegramVerification.is_used == False
-    ).update({"is_used": True})
+    ).update({"is_used": True, "purpose": "superseded"})
 
     verification = TelegramVerification(
         phone=clean_phone,
@@ -234,7 +234,7 @@ def generate_and_save_otp(db: Session, phone: str, purpose: str = "register", ch
     )
     db.add(verification)
 
-    # If chat_id is known, link or update TelegramChatMapping
+    # Only update TelegramChatMapping when an already-verified chat_id is explicitly provided
     if chat_id:
         upsert_telegram_mapping(db, clean_phone, str(chat_id))
 
@@ -341,64 +341,84 @@ def handle_telegram_update(update: dict, db: Session):
 
     bot_username = settings.TELEGRAM_BOT_USERNAME
 
-    # Case 0: Message from a Telegram Group / Supergroup (Finance Notification Group auto-bind)
+    # Case 0: Message from a Telegram Group / Supergroup
+    # SECURITY: Never allow arbitrary groups to auto-bind or overwrite telegram_finance_group_id!
+    # Finance Group ID must be configured exclusively by an authenticated Chief Admin in System Settings.
     if chat_type in ["group", "supergroup"]:
         text = (message.get("text") or "").strip()
-        is_bot_added = False
-        if "new_chat_members" in message:
-            for member in message["new_chat_members"]:
-                if member.get("username", "").lower() == bot_username.lower():
-                    is_bot_added = True
-                    break
-
-        from app.models.settings import SystemSetting
-        setting = db.query(SystemSetting).first()
-        should_bind = (
-            is_bot_added or 
-            text.startswith(("/set_finance_group", "/finance", "/id", "/start", "/help", "/withdraw")) or 
-            f"@{bot_username.lower()}" in text.lower() or 
-            (setting and not setting.telegram_finance_group_id)
-        )
-
-        if should_bind and setting:
-            setting.telegram_finance_group_id = chat_id
-            db.commit()
-            _save_fallback_group_id(chat_id)
-            group_title = chat.get("title", "SG4D Finance Group")
-            confirm_msg = (
-                f"🔔 <b>SG4D Myanmar Finance Alert Bot ချိတ်ဆက်ပြီးပါပြီ!</b>\n\n"
-                f"ဤ Telegram Group (<code>{group_title}</code>) အား <b>Topup & Withdraw</b> အလိုအလျောက် သတိပေးစာများ ပေးပို့မည့် တရားဝင် Group အဖြစ် သတ်မှတ်လိုက်ပါပြီ ခင်ဗျာ။\n\n"
+        if text.startswith("/id") or text.startswith(f"/id@{bot_username}"):
+            group_title = html.escape(str(chat.get("title", "Telegram Group")))
+            send_telegram_message(
+                chat_id,
                 f"🆔 <b>Group Chat ID:</b> <code>{chat_id}</code>\n"
-                f"💰 <b>ဆိုင်းငံ့ ငွေထုတ်စာရင်းများကို ၃ မိနစ်တစ်ကြိမ် အလိုအလျောက် သတိပေးချက် ပို့ဆောင်ပါမည်။</b>"
+                f"📌 <b>Group:</b> {group_title}\n\n"
+                f"🔒 <i>လုံခြုံရေးအရ Finance Group ချိတ်ဆက်မှုကို Admin Dashboard → System Settings တွင် Chief Admin ကိုယ်တိုင်သာ ထည့်သွင်းသတ်မှတ်နိုင်ပါသည်။</i>"
             )
-            send_telegram_message(chat_id, confirm_msg)
-            # Immediately trigger pending withdrawals check
-            threading.Thread(target=check_and_notify_pending_withdrawals_job, daemon=True).start()
         return
 
-    # Case A: User shared phone contact
+    share_contact_keyboard = {
+        "keyboard": [
+            [{"text": "📱 ဖုန်းနံပါတ် အတည်ပြုရန် (Share Contact)", "request_contact": True}],
+            [{"text": "📲 Android APK ဒေါင်းလုဒ်ရယူရန်"}]
+        ],
+        "resize_keyboard": True,
+        "one_time_keyboard": False
+    }
+
+    # Case A: User shared phone contact (Telegram-verified phone ownership)
     if "contact" in message and message["contact"]:
-        raw_contact_phone = message["contact"].get("phone_number", "")
+        contact = message["contact"]
+        contact_user_id = contact.get("user_id")
+        sender_user_id = from_user.get("id")
+        # SECURITY: Verify Telegram itself certifies that this contact belongs to the sender (prevents forwarding someone else's contact)
+        if not contact_user_id or not sender_user_id or str(contact_user_id) != str(sender_user_id):
+            send_telegram_message(
+                chat_id,
+                "⚠️ <b>လုံခြုံရေး သတိပေးချက်:</b> သူတစ်ပါး၏ Contact ကို Forward ပို့၍ အတည်ပြုခွင့်မရှိပါ။\n"
+                "ကျေးဇူးပြု၍ အောက်ပါ <b>[ 📱 ဖုန်းနံပါတ် အတည်ပြုရန် (Share Contact) ]</b> ခလုတ်ကို နှိပ်၍ သင့်ကိုယ်ပိုင် Telegram ဖုန်းနံပါတ်ကိုသာ ပေးပို့ပါ ခင်ဗျာ။",
+                reply_markup=share_contact_keyboard
+            )
+            return
+
+        raw_contact_phone = contact.get("phone_number", "")
         phone = normalize_phone(raw_contact_phone)
         if phone:
-            upsert_telegram_mapping(db, phone, chat_id, username, first_name)
+            existing_user = db.query(User).filter(User.phone == phone).first()
+            # Prevent rebinding an ADMIN account's Telegram ID to a different chat_id via bot
+            if existing_user and existing_user.role == UserRole.ADMIN and existing_user.telegram_id and str(existing_user.telegram_id) != str(chat_id):
+                send_telegram_message(
+                    chat_id,
+                    "🔒 Admin အကောင့်အတွက် Telegram OTP ချိတ်ဆက်ခြင်း/စကားဝှက်ပြောင်းလဲခြင်းအား လုံခြုံရေးအရ ပိတ်ထားပါသည်။"
+                )
+                return
 
-            # Check if active OTP is pending, otherwise generate a new one
+            upsert_telegram_mapping(db, phone, chat_id, username, first_name)
+            db.commit()
+
+            # Check if an active OTP is pending for this verified phone
             active_otp = db.query(TelegramVerification).filter(
                 TelegramVerification.phone == phone,
                 TelegramVerification.is_used == False,
                 TelegramVerification.expires_at > now_mmt()
             ).order_by(TelegramVerification.id.desc()).first()
 
+            if existing_user and existing_user.role == UserRole.ADMIN:
+                send_telegram_message(
+                    chat_id,
+                    "🔒 Admin အကောင့်များအတွက် Telegram OTP ဖြင့် စကားဝှက် Reset ပြုလုပ်ခွင့် ပိတ်ထားပါသည်။"
+                )
+                return
+
             if active_otp:
                 otp_code = active_otp.code
             else:
                 otp_code = generate_and_save_otp(db, phone, purpose="register", chat_id=None)
 
+            safe_first = html.escape(str(first_name))
             reply_text = (
                 f"🇲🇲 <b>SG4D Myanmar (ရွှေဥဒေါင်း)</b>\n\n"
-                f"မင်္ဂလာပါ <b>{first_name}</b> ခင်ဗျာ!\n"
-                f"ဖုန်းနံပါတ် <code>{phone}</code> ကို အောင်မြင်စွာ ချိတ်ဆက်ပြီးပါပြီ။\n\n"
+                f"မင်္ဂလာပါ <b>{safe_first}</b> ခင်ဗျာ!\n"
+                f"✅ ဖုန်းနံပါတ် <code>{phone}</code> ပိုင်ဆိုင်မှုကို အောင်မြင်စွာ အတည်ပြုချိတ်ဆက်ပြီးပါပြီ။\n\n"
                 f"🔑 သင်၏ အတည်ပြုကုဒ် (OTP) မှာ:\n"
                 f"👉 <b><code>{otp_code}</code></b> 👈\n\n"
                 f"⚠️ <i>(၁၀ မိနစ်အတွင်း အသုံးပြုပါ ခင်ဗျာ။ ဤကုဒ်ကို ဝဘ်ဆိုက်တွင် ရိုက်ထည့်၍ Sign Up အကောင့်ဖွင့်ခြင်း သို့မဟုတ် စကားဝှက် Reset ပြုလုပ်နိုင်ပါသည်။)</i>"
@@ -411,103 +431,132 @@ def handle_telegram_update(update: dict, db: Session):
     if not text:
         return
 
+    def _is_chat_verified_for_phone(target_phone: str) -> bool:
+        mapping = db.query(TelegramChatMapping).filter(TelegramChatMapping.phone == target_phone).first()
+        if mapping and str(mapping.chat_id) == str(chat_id):
+            return True
+        user_rec = db.query(User).filter(User.phone == target_phone).first()
+        if user_rec and user_rec.telegram_id and str(user_rec.telegram_id) == str(chat_id):
+            return True
+        return False
+
     # 1. /start otp_<phone> or /start <phone>
     if text.startswith("/start"):
         parts = text.split()
         if len(parts) > 1:
             arg = parts[1].strip()
-            # If parameter has otp_ prefix: e.g. otp_09795007441
             if arg.startswith("otp_"):
                 phone = normalize_phone(arg[4:])
             else:
                 phone = normalize_phone(arg)
 
             if phone and len(phone) >= 7:
-                upsert_telegram_mapping(db, phone, chat_id, username, first_name)
+                # SECURITY: Never link/overwrite phone->chat_id from untrusted /start URL parameters!
+                # Only issue OTP directly if this exact chat_id is ALREADY verified for this phone.
+                if _is_chat_verified_for_phone(phone):
+                    existing_user = db.query(User).filter(User.phone == phone).first()
+                    if existing_user and existing_user.role == UserRole.ADMIN:
+                        send_telegram_message(
+                            chat_id,
+                            "🔒 Admin အကောင့်များအတွက် Telegram OTP ဖြင့် စကားဝှက် Reset ပြုလုပ်ခွင့် ပိတ်ထားပါသည်။"
+                        )
+                        return
 
-                # Check if an active OTP was already requested from web
-                active_otp = db.query(TelegramVerification).filter(
-                    TelegramVerification.phone == phone,
-                    TelegramVerification.is_used == False,
-                    TelegramVerification.expires_at > now_mmt()
-                ).order_by(TelegramVerification.id.desc()).first()
+                    active_otp = db.query(TelegramVerification).filter(
+                        TelegramVerification.phone == phone,
+                        TelegramVerification.is_used == False,
+                        TelegramVerification.expires_at > now_mmt()
+                    ).order_by(TelegramVerification.id.desc()).first()
 
-                if active_otp:
-                    otp_code = active_otp.code
-                else:
-                    otp_code = generate_and_save_otp(db, phone, purpose="register", chat_id=None)
+                    if active_otp:
+                        otp_code = active_otp.code
+                    else:
+                        otp_code = generate_and_save_otp(db, phone, purpose="register", chat_id=None)
 
-                reply_text = (
-                    f"🇲🇲 <b>SG4D Myanmar (ရွှေဥဒေါင်း)</b>\n\n"
-                    f"မင်္ဂလာပါ <b>{first_name}</b> ခင်ဗျာ!\n"
-                    f"ဖုန်းနံပါတ်: <code>{phone}</code>\n\n"
-                    f"🔑 သင်၏ လုံခြုံရေး အတည်ပြုကုဒ် (OTP) မှာ:\n"
-                    f"👉 <b><code>{otp_code}</code></b> 👈 <i>(ကုဒ်ကို ဖိ၍ Copy ယူပါ)</i>\n\n"
-                    f"⚠️ <i>(၁၀ မိနစ်အတွင်း အသုံးပြုပါ ခင်ဗျာ။ ဤကုဒ်ကို SG4D App တွင် ပြန်လည်ရိုက်ထည့်၍ အတည်ပြုပေးပါ ခင်ဗျာ။)</i>"
+                    safe_first = html.escape(str(first_name))
+                    reply_text = (
+                        f"🇲🇲 <b>SG4D Myanmar (ရွှေဥဒေါင်း)</b>\n\n"
+                        f"မင်္ဂလာပါ <b>{safe_first}</b> ခင်ဗျာ!\n"
+                        f"ဖုန်းနံပါတ်: <code>{phone}</code>\n\n"
+                        f"🔑 သင်၏ လုံခြုံရေး အတည်ပြုကုဒ် (OTP) မှာ:\n"
+                        f"👉 <b><code>{otp_code}</code></b> 👈 <i>(ကုဒ်ကို ဖိ၍ Copy ယူပါ)</i>\n\n"
+                        f"⚠️ <i>(၁၀ မိနစ်အတွင်း အသုံးပြုပါ ခင်ဗျာ။ ဤကုဒ်ကို SG4D App တွင် ပြန်လည်ရိုက်ထည့်၍ အတည်ပြုပေးပါ ခင်ဗျာ။)</i>"
+                    )
+                    send_telegram_message(chat_id, reply_text)
+                    return
+
+                # Unverified or different chat_id: require Telegram native Share Contact
+                verify_prompt = (
+                    f"🇲🇲 <b>SG4D Myanmar (ရွှေဥဒေါင်း) — လုံခြုံရေး အတည်ပြုချက်</b>\n\n"
+                    f"🔐 သင်၏ ဖုန်းနံပါတ် ပိုင်ဆိုင်မှုကို အတည်ပြုရန် အောက်ပါ\n"
+                    f"<b>[ 📱 ဖုန်းနံပါတ် အတည်ပြုရန် (Share Contact) ]</b> ခလုတ်ကို နှိပ်ပေးပါ ခင်ဗျာ။\n\n"
+                    f"<i>(ဖုန်းနံပါတ် အတည်ပြုပြီးသည်နှင့် ၆ လုံးပါ OTP ကုဒ်ကို Bot မှ ချက်ချင်း ပို့ပေးပါမည်။)</i>"
                 )
-                send_telegram_message(chat_id, reply_text)
+                send_telegram_message(chat_id, verify_prompt, reply_markup=share_contact_keyboard)
                 return
 
         # General /start (without params)
-        short_apk = "https://tinyurl.com/sg4d-myanmar-apk"
-        keyboard = {
-            "keyboard": [
-                [{"text": "📱 ဖုန်းနံပါတ် ပေးပို့ရန် (Share Contact)", "request_contact": True}],
-                [{"text": "📲 Android APK ဒေါင်းလုဒ်ရယူရန်"}]
-            ],
-            "resize_keyboard": True,
-            "one_time_keyboard": False
-        }
+        short_apk = get_apk_download_url()
         welcome_text = (
             f"🇲🇲 <b>မင်္ဂလာပါ! SG4D Myanmar (ရွှေဥဒေါင်း) Telegram Bot မှ ကြိုဆိုပါသည်။</b>\n\n"
             f"၁။ <b>OTP ရယူရန်</b>:\n"
-            f"• ဝဘ်ဆိုက်တွင် အကောင့်ဖွင့်ရန် သို့မဟုတ် စကားဝှက် Reset ပြုလုပ်ရန် အောက်ပါ <b>[ 📱 ဖုန်းနံပါတ် ပေးပို့ရန် ]</b> ခလုတ်ကို နှိပ်ပါ (သို့မဟုတ် ဖုန်းနံပါတ် ရိုက်ထည့်ပို့ပါ)။\n\n"
+            f"• ဝဘ်ဆိုက်တွင် အကောင့်ဖွင့်ရန် သို့မဟုတ် စကားဝှက် Reset ပြုလုပ်ရန် အောက်ပါ <b>[ 📱 ဖုန်းနံပါတ် အတည်ပြုရန် (Share Contact) ]</b> ခလုတ်ကို နှိပ်ပေးပါ။\n\n"
             f"၂။ <b>Android Mobile App (APK) ရယူရန်</b>:\n"
-            f"• အောက်ပါ <b>[ 📲 Download APK ]</b> ခလုတ်ကို နှိပ်၍ ဖုန်းထဲသို့ ဒေါင်းလုဒ်ဆွဲယူနိုင်ပါသည် ခင်ဗျာ။\n"
-            f"👉 <a href=\"{short_apk}\"><b>[ 📲 Download SG4D APK ]</b></a>"
+            f"• <a href=\"{short_apk}\"><b>[ 📲 Download SG4D APK ]</b></a> (သို့မဟုတ် /apk ဟု ပို့ပါ)"
         )
-        inline_markup = {
-            "inline_keyboard": [
-                [{"text": "📲 Download APK", "url": short_apk}]
-            ]
-        }
-        send_telegram_message(chat_id, welcome_text, reply_markup=inline_markup)
+        send_telegram_message(chat_id, welcome_text, reply_markup=share_contact_keyboard)
         return
 
-
-    # 2. User typed a phone number directly: e.g. 09795007441, +959795007441
+    # 2. User typed a phone number directly: NEVER trust typed phone text to link/overwrite mappings!
     phone_candidate = normalize_phone(text)
     if re.match(r'^09\d{7,9}$', phone_candidate):
-        phone = phone_candidate
-        upsert_telegram_mapping(db, phone, chat_id, username, first_name)
+        if _is_chat_verified_for_phone(phone_candidate):
+            existing_user = db.query(User).filter(User.phone == phone_candidate).first()
+            if existing_user and existing_user.role == UserRole.ADMIN:
+                send_telegram_message(
+                    chat_id,
+                    "🔒 Admin အကောင့်များအတွက် Telegram OTP ဖြင့် စကားဝှက် Reset ပြုလုပ်ခွင့် ပိတ်ထားပါသည်။"
+                )
+                return
 
-        # Check existing active OTP or generate new
-        active_otp = db.query(TelegramVerification).filter(
-            TelegramVerification.phone == phone,
-            TelegramVerification.is_used == False,
-            TelegramVerification.expires_at > now_mmt()
-        ).order_by(TelegramVerification.id.desc()).first()
+            active_otp = db.query(TelegramVerification).filter(
+                TelegramVerification.phone == phone_candidate,
+                TelegramVerification.is_used == False,
+                TelegramVerification.expires_at > now_mmt()
+            ).order_by(TelegramVerification.id.desc()).first()
 
-        if active_otp:
-            otp_code = active_otp.code
-        else:
-            otp_code = generate_and_save_otp(db, phone, purpose="register", chat_id=None)
+            otp_code = active_otp.code if active_otp else generate_and_save_otp(db, phone_candidate, purpose="register", chat_id=None)
+            reply_text = (
+                f"🇲🇲 <b>SG4D Myanmar (ရွှေဥဒေါင်း)</b>\n\n"
+                f"ဖုန်းနံပါတ်: <code>{phone_candidate}</code>\n\n"
+                f"🔑 သင်၏ အတည်ပြုကုဒ် (OTP) မှာ:\n"
+                f"👉 <b><code>{otp_code}</code></b> 👈\n\n"
+                f"⚠️ <i>(၁၀ မိနစ်အတွင်း အသုံးပြုပါ ခင်ဗျာ။)</i>"
+            )
+            send_telegram_message(chat_id, reply_text)
+            return
 
-        reply_text = (
-            f"🇲🇲 <b>SG4D Myanmar (ရွှေဥဒေါင်း)</b>\n\n"
-            f"ဖုန်းနံပါတ်: <code>{phone}</code>\n\n"
-            f"🔑 သင်၏ အတည်ပြုကုဒ် (OTP) မှာ:\n"
-            f"👉 <b><code>{otp_code}</code></b> 👈\n\n"
-            f"⚠️ <i>(၁၀ မိနစ်အတွင်း အသုံးပြုပါ ခင်ဗျာ။ ဤကုဒ်ကို ဝဘ်ဆိုက်တွင် ရိုက်ထည့်၍ အကောင့်ဖွင့်ခြင်း သို့မဟုတ် စကားဝှက် Reset ပြုလုပ်ပါ ခင်ဗျာ။)</i>"
+        send_telegram_message(
+            chat_id,
+            "🔐 <b>လုံခြုံရေး အတည်ပြုချက် လိုအပ်ပါသည်</b>\n\n"
+            "ဖုန်းနံပါတ် စာရိုက်ပို့ရုံဖြင့် OTP ထုတ်ပေးခွင့် မရှိပါ။ ကျေးဇူးပြု၍ အောက်ပါ "
+            "<b>[ 📱 ဖုန်းနံပါတ် အတည်ပြုရန် (Share Contact) ]</b> ခလုတ်ကို နှိပ်၍ သင့်ကိုယ်ပိုင်ဖုန်းနံပါတ်ကို အတည်ပြုပြီး OTP ရယူပါ ခင်ဗျာ။",
+            reply_markup=share_contact_keyboard
         )
-        send_telegram_message(chat_id, reply_text)
         return
 
-    # 3. /otp command
+    # 3. /otp command (only for already-verified TelegramChatMapping)
     if text.lower() == "/otp":
         mapping = db.query(TelegramChatMapping).filter(TelegramChatMapping.chat_id == chat_id).first()
         if mapping:
             phone = mapping.phone
+            existing_user = db.query(User).filter(User.phone == phone).first()
+            if existing_user and existing_user.role == UserRole.ADMIN:
+                send_telegram_message(
+                    chat_id,
+                    "🔒 Admin အကောင့်များအတွက် Telegram OTP ဖြင့် စကားဝှက် Reset ပြုလုပ်ခွင့် ပိတ်ထားပါသည်။"
+                )
+                return
             otp_code = generate_and_save_otp(db, phone, purpose="register", chat_id=None)
             reply_text = (
                 f"🇲🇲 <b>SG4D Myanmar (ရွှေဥဒေါင်း)</b>\n\n"
@@ -521,7 +570,8 @@ def handle_telegram_update(update: dict, db: Session):
         else:
             send_telegram_message(
                 chat_id,
-                "ကျေးဇူးပြု၍ သင်၏ ဖုန်းနံပါတ် (ဥပမာ- <code>09795007441</code>) ကို အရင်ရိုက်ထည့် ပေးပို့ပေးပါ ခင်ဗျာ။"
+                "ကျေးဇူးပြု၍ အောက်ပါ <b>[ 📱 ဖုန်းနံပါတ် အတည်ပြုရန် (Share Contact) ]</b> ခလုတ်ကို နှိပ်၍ သင်၏ ဖုန်းနံပါတ်ကို အရင်အတည်ပြုပေးပါ ခင်ဗျာ။",
+                reply_markup=share_contact_keyboard
             )
             return
 
@@ -540,18 +590,13 @@ def handle_telegram_update(update: dict, db: Session):
     help_text = (
         f"🇲🇲 <b>SG4D Myanmar (ရွှေဥဒေါင်း) အကူအညီ</b>\n\n"
         f"• <b>မိုဘိုင်း App (APK) ဒေါင်းလုဒ်ရယူရန်</b>:\n"
-        f"👉 /apk သို့မဟုတ် /download ကို နှိပ်ပါ (သို့မဟုတ် 'apk' ဟု စာပို့ပါ)\n\n"
+        f"👉 /apk သို့မဟုတ် /download ကို နှိပ်ပါ\n\n"
         f"• <b>အကောင့်သစ်ဖွင့်ရန် (Sign Up) / စကားဝှက်မေ့နေပါက (Forgot Password)</b>:\n"
-        f"၁။ သင်၏ ဖုန်းနံပါတ် (ဥပမာ- <code>09795007441</code>) ကို ဤနေရာတွင် ပေးပို့ပါ\n"
+        f"၁။ အောက်ပါ <b>[ 📱 ဖုန်းနံပါတ် အတည်ပြုရန် (Share Contact) ]</b> ခလုတ်ကို နှိပ်ပါ\n"
         f"၂။ ရရှိလာသော OTP ကုဒ် ၆ လုံးကို ဝဘ်ဆိုက်တွင် ရိုက်ထည့်၍ အတည်ပြုပါ ခင်ဗျာ။\n\n"
         f"• ကုဒ် အသစ်တောင်းယူရန်: /otp ကို နှိပ်ပါ"
     )
-    inline_help_markup = {
-        "inline_keyboard": [
-            [{"text": "📲 Download APK", "url": apk_url}]
-        ]
-    }
-    send_telegram_message(chat_id, help_text, reply_markup=inline_help_markup)
+    send_telegram_message(chat_id, help_text, reply_markup=share_contact_keyboard)
 
 
 def run_telegram_bot_poller():

@@ -104,7 +104,8 @@ def evaluate_bet_winnings(
     big_stake: int,
     small_stake: int,
     draw_results: Dict[str, Any],
-    bet_type: str = "ordinary"
+    bet_type: str = "ordinary",
+    is_expanded_combo: bool = False
 ) -> Dict[str, Any]:
     """
     Evaluates winning matches and calculates payout using Singapore 4D Standard Multipliers:
@@ -156,8 +157,8 @@ def evaluate_bet_winnings(
         total_payout += payout
         
     # 6. Permutation / Box Roll Prize (10x)
-    # If this ticket was placed as Box/Roll, and the number is a permutation of 1st, 2nd, or 3rd prize
-    if (bet_type or "").lower() in ["box", "permutation", "roll", "r", "s", "series"] and total_payout == 0:
+    # Only applies to an unexpanded single ticket (NOT when Box/R combinations have already been expanded and paid per permutation).
+    if not is_expanded_combo and (bet_type or "").lower() in ["box", "permutation", "roll", "r", "s", "series"] and total_payout == 0:
         top_3 = [first, second, third]
         bet_sorted = sorted(list(bet_number))
         for idx, prize_num in enumerate(top_3):
