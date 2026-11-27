@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Lock, Phone, User, ShieldCheck, KeyRound, CheckCircle2, Sparkles, Send, Check, HelpCircle, ArrowLeft } from 'lucide-react';
+import { X, Lock, Phone, User, ShieldCheck, KeyRound, CheckCircle2, Sparkles, Send, Check, HelpCircle, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import { apiClient } from '../api/client';
@@ -18,6 +18,8 @@ export default function AuthModal({ isOpen, onClose, allowClose = true }) {
   const [fullName, setFullName] = useState('');
   const [password, setPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
   const [countryCode, setCountryCode] = useState('+95');
   const [referralCode, setReferralCode] = useState('');
   const [agentVerified, setAgentVerified] = useState(null);
@@ -359,13 +361,21 @@ export default function AuthModal({ isOpen, onClose, allowClose = true }) {
                 <div className="relative">
                   <Lock className="w-4 h-4 text-gray-500 absolute left-3.5 top-3" />
                   <input
-                    type="password"
+                    type={showPassword ? 'text' : 'password'}
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full bg-dark-bg border border-gold-900 rounded-xl pl-10 pr-3.5 py-2.5 text-xs text-white focus:border-gold-400 focus:outline-none"
+                    className="w-full bg-dark-bg border border-gold-900 rounded-xl pl-10 pr-10 py-2.5 text-xs text-white focus:border-gold-400 focus:outline-none"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-2.5 text-gray-400 hover:text-gold-400 p-0.5 transition-colors cursor-pointer"
+                    title={showPassword ? (lang === 'mm' ? 'စကားဝှက် ဝှက်ရန်' : 'Hide password') : (lang === 'mm' ? 'စကားဝှက် ပြရန်' : 'Show password')}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
                 </div>
               </div>
 
@@ -569,13 +579,21 @@ export default function AuthModal({ isOpen, onClose, allowClose = true }) {
                 <div className="relative">
                   <Lock className="w-4 h-4 text-gray-500 absolute left-3.5 top-3" />
                   <input
-                    type="password"
+                    type={showPassword ? 'text' : 'password'}
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••"
-                    className="w-full bg-dark-bg border border-gold-900 rounded-xl pl-10 pr-3.5 py-2.5 text-xs text-white focus:border-gold-400 focus:outline-none"
+                    className="w-full bg-dark-bg border border-gold-900 rounded-xl pl-10 pr-10 py-2.5 text-xs text-white focus:border-gold-400 focus:outline-none"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-2.5 text-gray-400 hover:text-gold-400 p-0.5 transition-colors cursor-pointer"
+                    title={showPassword ? (lang === 'mm' ? 'စကားဝှက် ဝှက်ရန်' : 'Hide password') : (lang === 'mm' ? 'စကားဝှက် ပြရန်' : 'Show password')}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
                 </div>
               </div>
 
@@ -671,13 +689,21 @@ export default function AuthModal({ isOpen, onClose, allowClose = true }) {
                 <div className="relative">
                   <Lock className="w-4 h-4 text-gray-500 absolute left-3.5 top-3" />
                   <input
-                    type="password"
+                    type={showNewPassword ? 'text' : 'password'}
                     required
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     placeholder={lang === 'mm' ? '•••••••• (အနည်းဆုံး ၆ လုံး)' : '•••••••• (Min 6 characters)'}
-                    className="w-full bg-dark-bg border border-gold-900 rounded-xl pl-10 pr-3.5 py-2.5 text-xs text-white focus:border-gold-400 focus:outline-none"
+                    className="w-full bg-dark-bg border border-gold-900 rounded-xl pl-10 pr-10 py-2.5 text-xs text-white focus:border-gold-400 focus:outline-none"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    className="absolute right-3 top-2.5 text-gray-400 hover:text-gold-400 p-0.5 transition-colors cursor-pointer"
+                    title={showNewPassword ? (lang === 'mm' ? 'စကားဝှက် ဝှက်ရန်' : 'Hide password') : (lang === 'mm' ? 'စကားဝှက် ပြရန်' : 'Show password')}
+                  >
+                    {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
                 </div>
               </div>
 

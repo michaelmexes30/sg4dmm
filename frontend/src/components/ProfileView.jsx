@@ -820,14 +820,23 @@ export default function ProfileView({ onOpenWallet, onOpenAdmin }) {
 
             <div>
               <label className="block text-xs font-semibold text-gray-300 mb-1.5">{t('confirmPassword')}</label>
-              <input
-                type="password"
-                required
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="••••••••"
-                className="w-full bg-dark-bg border border-gold-900 rounded-xl px-3.5 py-2.5 text-xs text-white focus:border-gold-400 focus:outline-none"
-              />
+              <div className="relative">
+                <input
+                  type={showNewPw ? 'text' : 'password'}
+                  required
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full bg-dark-bg border border-gold-900 rounded-xl px-3.5 pr-10 py-2.5 text-xs text-white focus:border-gold-400 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNewPw(!showNewPw)}
+                  className="absolute right-3 top-2.5 text-gray-400 hover:text-white cursor-pointer"
+                >
+                  {showNewPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
             </div>
 
             <button
