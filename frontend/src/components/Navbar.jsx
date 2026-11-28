@@ -18,7 +18,8 @@ import {
   Globe,
   Trophy,
   CheckCircle2,
-  XCircle
+  XCircle,
+  X
 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import logoImg from '../assets/logo.png';
@@ -212,7 +213,7 @@ export default function Navbar({ activeTab, setActiveTab, onOpenDeposit, onNavig
   const unreadCount = notifications.filter(n => !n.is_read && !pendingReadIds.current.has(n.id)).length;
 
   return (
-    <header className="sticky top-0 z-40 w-full glass-panel-gold border-b border-gold-600/40">
+    <header className={`sticky top-0 ${showNotifDropdown ? 'z-50' : 'z-40'} w-full glass-panel-gold border-b border-gold-600/40`}>
       <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 sm:h-20">
           
@@ -401,21 +402,31 @@ export default function Navbar({ activeTab, setActiveTab, onOpenDeposit, onNavig
 
                   {/* Notification Dropdown */}
                   {showNotifDropdown && (
-                    <div className="absolute right-0 mt-2 w-[calc(100vw-2rem)] max-w-sm sm:w-80 bg-dark-surface border border-gold-600/80 rounded-2xl shadow-gold-lg p-3 z-50">
-                      <div className="flex items-center justify-between pb-2 border-b border-dark-border mb-2 text-xs">
-                        <span className="font-bold text-white flex items-center space-x-1">
+                    <div className="fixed left-1/2 -translate-x-1/2 top-[4.5rem] w-[calc(100vw-1.5rem)] max-w-md max-h-[68vh] sm:absolute sm:left-auto sm:translate-x-0 sm:right-0 sm:top-full sm:mt-2 sm:w-96 sm:max-h-[72vh] flex flex-col bg-dark-surface border border-gold-500/80 rounded-2xl shadow-2xl shadow-black/80 p-3.5 z-50">
+                      <div className="shrink-0 flex items-center justify-between pb-2.5 border-b border-dark-border mb-2.5 text-xs">
+                        <span className="font-bold text-white flex items-center space-x-1.5">
                           <Sparkles className="w-3.5 h-3.5 text-gold-400" />
                           <span>{t('noti')} ({num(unreadCount)} {t('notiNew')})</span>
                         </span>
-                        {unreadCount > 0 && (
-                          <button onClick={handleMarkAllRead} className="text-[10px] text-gold-400 hover:underline">
-                            {t('markAllRead')}
+                        <div className="flex items-center space-x-2">
+                          {unreadCount > 0 && (
+                            <button onClick={handleMarkAllRead} className="text-[10px] text-gold-400 hover:underline cursor-pointer">
+                              {t('markAllRead')}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setShowNotifDropdown(false)}
+                            aria-label="Close notifications"
+                            className="p-1 rounded-lg text-gray-400 hover:text-white hover:bg-dark-hover transition-colors cursor-pointer"
+                          >
+                            <X className="w-4 h-4" />
                           </button>
-                        )}
+                        </div>
                       </div>
                       <div 
                         ref={notifListRef}
-                        className="max-h-72 sm:max-h-80 overflow-y-auto space-y-2 pr-1 custom-scrollbar"
+                        className="flex-1 min-h-0 overflow-y-auto space-y-2.5 pr-1 custom-scrollbar"
                       >
                         {notifications.length === 0 ? (
                           <p className="text-xs text-gray-500 py-4 text-center">{t('noNotif')}</p>
